@@ -7000,9 +7000,7 @@ body.v34-adhd-focus .warchest,
 body.v34-adhd-focus .purpose-code,
 body.v34-adhd-focus .quest-status-legend,
 body.v34-adhd-focus .quest-coach,
-body.v34-adhd-focus #v18Board,
-body.v34-adhd-focus #weekViewContainer,
-body.v34-adhd-focus #monthViewContainer{display:none !important;}
+body.v34-adhd-focus #v18Board{display:none !important;}
 body.v34-adhd-focus:not(.v34-routines-visible) .next-banner{display:none !important;}
 body.v34-adhd-focus #p-quest{max-width:860px;}
 .v34-panel{border:2px solid var(--text);background:var(--surface);border-radius:14px;padding:14px;margin:0 0 14px;box-shadow:var(--shadow-md);}
@@ -8306,6 +8304,94 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       navigator.serviceWorker.register('./sw.js').catch(()=>{});
     });
   }
+})();
+</script>
+<style id="v41-gcal-auto-style">
+.v41-gcal-hint{margin-top:8px;font-size:11px;color:var(--text3);line-height:1.45;}
+.v41-gcal-hint b{color:var(--text);}
+</style>
+<script id="v41-gcal-auto-script">
+/* ===== v41: Google Calendar auto refresh + week/month visibility ===== */
+(function(){
+  const GCAL_AUTO_MS=10*60*1000;
+  let gcalAutoBusy=false;
+  let lastAutoAttempt=0;
+
+  function hasGcalUrl(){
+    try{
+      return !!(window.S && S.gcal && String(S.gcal.feedUrl||'').trim());
+    }catch(e){
+      return false;
+    }
+  }
+  function refreshGcalIfDue(reason, force){
+    if(gcalAutoBusy || typeof loadGcalFromUrl!=='function' || !hasGcalUrl()) return;
+    const now=Date.now();
+    const last=Number(S.gcal.lastSync||0);
+    const attemptedRecently=now-lastAutoAttempt<60*1000;
+    const due=force || !last || now-last>GCAL_AUTO_MS;
+    if(!due || attemptedRecently) return;
+    lastAutoAttempt=now;
+    gcalAutoBusy=true;
+    Promise.resolve(loadGcalFromUrl(false))
+      .catch(e=>console.warn('v41 gcal auto refresh failed', reason, e))
+      .finally(()=>{gcalAutoBusy=false;});
+  }
+  function decorateGcalStatus(){
+    const st=document.getElementById('gcalStatus');
+    if(!st || st.querySelector('.v41-gcal-hint')) return;
+    const div=document.createElement('div');
+    div.className='v41-gcal-hint';
+    div.innerHTML='<b>自動更新:</b> URL保存後、起動時・画面復帰時・約10分ごとにGoogleカレンダーを読み込みます。';
+    st.appendChild(div);
+  }
+  function refreshQuestViewClasses(){
+    const view=(typeof questCurrentView!=='undefined'?questCurrentView:'day')||'day';
+    document.body.classList.toggle('v41-show-week', view==='week');
+    document.body.classList.toggle('v41-show-month', view==='month');
+  }
+
+  const oldRenderGcal=window.renderGcalSettings;
+  if(typeof oldRenderGcal==='function' && !oldRenderGcal.__v41Wrapped){
+    const wrapped=function(){
+      const ret=oldRenderGcal.apply(this, arguments);
+      decorateGcalStatus();
+      return ret;
+    };
+    wrapped.__v41Wrapped=true;
+    window.renderGcalSettings=wrapped;
+  }
+
+  const oldRenderTasks=window.renderTasks;
+  if(typeof oldRenderTasks==='function' && !oldRenderTasks.__v41Wrapped){
+    const wrapped=function(){
+      const ret=oldRenderTasks.apply(this, arguments);
+      refreshQuestViewClasses();
+      return ret;
+    };
+    wrapped.__v41Wrapped=true;
+    window.renderTasks=wrapped;
+  }
+
+  document.querySelectorAll('.vs-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>setTimeout(refreshQuestViewClasses,0));
+  });
+  document.getElementById('gcalFeedUrl')?.addEventListener('change',()=>{
+    setTimeout(()=>refreshGcalIfDue('url-change', true), 200);
+  });
+  document.getElementById('gcalLoadBtn')?.addEventListener('click',()=>{
+    setTimeout(decorateGcalStatus, 500);
+  });
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden) refreshGcalIfDue('visible', true);
+  });
+  window.addEventListener('focus',()=>refreshGcalIfDue('focus', false));
+  setInterval(()=>refreshGcalIfDue('interval', false), GCAL_AUTO_MS);
+  setTimeout(()=>{
+    refreshQuestViewClasses();
+    decorateGcalStatus();
+    refreshGcalIfDue('startup', false);
+  }, 1200);
 })();
 </script>
 <style id="v40-supabase-sync-style">
