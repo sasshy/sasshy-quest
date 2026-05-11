@@ -508,6 +508,13 @@ body.quest-active .main{padding:var(--sp-4) var(--sp-3);}
 .sched-task.dragging{opacity:0.8; box-shadow:var(--shadow-lg); z-index:50; cursor:grabbing !important;}
 .sched-task{cursor:grab;}
 .sched-task.done{cursor:pointer;}
+.sched-undone-btn{
+  position:absolute; right:6px; bottom:5px; z-index:35;
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  border-radius:6px; padding:2px 6px; font-size:10px; font-weight:800;
+  font-family:inherit; cursor:pointer; box-shadow:var(--shadow-xs);
+}
+.sched-undone-btn:hover{border-color:var(--text);}
 
 .sched-unassigned{background:var(--surface); border:1px dashed var(--border2); border-radius:var(--radius); padding:12px; margin-top:12px;}
 .sched-unassigned-title{font-size:11px; color:var(--text2); margin-bottom:8px; font-weight:500;}
@@ -1206,6 +1213,12 @@ details.ref .ref-tag{font-family:'JetBrains Mono',monospace; font-size:10px; col
 .tl-title{flex:1; font-size:13px; word-break:break-word;}
 .tl-item.done .tl-title{text-decoration:line-through; color:var(--text2);}
 .tl-rank{font-size:14px; margin-right:4px;}
+.tl-undone{
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  border-radius:6px; padding:2px 7px; font-size:10px; font-weight:800;
+  font-family:inherit; cursor:pointer; margin-left:auto;
+}
+.tl-undone:hover{border-color:var(--text);}
 
 /* v15: clearer running controls / done state / save feedback */
 .rb-pause,.rb-done{height:36px;border-radius:999px;border:none;cursor:pointer;padding:0 14px;font-size:12px;font-weight:700;font-family:inherit}.rb-pause{background:var(--surface2);color:var(--text)}.rb-done{background:var(--green);color:#fff}.quest-save-feedback{font-size:11px;color:var(--green);margin-top:6px;min-height:16px;font-weight:600}.quest-win-save.saved{background:var(--green)!important;border-color:var(--green)!important;color:#fff!important}.sched-task.done{opacity:.82!important;background:var(--green-glow)!important;border-left-color:var(--green)!important}.sched-task.done:after{content:'完了';position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#fff;background:var(--green);border-radius:999px;padding:1px 6px}.sched-task.done .sched-task-title{text-decoration:line-through;color:var(--text2);padding-right:34px}.sched-task.running:after{content:'実行中';position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#fff;background:var(--red);border-radius:999px;padding:1px 6px}.sched-task.running .sched-task-title{padding-right:42px}.pool-item.done{display:flex!important;opacity:.65;background:var(--green-glow);border-left:3px solid var(--green)}.pool-item.done .pi-title{text-decoration:line-through;color:var(--text2)}.pi-btn.pause{background:var(--surface2)!important;color:var(--orange)!important;border-color:var(--orange)!important}.pi-btn.done-main{background:var(--green)!important;color:#fff!important;border-color:var(--green)!important}.quest-status-legend{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin:8px 0 10px}.quest-status-legend span{border:1px solid var(--border);border-radius:999px;padding:3px 8px;background:var(--surface)}
@@ -3353,6 +3366,7 @@ function renderSchedule(){
       : `<div class="sched-task-title">${doneMark}${icon}${esc(t.title)}${runIndicator}</div>
          <div class="sched-task-time">${t.startTime}–${endHm} · ${t.planMin||5}分${t.done&&actualMin>0?` · 実${actualMin}分`:''}${extraText}</div>`;
 
+    const undoneButton=(!t.isGcal && !t.isRoutine && t.done)?`<button class="sched-undone-btn" data-sched-undone="${esc(t.id)}" type="button">未完了</button>`:'';
     const resizeHandle=t.isGcal?'':`<div class="sched-resize-handle" data-resize="${t.id}"></div>`;
     const dataId=t.isGcal?'':`data-id="${t.isRoutine?'':t.id}"`;
     const title=t.isGcal?`title="Google Calendar${t.calendarName?' / '+esc(t.calendarName):''}: ${esc(t.title)}"`:'';
@@ -3360,6 +3374,7 @@ function renderSchedule(){
     html+=`<div class="sched-task ${rankCls}${runningCls}${doneCls}${routineCls}${gcalCls}${densityCls}" data-task-id="${t.id}" ${dataId} ${title}
       style="top:${offset}px; --v35-card-height:${visualHeight}px; height:${visualHeight}px; left:${leftCalc}; width:calc(${colWidth} - 4px);">
       ${body}
+      ${undoneButton}
       ${resizeHandle}
     </div>`;
   });
@@ -3391,10 +3406,28 @@ function renderSchedule(){
         e.stopPropagation();
         const taskId=el.dataset.id;
         if(taskId && !taskId.startsWith('routine:')){
+          const t=S.tasks.find(x=>x.id===taskId);
+          if(t && t.done && markTaskUndone(taskId)){
+            save(); renderTasks(); renderPool(); renderSchedule(); renderTimeline(); updateRunningBadge(); try{renderPanel();}catch(err){}
+            return;
+          }
           openTaskDetail(taskId);
         }
       };
     }
+  });
+
+  body.querySelectorAll('[data-sched-undone]').forEach(btn=>{
+    btn.addEventListener('mousedown',e=>{e.stopPropagation();});
+    btn.addEventListener('touchstart',e=>{e.stopPropagation();},{passive:true});
+    btn.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const id=btn.dataset.schedUndone;
+      if(id && markTaskUndone(id)){
+        save(); renderTasks(); renderPool(); renderSchedule(); renderTimeline(); updateRunningBadge(); try{renderPanel();}catch(err){}
+      }
+    });
   });
 
   // ★空きエリア全体をクリック可能に（Notionカレンダー風）
@@ -3464,6 +3497,7 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
     // 右クリック無視
     if(e.button!==undefined && e.button!==0) return;
     if(el.classList.contains('gcal')) return;
+    if(e.target.closest('.sched-undone-btn')) return;
     const isResize=e.target.classList.contains('sched-resize-handle');
     dragMode=isResize?'resize':'move';
     downY=e.clientY || (e.touches&&e.touches[0].clientY) || 0;
@@ -3556,8 +3590,20 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
     const wasClick=!movedEnough && dur<300;
 
     if(wasClick){
-      // タップ = 詳細モーダル
-      openTaskDetail(id);
+      const cur=getTaskLike();
+      const tCur=cur && cur.ref;
+      if(!isRoutineTask && tCur && tCur.done && markTaskUndone(id)){
+        save();
+        renderTasks();
+        renderPool();
+        renderSchedule();
+        renderTimeline();
+        updateRunningBadge();
+        try{renderPanel();}catch(err){}
+      }else{
+        // タップ = 詳細モーダル
+        openTaskDetail(id);
+      }
     }else{
       // ドラッグ終了 = 保存＆再描画（完了済みならセッションも同期）
       if(isRoutineTask){
@@ -3597,6 +3643,19 @@ function syncRoutineSession(rid){
   });
 }
 
+function markTaskUndone(id){
+  const t=S.tasks.find(x=>x.id===id); if(!t) return false;
+  t.done=false;
+  t.undoneAt=Date.now();
+  delete t.completedAt;
+  delete t.doneAt;
+  if(t.subs) t.subs.forEach(s=>s.done=false);
+  if(S.runningTaskId===id) S.runningTaskId=null;
+  S.sessions=S.sessions.filter(x=>!(x.taskId===id && x.completed));
+  addLog(`↩ <span class="combo">${esc(t.title)}</span> を未完了に戻した`);
+  return true;
+}
+
 function handleSchedAction(id, act){
   const t=S.tasks.find(x=>x.id===id); if(!t) return;
   if(act==='start'){ startTask(id); save(); renderTasks(); renderPool(); renderSchedule(); renderTimeline(); updateRunningBadge(); renderQuestCoach(); }
@@ -3611,14 +3670,8 @@ function handleSchedAction(id, act){
     save(); renderTasks(); renderTimeline();
   }
   else if(act==='undone'){
-    t.done=false;
-    t.undoneAt=Date.now();
-    delete t.completedAt;
-    delete t.doneAt;
-    if(t.subs) t.subs.forEach(s=>s.done=false);
-    // 完了セッションも削除
-    S.sessions=S.sessions.filter(x=>!(x.taskId===id && x.completed));
-    save(); renderTasks(); renderTimeline();
+    markTaskUndone(id);
+    save(); renderTasks(); renderSchedule(); renderTimeline(); updateRunningBadge(); try{renderPanel();}catch(e){}
   }
   else if(act==='set-time'){ promptTaskSchedule(id); }
   else if(act==='unschedule'){ delete t.startTime; save(); renderTasks(); }
@@ -4186,12 +4239,7 @@ document.getElementById('qtdStartBtn').onclick=()=>{
   }
   const t=S.tasks.find(x=>x.id===currentDetailId); if(!t) return;
   if(t.done){
-    t.done=false;
-    t.undoneAt=Date.now();
-    delete t.completedAt;
-    delete t.doneAt;
-    if(t.subs) t.subs.forEach(s=>s.done=false);
-    S.sessions=S.sessions.filter(x=>!(x.taskId===currentDetailId && x.completed));
+    markTaskUndone(currentDetailId);
     save(); renderTasks(); renderSchedule(); renderTimeline(); updateRunningBadge(); try{renderPanel();}catch(e){} closeTaskDetail();
   }else if(S.runningTaskId===currentDetailId){
     stopTask(currentDetailId); save(); renderTasks(); renderTimeline(); closeTaskDetail();
@@ -4468,15 +4516,7 @@ function handleMonsterClick(e){
       S.totalKills++;
       gainExp(exp);
       addLog(`${RANK_EMOJI[t.rank||'zako']} <span class="defeat">${esc(t.title)}</span>を討伐！ <span class="exp">+${exp}EXP</span>`);
-    }else{
-      t.done=false;
-      t.undoneAt=Date.now();
-      delete t.completedAt;
-      delete t.doneAt;
-      if(t.subs) t.subs.forEach(s=>s.done=false);
-      S.sessions=S.sessions.filter(x=>!(x.taskId===id && x.completed));
-      addLog(`${esc(t.title)} が復活した…！`);
-    }
+    }else{ markTaskUndone(id); }
     save(); renderTasks(); renderTimeline();
   }else if(act==='del'){
     if(!t.done){gainExp(FLEE_EXP); addLog(`${esc(t.title)}から <span class="flee">にげた！</span> <span class="exp">+${FLEE_EXP}EXP</span>`);}
@@ -4546,6 +4586,7 @@ function renderTimeline(){
       <span class="tl-dur">${dur}</span>
       <span class="tl-rank">${emoji}</span>
       <span class="tl-title" data-field="title" style="cursor:text;">${esc(s.title)}${s.completed?' ✓':''}</span>
+      ${s.completed && s.taskId?`<button class="tl-undone" data-field="undone" type="button">未完了</button>`:''}
       <span class="tl-del" style="cursor:pointer; color:var(--text3); font-size:14px; margin-left:6px;" data-field="del" title="削除">×</span>
     </div>`;
   }).join('');
@@ -4565,6 +4606,12 @@ document.addEventListener('click',e=>{
       S.sessions=S.sessions.filter(x=>x.id!==sid);
       if(S.runningTaskId===s.taskId && !s.endedAt) S.runningTaskId=null;
       save(); renderTimeline(); renderTasks();
+    }
+    return;
+  }
+  if(field==='undone'){
+    if(s.taskId && markTaskUndone(s.taskId)){
+      save(); renderTimeline(); renderTasks(); renderPool(); renderSchedule(); updateRunningBadge(); try{renderPanel();}catch(err){}
     }
     return;
   }
@@ -8920,7 +8967,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=54').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=55').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9736,6 +9783,63 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 
   setInterval(()=>normalizeRunning(true),1000);
   setTimeout(()=>normalizeRunning(true),500);
+})();
+</script>
+
+<script id="v55-timeline-undone-click-fix-script">
+/* ===== v55: make timeline "undo done" buttons win over drag/detail handlers ===== */
+(function(){
+  function refreshAfterUndone(){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderPool==='function') renderPool(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+  }
+  function restore(id){
+    if(!id) return false;
+    if(typeof markTaskUndone==='function'){
+      const ok=markTaskUndone(id);
+      if(ok) refreshAfterUndone();
+      return ok;
+    }
+    if(typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
+    const t=S.tasks.find(x=>x.id===id);
+    if(!t) return false;
+    t.done=false;
+    t.undoneAt=Date.now();
+    delete t.completedAt;
+    delete t.doneAt;
+    if(Array.isArray(t.subs)) t.subs.forEach(s=>{s.done=false;});
+    S.sessions=(S.sessions||[]).filter(s=>!(s.taskId===id && s.completed));
+    if(S.runningTaskId===id) S.runningTaskId=null;
+    refreshAfterUndone();
+    return true;
+  }
+  ['mousedown','touchstart'].forEach(type=>{
+    document.addEventListener(type,e=>{
+      if(e.target.closest?.('[data-sched-undone],.tl-undone')) e.stopPropagation();
+    },true);
+  });
+  document.addEventListener('click',e=>{
+    const sched=e.target.closest?.('[data-sched-undone]');
+    const tl=e.target.closest?.('.tl-undone');
+    if(!sched && !tl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const id=sched?.dataset?.schedUndone || tl?.closest?.('.tl-item')?.dataset?.sid;
+    if(sched){
+      restore(id);
+      return;
+    }
+    if(tl && typeof S!=='undefined'){
+      const sess=(S.sessions||[]).find(s=>s.id===id);
+      restore(sess&&sess.taskId);
+    }
+  },true);
 })();
 </script>
 
