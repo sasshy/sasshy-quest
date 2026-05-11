@@ -7829,6 +7829,150 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) checkDateRollover(); });
 })();
 </script>
+<style id="v45-command-bar-style">
+.v45-command-bar{
+  border:2px solid var(--text);
+  background:var(--surface);
+  border-radius:14px;
+  padding:12px;
+  margin:0 0 12px;
+  box-shadow:var(--shadow-md);
+}
+.v45-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px;}
+.v45-add input{
+  min-width:0;border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:10px;padding:12px;font-size:15px;font-family:inherit;font-weight:800;
+}
+.v45-btn{
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:10px;padding:10px 12px;min-height:40px;font-size:13px;font-weight:900;font-family:inherit;cursor:pointer;
+}
+.v45-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
+.v45-btn.warn{border-color:var(--orange);color:var(--orange);}
+.v45-btn.good{border-color:var(--green);color:var(--green);}
+.v45-current{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:11px;}
+.v45-label{font-size:10px;color:var(--text3);font-weight:900;letter-spacing:.08em;margin-bottom:5px;}
+.v45-title{font-size:18px;font-weight:950;line-height:1.35;color:var(--text);word-break:break-word;}
+.v45-meta{font-size:11px;color:var(--text3);font-family:'SF Mono','JetBrains Mono',monospace;margin-top:4px;display:flex;gap:7px;flex-wrap:wrap;}
+.v45-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
+body.v45-command-active #p-quest > .q-add,
+body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
+@media(max-width:620px){
+  .v45-command-bar{margin:0 0 10px;padding:10px;border-radius:12px;}
+  .v45-title{font-size:16px;}
+  .v45-actions .v45-btn{flex:1 1 calc(50% - 7px);}
+}
+</style>
+<script id="v45-command-bar-script">
+/* ===== v45: always-visible top command bar + safer task touches ===== */
+(function(){
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function dkey(){try{return todayKey();}catch(e){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}}
+  function hm(){const d=new Date();return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
+  function touch(t){if(t)t.v45TouchedAt=Date.now();}
+  function pick(){
+    if(!ok()) return null;
+    if(S.runningTaskId){
+      const r=S.tasks.find(t=>t.id===S.runningTaskId && !t.done);
+      if(r) return r;
+    }
+    const today=dkey();
+    return S.tasks.filter(t=>!t.done && t.scheduledDate===today && t.adhdReview!=='missed' && !t.adhdHiddenGenerated)
+      .sort((a,b)=>{
+        if(!!a.startTime!==!!b.startTime) return a.startTime?-1:1;
+        if(a.startTime&&b.startTime) return a.startTime.localeCompare(b.startTime);
+        return (b.v45TouchedAt||b.created||0)-(a.v45TouchedAt||a.created||0);
+      })[0] || S.tasks.filter(t=>!t.done && t.adhdReview!=='missed' && !t.adhdHiddenGenerated)
+      .sort((a,b)=>(b.v45TouchedAt||b.created||0)-(a.v45TouchedAt||a.created||0))[0] || null;
+  }
+  function ensure(){
+    document.body.classList.add('v45-command-active');
+    if(document.getElementById('v45CommandBar')) return document.getElementById('v45CommandBar');
+    const host=document.querySelector('#p-quest');
+    if(!host) return null;
+    const bar=document.createElement('div');
+    bar.id='v45CommandBar';
+    bar.className='v45-command-bar';
+    bar.innerHTML=`<div class="v45-add"><input id="v45AddInput" placeholder="新しいタスクを追加して今日へ"><button class="v45-btn primary" data-v45="add" type="button">追加</button></div><div id="v45Current"></div>`;
+    host.insertBefore(bar, host.firstElementChild);
+    bar.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-v45]');
+      if(!btn || !ok()) return;
+      const act=btn.dataset.v45;
+      const id=btn.dataset.id;
+      if(act==='add') add();
+      else if(id){
+        const t=S.tasks.find(x=>x.id===id);
+        if(!t) return;
+        touch(t);
+        if(act==='start'){
+          if(typeof startTask==='function') startTask(id);
+          else {t.scheduledDate=dkey(); t.startTime=t.startTime||hm(); S.runningTaskId=id;}
+        }else if(act==='pause'){
+          if(typeof stopTask==='function') stopTask(id); else if(S.runningTaskId===id) S.runningTaskId=null;
+        }else if(act==='done'){
+          if(typeof finishTask==='function') finishTask(id);
+          t.done=true; if(S.runningTaskId===id) S.runningTaskId=null;
+        }else if(act==='detail' && typeof openTaskDetail==='function'){
+          openTaskDetail(id); return;
+        }
+        saveAndRender();
+      }
+    });
+    bar.querySelector('#v45AddInput')?.addEventListener('keydown',e=>{
+      if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){e.preventDefault(); add();}
+    });
+    return bar;
+  }
+  function add(){
+    if(!ok()) return;
+    const inp=document.getElementById('v45AddInput');
+    const title=(inp?.value||'').trim();
+    if(!title) return;
+    const t={id:'task-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title,lane:'now',rank:'zako',done:false,subs:[],created:Date.now(),createdDate:dkey(),scheduledDate:dkey(),startTime:hm(),planMin:15,nextAction:'開始する',v34ManualTodayDate:dkey(),v45TouchedAt:Date.now()};
+    S.tasks.unshift(t);
+    if(inp) inp.value='';
+    if(typeof addLog==='function') addLog('📝 今日のタスクを追加: '+(typeof esc==='function'?esc(title):title));
+    saveAndRender();
+  }
+  function saveAndRender(){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    render();
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+  }
+  function render(){
+    if(!ok()) return;
+    const bar=ensure(); if(!bar) return;
+    const cur=bar.querySelector('#v45Current');
+    const t=pick();
+    if(!cur) return;
+    if(!t){
+      cur.innerHTML='<div class="v45-current"><div class="v45-label">NOW</div><div class="v45-title">今日のタスクなし</div></div>';
+      return;
+    }
+    const running=S.runningTaskId===t.id;
+    const meta=[running?'実行中':'未着手',t.startTime||'',(t.planMin||15)+'分'].filter(Boolean).map(x=>`<span>${typeof esc==='function'?esc(String(x)):String(x)}</span>`).join('');
+    cur.innerHTML=`<div class="v45-current"><div class="v45-label">${running?'RUNNING':'NEXT TASK'}</div><div class="v45-title">${typeof esc==='function'?esc(t.title||'無題'):(t.title||'無題')}</div><div class="v45-meta">${meta}</div><div class="v45-actions">${running?`<button class="v45-btn warn" data-v45="pause" data-id="${t.id}">停止</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`:`<button class="v45-btn primary" data-v45="start" data-id="${t.id}">開始</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`}<button class="v45-btn" data-v45="detail" data-id="${t.id}">詳細</button></div></div>`;
+  }
+  const oldSave=window.save;
+  if(typeof oldSave==='function' && !oldSave.__v45TouchWrapped){
+    const wrapped=function(){
+      if(ok()){
+        const now=Date.now();
+        (S.tasks||[]).forEach(t=>{ if(t && !t.v45Seen) t.v45Seen=now; });
+      }
+      return oldSave.apply(this,arguments);
+    };
+    wrapped.__v45TouchWrapped=true;
+    window.save=wrapped;
+  }
+  setTimeout(render,300);
+  setInterval(render,1500);
+})();
+</script>
 <style id="v35-timeline-drag-style">
 body.v35-timeline-drag .sched-task{
   height:var(--v35-card-height, 58px) !important;
@@ -8676,6 +8820,53 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
     return restored;
   }
+  function mergeRemoteWithLocal(remoteData, localData, remoteMs){
+    const merged=JSON.parse(JSON.stringify(remoteData||{}));
+    const local=localData||{};
+    const byId=new Map();
+    (merged.tasks=Array.isArray(merged.tasks)?merged.tasks:[]).forEach((t,i)=>{
+      if(t && t.id) byId.set(t.id,{task:t,index:i});
+    });
+    (Array.isArray(local.tasks)?local.tasks:[]).forEach(lt=>{
+      if(!lt || !lt.id) return;
+      const hit=byId.get(lt.id);
+      const isRunning=local.runningTaskId===lt.id;
+      const localOnly=!hit;
+      const localNew=(Number(lt.created||lt.createdAt||0) > (Number(remoteMs)||0)-5*60*1000);
+      const localActive=!lt.done && (lt.scheduledDate || lt.startTime || lt.v34ManualTodayDate || lt.v45TouchedAt);
+      if(localOnly && !lt.done){
+        merged.tasks.unshift(JSON.parse(JSON.stringify(lt)));
+        return;
+      }
+      if(!hit) return;
+      const rt=hit.task||{};
+      const remoteLooksOlder=!rt.done && (
+        (lt.startTime && !rt.startTime) ||
+        (lt.scheduledDate && !rt.scheduledDate) ||
+        (Number(lt.v45TouchedAt||0) > Number(rt.v45TouchedAt||0))
+      );
+      if(isRunning || localNew || (localActive && remoteLooksOlder)){
+        merged.tasks[hit.index]=Object.assign({}, rt, JSON.parse(JSON.stringify(lt)), {done:false, adhdReview:'', adhdHiddenGenerated:false});
+      }
+    });
+    const sessionKey=s=>(s&&s.id)?s.id:[s?.taskId,s?.startedAt].join('|');
+    const sessionMap=new Map();
+    merged.sessions=Array.isArray(merged.sessions)?merged.sessions:[];
+    merged.sessions.forEach(s=>sessionMap.set(sessionKey(s),s));
+    (Array.isArray(local.sessions)?local.sessions:[]).forEach(ls=>{
+      if(!ls) return;
+      const key=sessionKey(ls);
+      if(!sessionMap.has(key) || (!ls.endedAt && local.runningTaskId===ls.taskId)){
+        sessionMap.set(key, JSON.parse(JSON.stringify(ls)));
+      }
+    });
+    merged.sessions=[...sessionMap.values()];
+    if(local.runningTaskId){
+      const runningTask=merged.tasks.find(t=>t.id===local.runningTaskId && !t.done);
+      if(runningTask) merged.runningTaskId=local.runningTaskId;
+    }
+    return merged;
+  }
   function refreshApp(){
     try{ if(typeof applyTheme==='function') applyTheme(); }catch(e){}
     try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
@@ -8727,17 +8918,19 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function applyRemote(row){
     if(!row || !row.data || typeof S==='undefined') return;
     const runningSnap=localRunningSnapshot();
+    const localBefore=JSON.parse(JSON.stringify(S));
+    const remoteMs=Date.parse(row.updated_at)||Date.now();
     let restoredRunning=false;
     applyingRemote=true;
     try{
+      const nextData=mergeRemoteWithLocal(row.data, localBefore, remoteMs);
       Object.keys(S).forEach(k=>delete S[k]);
-      Object.assign(S, JSON.parse(JSON.stringify(row.data)));
+      Object.assign(S, nextData);
       restoredRunning=restoreRunningSnapshot(runningSnap);
       const originalSave=window.__v40OriginalSave || window.save;
       if(typeof originalSave==='function') originalSave();
       refreshApp();
       const cfg=loadCfg();
-      const remoteMs=Date.parse(row.updated_at)||Date.now();
       cfg.remoteUpdatedAt=remoteMs;
       cfg.localUpdatedAt=remoteMs;
       cfg.lastSyncAt=Date.now();
@@ -8747,7 +8940,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }finally{
       applyingRemote=false;
     }
-    if(restoredRunning){
+    if(restoredRunning || JSON.stringify(localBefore.tasks||[])!==JSON.stringify(S.tasks||[])){
       const cfg=loadCfg();
       cfg.dirty=true;
       cfg.localUpdatedAt=Date.now();
