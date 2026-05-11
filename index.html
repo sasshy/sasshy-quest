@@ -8680,7 +8680,17 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   }
   function currentSession(){
     if(typeof S==='undefined' || !S.runningTaskId) return null;
-    return (S.sessions||[]).find(s=>s.taskId===S.runningTaskId && !s.endedAt) || null;
+    const task=(S.tasks||[]).find(t=>t.id===S.runningTaskId);
+    if(task && task.done){
+      try{ if(typeof window.sasshyCloseRunning==='function') window.sasshyCloseRunning(S.runningTaskId,true); }catch(e){}
+      return null;
+    }
+    const sess=(S.sessions||[]).find(s=>s.taskId===S.runningTaskId && !s.endedAt) || null;
+    if(!sess){
+      try{ if(typeof window.sasshyCloseRunning==='function') window.sasshyCloseRunning(S.runningTaskId,false); else S.runningTaskId=null; }catch(e){}
+      return null;
+    }
+    return sess;
   }
   function taskForSession(sess){
     if(!sess || typeof S==='undefined') return null;
@@ -9454,6 +9464,40 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   document.addEventListener('visibilitychange',()=>{ if(document.hidden) flushPush('バックグラウンド保存'); else poll(); });
   window.addEventListener('pagehide',()=>flushPush('ページ離脱保存'));
   window.addEventListener('beforeunload',()=>flushPush('終了前保存'));
+})();
+</script>
+
+<script id="v51-final-running-cleanup-script">
+/* ===== v51: final guard against zombie running timer ===== */
+(function(){
+  function stopZombie(){
+    if(typeof S==='undefined' || !S || !S.runningTaskId) return false;
+    const id=S.runningTaskId;
+    const task=(S.tasks||[]).find(t=>t.id===id);
+    const open=(S.sessions||[]).filter(s=>s.taskId===id && !s.endedAt);
+    if((task && task.done) || !open.length){
+      open.forEach(s=>{s.endedAt=Date.now(); s.completed=!!(task&&task.done);});
+      S.runningTaskId=null;
+      try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+      const timer=document.getElementById('v38FocusTimer');
+      if(timer) timer.classList.remove('show');
+      window.dispatchEvent(new CustomEvent('sasshyTimerStop',{detail:{taskId:id,completed:!!(task&&task.done)}}));
+      try{ if(typeof save==='function') save(); }catch(e){}
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+      try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+      return true;
+    }
+    return false;
+  }
+  document.addEventListener('click',e=>{
+    if(e.target.closest('[data-v45="done"],[data-v45="pause"],[data-v34="done"],[data-v34="pause"],#qtdDoneBtn,#qtdStartBtn,[data-act="done"],[data-act="stop"]')){
+      setTimeout(stopZombie,30);
+      setTimeout(stopZombie,300);
+    }
+  },true);
+  setInterval(stopZombie,1000);
+  window.sasshyStopZombieTimer=stopZombie;
 })();
 </script>
 
