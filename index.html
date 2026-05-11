@@ -9133,6 +9133,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   }
   function statePayload(){
     try{
+      if(typeof window.sasshyNormalizeRunningState==='function') window.sasshyNormalizeRunningState(false);
       return JSON.parse(JSON.stringify(S));
     }catch(e){
       return S;
@@ -9143,7 +9144,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       if(!S || !S.runningTaskId) return null;
       const task=(S.tasks||[]).find(t=>t.id===S.runningTaskId);
       const session=(S.sessions||[]).find(s=>s.taskId===S.runningTaskId && !s.endedAt);
-      if(!task) return null;
+      if(!task || task.done || !session) return null;
       return {
         runningTaskId:S.runningTaskId,
         task:JSON.parse(JSON.stringify(task)),
@@ -9154,7 +9155,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
   }
   function restoreRunningSnapshot(snap){
-    if(!snap || !snap.runningTaskId || !snap.task) return false;
+    if(!snap || !snap.runningTaskId || !snap.task || snap.task.done || !snap.session || snap.session.endedAt) return false;
     S.tasks=Array.isArray(S.tasks)?S.tasks:[];
     S.sessions=Array.isArray(S.sessions)?S.sessions:[];
     let restored=false;
@@ -9180,10 +9181,20 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function mergeRemoteWithLocal(remoteData, localData, remoteMs){
     const merged=JSON.parse(JSON.stringify(remoteData||{}));
     const local=localData||{};
+    merged.tasks=Array.isArray(merged.tasks)?merged.tasks:[];
+    merged.sessions=Array.isArray(merged.sessions)?merged.sessions:[];
     const byId=new Map();
-    (merged.tasks=Array.isArray(merged.tasks)?merged.tasks:[]).forEach((t,i)=>{
+    merged.tasks.forEach((t,i)=>{
       if(t && t.id) byId.set(t.id,{task:t,index:i});
     });
+    function closeMergedSessions(taskId, completed){
+      merged.sessions.forEach(s=>{
+        if(s && s.taskId===taskId && !s.endedAt){
+          s.endedAt=Date.now();
+          s.completed=!!completed;
+        }
+      });
+    }
     (Array.isArray(local.tasks)?local.tasks:[]).forEach(lt=>{
       if(!lt || !lt.id) return;
       const hit=byId.get(lt.id);
@@ -9191,6 +9202,19 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const localOnly=!hit;
       const localNew=(Number(lt.created||lt.createdAt||0) > (Number(remoteMs)||0)-5*60*1000);
       const localActive=!lt.done && (lt.scheduledDate || lt.startTime || lt.v34ManualTodayDate || lt.v45TouchedAt);
+      if(lt.done){
+        const doneCopy=JSON.parse(JSON.stringify(lt));
+        doneCopy.done=true;
+        doneCopy.completedAt=doneCopy.completedAt || doneCopy.doneAt || Date.now();
+        if(hit){
+          merged.tasks[hit.index]=Object.assign({}, hit.task||{}, doneCopy, {done:true});
+        }else{
+          merged.tasks.unshift(doneCopy);
+        }
+        if(merged.runningTaskId===lt.id) merged.runningTaskId=null;
+        closeMergedSessions(lt.id,true);
+        return;
+      }
       if(localOnly && !lt.done){
         merged.tasks.unshift(JSON.parse(JSON.stringify(lt)));
         return;
@@ -9208,12 +9232,17 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     });
     const sessionKey=s=>(s&&s.id)?s.id:[s?.taskId,s?.startedAt].join('|');
     const sessionMap=new Map();
-    merged.sessions=Array.isArray(merged.sessions)?merged.sessions:[];
     merged.sessions.forEach(s=>sessionMap.set(sessionKey(s),s));
     (Array.isArray(local.sessions)?local.sessions:[]).forEach(ls=>{
       if(!ls) return;
       const key=sessionKey(ls);
-      if(!sessionMap.has(key) || (!ls.endedAt && local.runningTaskId===ls.taskId)){
+      const localTask=(Array.isArray(local.tasks)?local.tasks:[]).find(t=>t.id===ls.taskId);
+      if(localTask && localTask.done){
+        const doneSession=JSON.parse(JSON.stringify(ls));
+        if(!doneSession.endedAt) doneSession.endedAt=Date.now();
+        doneSession.completed=true;
+        sessionMap.set(key, doneSession);
+      }else if(!sessionMap.has(key) || (!ls.endedAt && local.runningTaskId===ls.taskId)){
         sessionMap.set(key, JSON.parse(JSON.stringify(ls)));
       }
     });
@@ -9226,6 +9255,14 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         runningTask.adhdReview='';
         runningTask.adhdHiddenGenerated=false;
         merged.runningTaskId=local.runningTaskId;
+      }
+    }
+    if(merged.runningTaskId){
+      const runningTask=merged.tasks.find(t=>t.id===merged.runningTaskId);
+      const hasOpen=merged.sessions.some(s=>s.taskId===merged.runningTaskId && !s.endedAt);
+      if(!runningTask || runningTask.done || !hasOpen){
+        closeMergedSessions(merged.runningTaskId, !!(runningTask&&runningTask.done));
+        merged.runningTaskId=null;
       }
     }
     return merged;
@@ -9540,6 +9577,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     S.tasks.forEach(t=>{
       if(!t || !t.id) return;
       if(t.done){
+        if(!t.completedAt) t.completedAt=Date.now();
         if(endOpenSessions(t.id,true)) changed=true;
         if(S.runningTaskId===t.id){
           S.runningTaskId=null;
@@ -9618,6 +9656,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const t=taskById(id);
       if(t){
         t.done=true;
+        t.completedAt=t.completedAt||Date.now();
         if(Array.isArray(t.subs)) t.subs.forEach(s=>{s.done=true;});
       }
       endOpenSessions(id,true);
@@ -9647,7 +9686,10 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     setTimeout(()=>{
       if(done && id){
         const t=taskById(id);
-        if(t) t.done=true;
+        if(t){
+          t.done=true;
+          t.completedAt=t.completedAt||Date.now();
+        }
         endOpenSessions(id,true);
         if(hasState() && S.runningTaskId===id) S.runningTaskId=null;
       }
