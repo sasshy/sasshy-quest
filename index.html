@@ -717,6 +717,7 @@ body.quest-active .main{padding:var(--sp-4) var(--sp-3);}
 .mn-task.done{opacity:0.5; text-decoration:line-through;}
 .mn-task.fixed{border-left:2px solid var(--text); padding-left:3px;}
 .mn-count{font-size:9.5px; color:var(--text3); margin-top:auto; text-align:right;}
+.v43-day-agenda{display:none;}
 @media(min-width:900px){
   .mn-day{min-height:180px;}
   .mn-num{font-size:14px;}
@@ -732,20 +733,37 @@ body.quest-active .main{padding:var(--sp-4) var(--sp-3);}
   .mn-add-btn{display:none;}
   .mn-tasks{gap:2px;}
   .mn-task{
-    font-size:9.5px;
-    padding:2px 3px;
+    font-size:10px;
+    padding:3px 3px;
     white-space:normal;
-    display:-webkit-box;
-    -webkit-line-clamp:2;
-    -webkit-box-orient:vertical;
-    line-height:1.22;
-    max-height:2.6em;
+    display:block;
+    line-height:1.18;
+    max-height:3.75em;
     text-overflow:clip;
     word-break:break-word;
   }
   .mn-task.gcal{border-left:2px solid var(--cyan); background:var(--surface);}
-  .mn-task-time{display:block; margin:0 0 1px; font-size:8px;}
+  .mn-task-time{display:none;}
+  .mn-task-name{
+    display:-webkit-box;
+    -webkit-line-clamp:3;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
   .mn-count{text-align:left; font-size:9px; margin-top:1px;}
+  .v43-day-agenda{
+    display:block;
+    margin:8px 0 12px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:var(--surface);
+    padding:10px;
+  }
+  .v43-agenda-head{font-size:12px;font-weight:900;margin-bottom:8px;color:var(--text);}
+  .v43-agenda-list{display:flex;flex-direction:column;gap:6px;}
+  .v43-agenda-item{border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:8px;}
+  .v43-agenda-title{font-size:13px;font-weight:850;line-height:1.35;color:var(--text);word-break:break-word;}
+  .v43-agenda-meta{font-size:10px;color:var(--text3);margin-top:3px;font-family:'SF Mono','JetBrains Mono',monospace;}
 }
 
 /* プールグループラベル */
@@ -5180,7 +5198,7 @@ function renderWeekQ(){
       if(t.isGcal) cls.push('gcal');
       const icon=t.isGcal?'🗓':(t.isRoutine?'🎯':'');
       const dataId=t.id && !t.isRoutine && !t.isGcal?`data-id="${t.id}"`:'';
-      const label=t.isGcal&&t.calendarName?`${t.calendarName} · ${t.title}`:t.title;
+      const label=t.title||'(無題)';
       colInner+=`<div class="${cls.join(' ')}" ${dataId} style="top:${top}px; height:${height}px;" title="${esc(t.startTime)} ${esc(label)}">
         ${icon}${esc(label)}
       </div>`;
@@ -5340,9 +5358,10 @@ function renderMonth(){
       if(t.startTime && !t.isGcal) cls.push('fixed');
       if(t.isGcal) cls.push('gcal');
       const dataId=t.isGcal?'':`data-id="${t.id}"`;
-      const label=String(t.title||'').replace(/^🗓\s*/,'');
+      const label=String(t.title||'').replace(/^🗓\s*/,'').replace(/^\d{1,2}:\d{2}\s+/,'').replace(/^[^·]{1,18}\s+·\s+/,'');
+      const rawTitle=String(t.title||'').replace(/^🗓\s*/,'');
       const timeLabel=t.startTime&&t.startTime!=='00:00'?`<span class="mn-task-time">${esc(t.startTime)}</span>`:'';
-      return `<div class="${cls.join(' ')}" ${dataId} title="${esc(label)}">${timeLabel}<span class="mn-task-name">${esc(label)}</span></div>`;
+      return `<div class="${cls.join(' ')}" ${dataId} title="${esc(rawTitle)}">${timeLabel}<span class="mn-task-name">${esc(label)}</span></div>`;
     }).join('');
     const more=rest>0?`<div class="mn-count">+${rest}</div>`:'';
 
@@ -5384,6 +5403,8 @@ function renderMonth(){
     el.addEventListener('click',(e)=>{
       // mn-add-btnやmn-taskのクリックは上でハンドル済み
       if(e.target.closest('.mn-add-btn, .mn-task')) return;
+      renderMobileDayAgenda(el.dataset.date);
+      if(window.innerWidth<=600) return;
       questViewDate=el.dataset.date;
       document.querySelectorAll('.vs-btn').forEach(b=>b.classList.remove('active'));
       document.querySelector('.vs-btn[data-view="day"]').classList.add('active');
@@ -5395,6 +5416,7 @@ function renderMonth(){
       renderSchedule();
     });
   });
+  if(window.innerWidth<=600) renderMobileDayAgenda(today, false);
 }
 document.getElementById('mnPrev').onclick=()=>{
   const d=new Date(monthViewStart+'T00:00:00'); d.setMonth(d.getMonth()-1);
@@ -5415,6 +5437,50 @@ function getWeekStart(dateStr){
   const d=new Date(dateStr+'T00:00:00');
   d.setDate(d.getDate()-d.getDay()); // 日曜へ戻す
   return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+}
+
+function monthItemsForAgenda(dateKey){
+  const sessionTaskIds=new Set((S.sessions||[]).filter(s=>s.date===dateKey).map(s=>s.taskId));
+  const tasks=S.tasks.filter(t=>{
+    if(t.scheduledDate===dateKey) return true;
+    if(t.done && sessionTaskIds.has(t.id)) return true;
+    return false;
+  }).map(t=>({
+    title:t.title||'(無題)',
+    startTime:t.startTime||'',
+    source:t.done?'DONE':'TASK',
+    done:!!t.done
+  }));
+  const gcal=gcalEventsForDate(dateKey).map(e=>({
+    title:e.title||'(無題)',
+    startTime:e.startTime||'',
+    source:e.calendarName||'GCAL',
+    done:false
+  }));
+  return [...tasks,...gcal].sort((a,b)=>{
+    if(a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
+    if(a.startTime) return -1;
+    if(b.startTime) return 1;
+    return a.title.localeCompare(b.title);
+  });
+}
+function renderMobileDayAgenda(dateKey, scrollIntoView=true){
+  const grid=document.getElementById('monthGrid');
+  if(!grid || !dateKey || window.innerWidth>600) return;
+  let box=document.getElementById('v43DayAgenda');
+  if(!box){
+    box=document.createElement('div');
+    box.id='v43DayAgenda';
+    box.className='v43-day-agenda';
+    grid.insertAdjacentElement('afterend', box);
+  }
+  const d=new Date(dateKey+'T00:00:00');
+  const items=monthItemsForAgenda(dateKey);
+  const label=`${d.getMonth()+1}/${d.getDate()} ${['日','月','火','水','木','金','土'][d.getDay()]}`;
+  box.innerHTML=`<div class="v43-agenda-head">${esc(label)} の予定 ${items.length}件</div><div class="v43-agenda-list">${
+    items.length?items.map(x=>`<div class="v43-agenda-item ${x.done?'done':''}"><div class="v43-agenda-title">${esc(x.title)}</div><div class="v43-agenda-meta">${esc([x.startTime,x.source].filter(Boolean).join(' · '))}</div></div>`).join(''):'<div class="v43-agenda-item"><div class="v43-agenda-title">予定なし</div></div>'
+  }</div>`;
+  if(scrollIntoView) box.scrollIntoView({block:'nearest'});
 }
 
 
