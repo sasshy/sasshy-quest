@@ -3612,6 +3612,10 @@ function handleSchedAction(id, act){
   }
   else if(act==='undone'){
     t.done=false;
+    t.undoneAt=Date.now();
+    delete t.completedAt;
+    delete t.doneAt;
+    if(t.subs) t.subs.forEach(s=>s.done=false);
     // 完了セッションも削除
     S.sessions=S.sessions.filter(x=>!(x.taskId===id && x.completed));
     save(); renderTasks(); renderTimeline();
@@ -4183,8 +4187,12 @@ document.getElementById('qtdStartBtn').onclick=()=>{
   const t=S.tasks.find(x=>x.id===currentDetailId); if(!t) return;
   if(t.done){
     t.done=false;
+    t.undoneAt=Date.now();
+    delete t.completedAt;
+    delete t.doneAt;
+    if(t.subs) t.subs.forEach(s=>s.done=false);
     S.sessions=S.sessions.filter(x=>!(x.taskId===currentDetailId && x.completed));
-    save(); renderTasks(); renderTimeline(); closeTaskDetail();
+    save(); renderTasks(); renderSchedule(); renderTimeline(); updateRunningBadge(); try{renderPanel();}catch(e){} closeTaskDetail();
   }else if(S.runningTaskId===currentDetailId){
     stopTask(currentDetailId); save(); renderTasks(); renderTimeline(); closeTaskDetail();
   }else{
@@ -4460,7 +4468,15 @@ function handleMonsterClick(e){
       S.totalKills++;
       gainExp(exp);
       addLog(`${RANK_EMOJI[t.rank||'zako']} <span class="defeat">${esc(t.title)}</span>を討伐！ <span class="exp">+${exp}EXP</span>`);
-    }else{t.done=false; addLog(`${esc(t.title)} が復活した…！`);}
+    }else{
+      t.done=false;
+      t.undoneAt=Date.now();
+      delete t.completedAt;
+      delete t.doneAt;
+      if(t.subs) t.subs.forEach(s=>s.done=false);
+      S.sessions=S.sessions.filter(x=>!(x.taskId===id && x.completed));
+      addLog(`${esc(t.title)} が復活した…！`);
+    }
     save(); renderTasks(); renderTimeline();
   }else if(act==='del'){
     if(!t.done){gainExp(FLEE_EXP); addLog(`${esc(t.title)}から <span class="flee">にげた！</span> <span class="exp">+${FLEE_EXP}EXP</span>`);}
@@ -8904,7 +8920,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=53').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=54').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9202,6 +9218,18 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const localOnly=!hit;
       const localNew=(Number(lt.created||lt.createdAt||0) > (Number(remoteMs)||0)-5*60*1000);
       const localActive=!lt.done && (lt.scheduledDate || lt.startTime || lt.v34ManualTodayDate || lt.v45TouchedAt);
+      const localUndoneAt=Number(lt.undoneAt||0);
+      const remoteDoneAt=Number((hit&&hit.task&&(hit.task.completedAt||hit.task.doneAt))||0);
+      if(hit && !lt.done && (hit.task||{}).done && localUndoneAt && localUndoneAt>=remoteDoneAt){
+        const undoneCopy=JSON.parse(JSON.stringify(lt));
+        delete undoneCopy.completedAt;
+        delete undoneCopy.doneAt;
+        undoneCopy.done=false;
+        merged.tasks[hit.index]=Object.assign({}, hit.task||{}, undoneCopy, {done:false});
+        if(merged.runningTaskId===lt.id) merged.runningTaskId=null;
+        merged.sessions=merged.sessions.filter(s=>!(s && s.taskId===lt.id && s.completed));
+        return;
+      }
       if(lt.done){
         const doneCopy=JSON.parse(JSON.stringify(lt));
         doneCopy.done=true;
