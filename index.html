@@ -8347,6 +8347,18 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 .v38-ft-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;color:var(--text3);font-size:11px;line-height:1.4;}
 .v38-ft-quick{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
 .v38-ft-quick .v38-ft-btn{padding:6px 9px;min-height:30px;}
+.v38-ft-settings{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.v38-ft-select{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:7px 9px;
+  min-height:34px;
+  font-size:11px;
+  font-weight:800;
+  font-family:inherit;
+}
 @media(max-width:700px){
   .v38-focus-timer{
     position:sticky;
@@ -8361,7 +8373,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 </style>
 <script id="v38-voice-focus-timer-script">
 (function(){
-  const state={sessionId:null,marks:new Set(),voice:false,lastRender:0};
+  const CFG_KEY='sasshy_v38_voice_timer_cfg';
+  function loadCfg(){
+    try{return Object.assign({voice:false, voiceKind:'male', tone:'coach', intervalMin:3}, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {voice:false, voiceKind:'male', tone:'coach', intervalMin:3};}
+  }
+  function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify({voice:state.voice,voiceKind:state.voiceKind,tone:state.tone,intervalMin:state.intervalMin}));}catch(e){}}
+  const cfg0=loadCfg();
+  const state={sessionId:null,marks:new Set(),voice:!!cfg0.voice,voiceKind:cfg0.voiceKind||'male',tone:cfg0.tone||'coach',intervalMin:Number(cfg0.intervalMin)||3,lastRender:0};
   function p2n(n){return String(n).padStart(2,'0');}
   function fmt(ms){
     const neg=ms<0; ms=Math.abs(ms);
@@ -8399,18 +8417,39 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
           <button class="v38-ft-btn" data-v38-add="5" type="button">+5分</button>
           <button class="v38-ft-btn" data-v38-say type="button">今を読む</button>
         </span>
+      </div>
+      <div class="v38-ft-settings">
+        <select class="v38-ft-select" id="v38VoiceKind" title="声">
+          <option value="male">男性声</option>
+          <option value="female">女性声</option>
+          <option value="auto">自動</option>
+        </select>
+        <select class="v38-ft-select" id="v38Tone" title="声がけ">
+          <option value="coach">応援</option>
+          <option value="strict">強め</option>
+          <option value="calm">淡々</option>
+        </select>
+        <select class="v38-ft-select" id="v38Interval" title="定期アナウンス">
+          <option value="2">2分ごと</option>
+          <option value="3">3分ごと</option>
+          <option value="5">5分ごと</option>
+        </select>
       </div>`;
     anchor.parentNode.insertBefore(el, anchor.nextSibling);
     el.querySelector('#v38VoiceBtn')?.addEventListener('click',()=>{
       state.voice=!state.voice;
+      saveCfg();
       try{
         if(state.voice && 'speechSynthesis' in window){
           window.speechSynthesis.cancel();
-          speak('音声タイマーをオンにしました');
+          speak('音声タイマーをオンにしました。ここから一緒に戻します。');
         }
       }catch(e){}
       render();
     });
+    el.querySelector('#v38VoiceKind')?.addEventListener('change',e=>{state.voiceKind=e.target.value; saveCfg(); speak('声を切り替えました'); render();});
+    el.querySelector('#v38Tone')?.addEventListener('change',e=>{state.tone=e.target.value; saveCfg(); speak(sampleLine()); render();});
+    el.querySelector('#v38Interval')?.addEventListener('change',e=>{state.intervalMin=Number(e.target.value)||3; state.marks.clear(); saveCfg(); speak(`${state.intervalMin}分ごとに声をかけます`); render();});
     el.querySelectorAll('[data-v38-add]').forEach(btn=>btn.addEventListener('click',()=>{
       const add=Number(btn.dataset.v38Add)||5;
       const sess=currentSession();
@@ -8442,9 +8481,41 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       u.lang='ja-JP';
       u.rate=1.05;
       u.pitch=1;
+      const v=pickVoice();
+      if(v) u.voice=v;
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
     }catch(e){}
+  }
+  function pickVoice(){
+    try{
+      const voices=window.speechSynthesis.getVoices()||[];
+      const ja=voices.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
+      const list=ja.length?ja:voices;
+      if(state.voiceKind==='male'){
+        return list.find(v=>/Otoya|male|男性|男/i.test(v.name||'')) || list.find(v=>!/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
+      }
+      if(state.voiceKind==='female'){
+        return list.find(v=>/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
+      }
+      return list[0]||null;
+    }catch(e){return null;}
+  }
+  if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=()=>render();
+  function sampleLine(){
+    if(state.tone==='strict') return '手を止めない。今はこのタスクに戻ります。';
+    if(state.tone==='calm') return '経過を確認します。次の一手に戻りましょう。';
+    return '大丈夫、今の一手に戻れば進みます。';
+  }
+  function cueLine(elapsedMin, remainMin, overMin){
+    const base = overMin!==null
+      ? `経過${elapsedMin}分、${overMin}分超過です。`
+      : remainMin!==null
+        ? `経過${elapsedMin}分、残り${remainMin}分です。`
+        : `経過${elapsedMin}分です。`;
+    if(state.tone==='strict') return base+'今すぐ画面か手元を見て、次の一手を続けます。';
+    if(state.tone==='calm') return base+'状況を確認して、次の一手に戻りましょう。';
+    return base+'よし、ここで戻れれば勝ちです。次の一手だけやりましょう。';
   }
   function mark(key,text){
     if(state.marks.has(key)) return;
@@ -8464,28 +8535,32 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
     if(remaining>=0){
       const rm=Math.ceil(remaining/60000);
-      speak(`経過${em}分、残り${rm}分です`);
+      speak(cueLine(em, rm, null));
     }else{
       const om=Math.floor((-remaining)/60000);
-      speak(`時間を${om}分超過しています。今どこまで進んだか確認しましょう`);
+      speak(cueLine(em, null, om));
     }
   }
   function maybeAnnounce(sess, elapsed, focusMs){
+    const elapsedMin=Math.floor(elapsed/60000);
+    const interval=Math.max(2, Number(state.intervalMin)||3);
     if(!focusMs) {
-      const mins=Math.floor(elapsed/60000);
-      if(mins>0 && mins%5===0) mark('elapsed-'+mins, `経過${mins}分です`);
+      if(elapsedMin>0 && elapsedMin%interval===0) mark('elapsed-'+elapsedMin, cueLine(elapsedMin, null, null));
       return;
     }
     const remaining=focusMs-elapsed;
     const totalMin=Math.round(focusMs/60000);
     if(elapsed<3000) mark('start', `${totalMin}分タイマーを開始しました`);
+    if(elapsedMin>0 && elapsedMin%interval===0 && remaining>60000){
+      mark('periodic-'+elapsedMin, cueLine(elapsedMin, Math.ceil(remaining/60000), null));
+    }
     [10,5,3,1].forEach(min=>{
       if(totalMin>=min && remaining<=min*60000 && remaining>0) mark('remain-'+min, `残り${min}分です`);
     });
-    if(remaining<=0) mark('timeup', '時間です。終わっていなくても、いまの状態を確認しましょう');
+    if(remaining<=0) mark('timeup', state.tone==='strict'?'時間です。延長するなら理由を決めます。まず手を止めて確認。':'時間です。終わっていなくても、いまの状態を確認しましょう');
     if(remaining<0){
       const overMin=Math.floor((-remaining)/60000);
-      if(overMin>0 && overMin%5===0) mark('over-'+overMin, `${overMin}分超過しています。続けるか区切るか選びましょう`);
+      if(overMin>0 && overMin%interval===0) mark('over-'+overMin, cueLine(elapsedMin, null, overMin));
     }
   }
   function render(){
@@ -8528,6 +8603,9 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       vb.textContent=state.voice?'音声ON':'音声OFF';
       vb.classList.toggle('active', state.voice);
     }
+    const vk=el.querySelector('#v38VoiceKind'); if(vk && vk.value!==state.voiceKind) vk.value=state.voiceKind;
+    const tone=el.querySelector('#v38Tone'); if(tone && tone.value!==state.tone) tone.value=state.tone;
+    const intv=el.querySelector('#v38Interval'); if(intv && Number(intv.value)!==Number(state.intervalMin)) intv.value=String(state.intervalMin);
     const hint=el.querySelector('#v38Hint');
     if(hint){
       hint.textContent=focusMs
