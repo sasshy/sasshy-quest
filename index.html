@@ -8308,6 +8308,334 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   }
 })();
 </script>
+<style id="v40-supabase-sync-style">
+.v40-sync-panel{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+  margin:0 0 14px;
+  box-shadow:var(--shadow-xs);
+}
+.v40-sync-panel summary{
+  cursor:pointer;
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  font-weight:900;
+  font-size:12px;
+  color:var(--text);
+}
+.v40-sync-panel summary::-webkit-details-marker{display:none;}
+.v40-sync-status{
+  font-size:10px;
+  color:var(--text3);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-weight:800;
+}
+.v40-sync-body{
+  display:grid;
+  gap:8px;
+  margin-top:10px;
+}
+.v40-sync-row{
+  display:grid;
+  grid-template-columns:92px minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+}
+.v40-sync-row label{
+  color:var(--text3);
+  font-size:11px;
+  font-weight:800;
+}
+.v40-sync-row input{
+  width:100%;
+  min-width:0;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:9px 10px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:12px;
+}
+.v40-sync-actions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.v40-sync-btn{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:9px;
+  padding:8px 10px;
+  min-height:36px;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+.v40-sync-btn.primary{
+  background:var(--text);
+  border-color:var(--text);
+  color:var(--surface);
+}
+.v40-sync-note{
+  font-size:11px;
+  color:var(--text3);
+  line-height:1.55;
+}
+@media(max-width:700px){
+  .v40-sync-row{grid-template-columns:1fr;}
+}
+</style>
+<script id="v40-supabase-sync-script">
+(function(){
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const TABLE='app_state';
+  const POLL_MS=15000;
+  let applyingRemote=false;
+  let pushing=false;
+  let polling=false;
+  let saveTimer=null;
+  let lastStatus='未設定';
+
+  function nowIso(){return new Date().toISOString();}
+  function loadCfg(){
+    try{
+      return Object.assign({
+        enabled:false,
+        url:'',
+        anonKey:'',
+        syncKey:'',
+        localUpdatedAt:0,
+        remoteUpdatedAt:0,
+        dirty:false,
+        lastSyncAt:0
+      }, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));
+    }catch(e){
+      return {enabled:false,url:'',anonKey:'',syncKey:'',localUpdatedAt:0,remoteUpdatedAt:0,dirty:false,lastSyncAt:0};
+    }
+  }
+  function saveCfg(cfg){
+    localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+    renderPanel();
+  }
+  function valid(cfg){
+    return !!(cfg.url && cfg.anonKey && cfg.syncKey);
+  }
+  function apiBase(cfg){
+    return String(cfg.url||'').replace(/\/+$/,'')+'/rest/v1/'+TABLE;
+  }
+  function headers(cfg, extra){
+    return Object.assign({
+      apikey:cfg.anonKey,
+      Authorization:'Bearer '+cfg.anonKey,
+      'Content-Type':'application/json'
+    }, extra||{});
+  }
+  function setStatus(text){
+    lastStatus=text;
+    renderPanel();
+  }
+  function statePayload(){
+    try{
+      return JSON.parse(JSON.stringify(S));
+    }catch(e){
+      return S;
+    }
+  }
+  function refreshApp(){
+    try{ if(typeof applyTheme==='function') applyTheme(); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderPool==='function') renderPool(); }catch(e){}
+    try{ if(typeof renderRoutine==='function') renderRoutine(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+    try{ if(typeof renderQuestCoach==='function') renderQuestCoach(); }catch(e){}
+  }
+  async function fetchRemote(cfg){
+    const url=apiBase(cfg)+'?sync_key=eq.'+encodeURIComponent(cfg.syncKey)+'&select=sync_key,data,updated_at&limit=1';
+    const res=await fetch(url,{headers:headers(cfg)});
+    if(!res.ok) throw new Error('fetch '+res.status);
+    const rows=await res.json();
+    return rows && rows[0] ? rows[0] : null;
+  }
+  async function pushRemote(reason){
+    const cfg=loadCfg();
+    if(!valid(cfg)) return false;
+    if(pushing) return false;
+    pushing=true;
+    try{
+      const updated=nowIso();
+      const body={sync_key:cfg.syncKey,data:statePayload(),updated_at:updated};
+      const res=await fetch(apiBase(cfg),{
+        method:'POST',
+        headers:headers(cfg,{Prefer:'resolution=merge-duplicates,return=representation'}),
+        body:JSON.stringify(body)
+      });
+      if(!res.ok) throw new Error('push '+res.status);
+      const rows=await res.json().catch(()=>[]);
+      const remoteTime=Date.parse((rows&&rows[0]&&rows[0].updated_at)||updated)||Date.now();
+      cfg.remoteUpdatedAt=remoteTime;
+      cfg.localUpdatedAt=remoteTime;
+      cfg.lastSyncAt=Date.now();
+      cfg.dirty=false;
+      saveCfg(cfg);
+      setStatus((reason||'保存')+' 済み '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}));
+      return true;
+    }catch(e){
+      setStatus('保存失敗: '+e.message);
+      return false;
+    }finally{
+      pushing=false;
+    }
+  }
+  function applyRemote(row){
+    if(!row || !row.data || typeof S==='undefined') return;
+    applyingRemote=true;
+    try{
+      Object.keys(S).forEach(k=>delete S[k]);
+      Object.assign(S, JSON.parse(JSON.stringify(row.data)));
+      const originalSave=window.__v40OriginalSave || window.save;
+      if(typeof originalSave==='function') originalSave();
+      refreshApp();
+      const cfg=loadCfg();
+      const remoteMs=Date.parse(row.updated_at)||Date.now();
+      cfg.remoteUpdatedAt=remoteMs;
+      cfg.localUpdatedAt=remoteMs;
+      cfg.lastSyncAt=Date.now();
+      cfg.dirty=false;
+      saveCfg(cfg);
+      setStatus('読込済み '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}));
+    }finally{
+      applyingRemote=false;
+    }
+  }
+  async function pullRemote(force){
+    const cfg=loadCfg();
+    if(!valid(cfg)) { setStatus('設定が必要'); return false; }
+    try{
+      const row=await fetchRemote(cfg);
+      if(!row){ setStatus('クラウド未作成'); return false; }
+      const remoteMs=Date.parse(row.updated_at)||0;
+      if(force || remoteMs>Number(cfg.remoteUpdatedAt||0)){
+        if(cfg.dirty && !force){
+          setStatus('未保存変更あり。先にアップロード推奨');
+          return false;
+        }
+        applyRemote(row);
+        return true;
+      }
+      setStatus('最新です');
+      return true;
+    }catch(e){
+      setStatus('読込失敗: '+e.message);
+      return false;
+    }
+  }
+  function queuePush(){
+    const cfg=loadCfg();
+    if(!cfg.enabled || !valid(cfg) || applyingRemote) return;
+    cfg.localUpdatedAt=Date.now();
+    cfg.dirty=true;
+    saveCfg(cfg);
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(()=>pushRemote('自動同期'),1200);
+  }
+  async function poll(){
+    const cfg=loadCfg();
+    if(!cfg.enabled || !valid(cfg) || polling) return;
+    polling=true;
+    try{
+      if(cfg.dirty) await pushRemote('自動同期');
+      else await pullRemote(false);
+    }finally{
+      polling=false;
+    }
+  }
+  function ensurePanel(){
+    let panel=document.getElementById('v40SyncPanel');
+    if(panel) return panel;
+    const host=document.querySelector('#p-quest');
+    const anchor=document.getElementById('v34Panel') || document.getElementById('runningBadge') || host?.firstElementChild;
+    if(!host || !anchor) return null;
+    panel=document.createElement('details');
+    panel.id='v40SyncPanel';
+    panel.className='v40-sync-panel';
+    panel.innerHTML=`
+      <summary><span>Cloud Sync / PC・iPhone同期</span><span class="v40-sync-status" id="v40SyncStatus">--</span></summary>
+      <div class="v40-sync-body">
+        <div class="v40-sync-row"><label>Supabase URL</label><input id="v40SyncUrl" placeholder="https://xxxx.supabase.co"></div>
+        <div class="v40-sync-row"><label>anon key</label><input id="v40SyncAnon" placeholder="eyJ..." type="password"></div>
+        <div class="v40-sync-row"><label>同期キー</label><input id="v40SyncKey" placeholder="自分だけの長い合言葉"></div>
+        <div class="v40-sync-actions">
+          <button class="v40-sync-btn primary" data-v40-sync="save" type="button">設定保存</button>
+          <button class="v40-sync-btn" data-v40-sync="toggle" type="button">自動同期ON/OFF</button>
+          <button class="v40-sync-btn" data-v40-sync="push" type="button">この端末をアップロード</button>
+          <button class="v40-sync-btn" data-v40-sync="pull" type="button">クラウドから読込</button>
+        </div>
+        <div class="v40-sync-note">PCとiPhoneで同じURL・anon key・同期キーを入れると同期します。最初は、データが正しい端末で「この端末をアップロード」を押してください。</div>
+      </div>`;
+    host.insertBefore(panel, anchor.nextSibling);
+    panel.addEventListener('click',async e=>{
+      const btn=e.target.closest('[data-v40-sync]');
+      if(!btn) return;
+      e.preventDefault();
+      const act=btn.dataset.v40Sync;
+      if(act==='save'){
+        const cfg=loadCfg();
+        cfg.url=document.getElementById('v40SyncUrl')?.value.trim()||'';
+        cfg.anonKey=document.getElementById('v40SyncAnon')?.value.trim()||'';
+        cfg.syncKey=document.getElementById('v40SyncKey')?.value.trim()||'';
+        saveCfg(cfg);
+        setStatus(valid(cfg)?'設定保存済み':'設定未完了');
+      }else if(act==='toggle'){
+        const cfg=loadCfg();
+        cfg.enabled=!cfg.enabled;
+        saveCfg(cfg);
+        setStatus(cfg.enabled?'自動同期ON':'自動同期OFF');
+        if(cfg.enabled) poll();
+      }else if(act==='push'){
+        await pushRemote('手動アップロード');
+      }else if(act==='pull'){
+        await pullRemote(true);
+      }
+    });
+    return panel;
+  }
+  function renderPanel(){
+    const panel=ensurePanel();
+    if(!panel) return;
+    const cfg=loadCfg();
+    const set=(id,val)=>{const el=document.getElementById(id); if(el && document.activeElement!==el) el.value=val||'';};
+    set('v40SyncUrl',cfg.url);
+    set('v40SyncAnon',cfg.anonKey);
+    set('v40SyncKey',cfg.syncKey);
+    const st=document.getElementById('v40SyncStatus');
+    if(st) st.textContent=(cfg.enabled?'ON ':'OFF ')+lastStatus;
+  }
+  function wrapSave(){
+    if(window.__v40OriginalSave || typeof window.save!=='function') return;
+    window.__v40OriginalSave=window.save;
+    window.save=function(){
+      const r=window.__v40OriginalSave.apply(this,arguments);
+      if(!applyingRemote) queuePush();
+      return r;
+    };
+  }
+  wrapSave();
+  setInterval(poll,POLL_MS);
+  setTimeout(()=>{renderPanel(); poll();},600);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) poll(); });
+})();
+</script>
 
 </body>
 </html>
