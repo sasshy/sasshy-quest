@@ -7912,10 +7912,10 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
           if(typeof startTask==='function') startTask(id);
           else {t.scheduledDate=dkey(); t.startTime=t.startTime||hm(); S.runningTaskId=id;}
         }else if(act==='pause'){
-          if(typeof stopTask==='function') stopTask(id); else if(S.runningTaskId===id) S.runningTaskId=null;
+          if(typeof stopTask==='function') stopTask(id); else if(typeof window.sasshyCloseRunning==='function') window.sasshyCloseRunning(id,false); else if(S.runningTaskId===id) S.runningTaskId=null;
         }else if(act==='done'){
           if(typeof finishTask==='function') finishTask(id);
-          t.done=true; if(S.runningTaskId===id) S.runningTaskId=null;
+          t.done=true; if(typeof window.sasshyCloseRunning==='function') window.sasshyCloseRunning(id,true); else if(S.runningTaskId===id) S.runningTaskId=null;
         }else if(act==='detail' && typeof openTaskDetail==='function'){
           openTaskDetail(id); return;
         }
@@ -7939,6 +7939,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     saveAndRender();
   }
   function saveAndRender(){
+    try{ if(typeof S!=='undefined' && S.runningTaskId){ const open=(S.sessions||[]).some(s=>s.taskId===S.runningTaskId && !s.endedAt); if(!open) S.runningTaskId=null; } }catch(e){}
     try{ if(typeof save==='function') save(); }catch(e){}
     try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('操作保存'); }catch(e){}
     render();
@@ -8143,6 +8144,61 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
   window.addEventListener('sasshyVoiceConfigChanged',render);
   setTimeout(render,500);
   setInterval(render,3000);
+})();
+</script>
+<script id="v50-stop-running-fix-script">
+/* ===== v50: stop voice timer when task is paused/done/moved ===== */
+(function(){
+  function closeRunning(taskId, completed){
+    if(typeof S==='undefined' || !S) return;
+    const id=taskId || S.runningTaskId;
+    if(!id) return;
+    S.sessions=Array.isArray(S.sessions)?S.sessions:[];
+    S.sessions.forEach(s=>{
+      if(s && s.taskId===id && !s.endedAt){
+        s.endedAt=Date.now();
+        if(completed!==undefined) s.completed=!!completed;
+      }
+    });
+    if(S.runningTaskId===id) S.runningTaskId=null;
+    window.dispatchEvent(new CustomEvent('sasshyTimerStop',{detail:{taskId:id,completed:!!completed}}));
+  }
+  window.sasshyCloseRunning=closeRunning;
+
+  const oldStop=window.stopTask;
+  if(typeof oldStop==='function' && !oldStop.__v50Wrapped){
+    const wrapped=function(id){
+      const r=oldStop.apply(this,arguments);
+      closeRunning(id,false);
+      return r;
+    };
+    wrapped.__v50Wrapped=true;
+    window.stopTask=wrapped;
+  }
+
+  const oldFinish=window.finishTask;
+  if(typeof oldFinish==='function' && !oldFinish.__v50Wrapped){
+    const wrapped=function(id){
+      const r=oldFinish.apply(this,arguments);
+      closeRunning(id,true);
+      return r;
+    };
+    wrapped.__v50Wrapped=true;
+    window.finishTask=wrapped;
+  }
+
+  document.addEventListener('change',e=>{
+    if(!e.target || !['qtdDate','qtdStart','sdmDate','sdmTime'].includes(e.target.id)) return;
+    const id=(typeof currentDetailId!=='undefined' && currentDetailId) || (typeof sdmCurrentId!=='undefined' && sdmCurrentId) || null;
+    if(id && typeof S!=='undefined' && S.runningTaskId===id) closeRunning(id,false);
+  },true);
+
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-act="set-date"],[data-act="set-time"],[data-v34="snooze"],[data-v34="missed-later"],[data-v34="later-today"],[data-v34="missed-today"]');
+    if(!btn || typeof S==='undefined') return;
+    const id=btn.dataset.id || btn.closest('[data-id]')?.dataset.id || null;
+    if(id && S.runningTaskId===id) setTimeout(()=>closeRunning(id,false),0);
+  },true);
 })();
 </script>
 <style id="v35-timeline-drag-style">
@@ -8794,6 +8850,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
     maybeAnnounce(sess, elapsed, focusMs);
   }
+  window.addEventListener('sasshyTimerStop',()=>{
+    state.sessionId=null;
+    state.marks.clear();
+    try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+    const el=document.getElementById('v38FocusTimer');
+    if(el) el.classList.remove('show');
+  });
   const oldStartFocus=window.startFocusTask;
   if(typeof oldStartFocus==='function'){
     window.startFocusTask=function(){
