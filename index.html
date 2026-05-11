@@ -7999,6 +7999,146 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
   setInterval(render,1500);
 })();
 </script>
+<style id="v48-voice-settings-style">
+.v48-voice-settings{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:12px;
+  padding:0;
+  margin:0 0 12px;
+  box-shadow:var(--shadow-xs);
+}
+.v48-voice-settings summary{
+  cursor:pointer;
+  list-style:none;
+  padding:11px 12px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:12px;
+  font-weight:950;
+  color:var(--text);
+}
+.v48-voice-settings summary::-webkit-details-marker{display:none;}
+.v48-voice-body{padding:0 12px 12px;display:grid;gap:8px;}
+.v48-row{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;align-items:center;}
+.v48-row label{font-size:11px;font-weight:900;color:var(--text3);}
+.v48-row select{
+  min-width:0;width:100%;border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:9px;padding:9px;font-size:13px;font-weight:800;font-family:inherit;
+}
+.v48-actions{display:flex;gap:7px;flex-wrap:wrap;}
+.v48-btn{
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:9px;padding:9px 10px;min-height:38px;font-size:12px;font-weight:900;font-family:inherit;cursor:pointer;
+}
+.v48-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
+.v48-note{font-size:11px;color:var(--text3);line-height:1.5;}
+@media(max-width:620px){.v48-row{grid-template-columns:1fr}.v48-actions .v48-btn{flex:1 1 calc(50% - 7px);}}
+</style>
+<script id="v48-voice-settings-script">
+/* ===== v48: always-visible voice settings ===== */
+(function(){
+  const CFG_KEY='sasshy_v38_voice_timer_cfg';
+  const DEFAULT={voice:false,voiceKind:'male',voiceURI:'',tone:'coach',intervalMin:3};
+  function load(){try{return Object.assign({},DEFAULT,JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {...DEFAULT};}}
+  function save(cfg){localStorage.setItem(CFG_KEY,JSON.stringify(Object.assign({},DEFAULT,cfg))); window.dispatchEvent(new CustomEvent('sasshyVoiceConfigChanged'));}
+  function voices(){
+    if(!('speechSynthesis' in window)) return [];
+    const all=window.speechSynthesis.getVoices()||[];
+    const ja=all.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
+    return ja.length?ja:all;
+  }
+  function pickVoice(cfg){
+    const list=voices();
+    if(cfg.voiceURI){
+      const v=list.find(x=>x.voiceURI===cfg.voiceURI || x.name===cfg.voiceURI);
+      if(v) return v;
+    }
+    if(cfg.voiceKind==='male') return list.find(v=>/Otoya|male|男性|男/i.test(v.name||'')) || list.find(v=>!/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
+    if(cfg.voiceKind==='female') return list.find(v=>/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
+    return list[0] || null;
+  }
+  function speak(text){
+    if(!('speechSynthesis' in window)) return;
+    const cfg=load();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='ja-JP';
+    u.rate=1.05;
+    u.pitch=1;
+    const v=pickVoice(cfg);
+    if(v) u.voice=v;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+  function ensure(){
+    let panel=document.getElementById('v48VoiceSettings');
+    if(panel) return panel;
+    const host=document.querySelector('#p-quest');
+    if(!host) return null;
+    panel=document.createElement('details');
+    panel.id='v48VoiceSettings';
+    panel.className='v48-voice-settings';
+    panel.innerHTML=`<summary><span>VOICE SETTINGS / 音声タイマー設定</span><span id="v48VoiceSummary">--</span></summary>
+      <div class="v48-voice-body">
+        <div class="v48-actions">
+          <button class="v48-btn primary" data-v48="toggle" type="button">音声ON/OFF</button>
+          <button class="v48-btn" data-v48="test" type="button">テスト再生</button>
+          <button class="v48-btn" data-v48="male" type="button">男性声にする</button>
+        </div>
+        <div class="v48-row"><label>声タイプ</label><select id="v48VoiceKind"><option value="male">男性声</option><option value="female">女性声</option><option value="auto">自動</option></select></div>
+        <div class="v48-row"><label>端末の声</label><select id="v48VoiceExact"></select></div>
+        <div class="v48-row"><label>声がけ</label><select id="v48Tone"><option value="coach">応援</option><option value="strict">強め</option><option value="calm">淡々</option></select></div>
+        <div class="v48-row"><label>間隔</label><select id="v48Interval"><option value="2">2分ごと</option><option value="3">3分ごと</option><option value="5">5分ごと</option></select></div>
+        <div class="v48-note">定期アナウンスは、タスクを「開始」して音声ONの間だけ流れます。iPhoneは最初にテスト再生か音声ONを押す必要があります。</div>
+      </div>`;
+    const anchor=document.getElementById('v45CommandBar') || host.firstElementChild;
+    host.insertBefore(panel, anchor ? anchor.nextSibling : host.firstChild);
+    panel.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-v48]');
+      if(!btn) return;
+      const cfg=load();
+      if(btn.dataset.v48==='toggle') cfg.voice=!cfg.voice;
+      if(btn.dataset.v48==='male'){cfg.voice=true; cfg.voiceKind='male'; cfg.voiceURI='';}
+      save(cfg);
+      if(btn.dataset.v48==='test' || btn.dataset.v48==='toggle' || btn.dataset.v48==='male') speak(cfg.voice?'音声設定を確認しました。経過時間と残り時間を定期的に読み上げます。':'音声をオフにしました');
+      render();
+    });
+    panel.addEventListener('change',e=>{
+      const cfg=load();
+      if(e.target.id==='v48VoiceKind') {cfg.voiceKind=e.target.value; cfg.voiceURI='';}
+      if(e.target.id==='v48VoiceExact') cfg.voiceURI=e.target.value;
+      if(e.target.id==='v48Tone') cfg.tone=e.target.value;
+      if(e.target.id==='v48Interval') cfg.intervalMin=Number(e.target.value)||3;
+      cfg.voice=true;
+      save(cfg);
+      speak('設定を変更しました');
+      render();
+    });
+    return panel;
+  }
+  function render(){
+    const p=ensure(); if(!p) return;
+    const cfg=load();
+    const list=voices();
+    const exact=p.querySelector('#v48VoiceExact');
+    if(exact){
+      const cur=cfg.voiceURI||'';
+      exact.innerHTML='<option value="">自動選択</option>'+list.map(v=>`<option value="${v.voiceURI||v.name}">${v.name} / ${v.lang}</option>`).join('');
+      exact.value=list.some(v=>(v.voiceURI||v.name)===cur)?cur:'';
+    }
+    const kind=p.querySelector('#v48VoiceKind'); if(kind) kind.value=cfg.voiceKind||'male';
+    const tone=p.querySelector('#v48Tone'); if(tone) tone.value=cfg.tone||'coach';
+    const intv=p.querySelector('#v48Interval'); if(intv) intv.value=String(cfg.intervalMin||3);
+    const sum=p.querySelector('#v48VoiceSummary');
+    if(sum) sum.textContent=`${cfg.voice?'ON':'OFF'} / ${cfg.voiceKind==='male'?'男性':cfg.voiceKind==='female'?'女性':'自動'} / ${cfg.intervalMin||3}分`;
+  }
+  if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=render;
+  window.addEventListener('sasshyVoiceConfigChanged',render);
+  setTimeout(render,500);
+  setInterval(render,3000);
+})();
+</script>
 <style id="v35-timeline-drag-style">
 body.v35-timeline-drag .sched-task{
   height:var(--v35-card-height, 58px) !important;
@@ -8375,11 +8515,19 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   const CFG_KEY='sasshy_v38_voice_timer_cfg';
   function loadCfg(){
-    try{return Object.assign({voice:false, voiceKind:'male', tone:'coach', intervalMin:3}, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {voice:false, voiceKind:'male', tone:'coach', intervalMin:3};}
+    try{return Object.assign({voice:false, voiceKind:'male', voiceURI:'', tone:'coach', intervalMin:3}, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {voice:false, voiceKind:'male', voiceURI:'', tone:'coach', intervalMin:3};}
   }
-  function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify({voice:state.voice,voiceKind:state.voiceKind,tone:state.tone,intervalMin:state.intervalMin}));}catch(e){}}
+  function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify({voice:state.voice,voiceKind:state.voiceKind,voiceURI:state.voiceURI,tone:state.tone,intervalMin:state.intervalMin})); window.dispatchEvent(new CustomEvent('sasshyVoiceConfigChanged'));}catch(e){}}
   const cfg0=loadCfg();
-  const state={sessionId:null,marks:new Set(),voice:!!cfg0.voice,voiceKind:cfg0.voiceKind||'male',tone:cfg0.tone||'coach',intervalMin:Number(cfg0.intervalMin)||3,lastRender:0};
+  const state={sessionId:null,marks:new Set(),voice:!!cfg0.voice,voiceKind:cfg0.voiceKind||'male',voiceURI:cfg0.voiceURI||'',tone:cfg0.tone||'coach',intervalMin:Number(cfg0.intervalMin)||3,lastRender:0};
+  function syncCfgFromStorage(){
+    const cfg=loadCfg();
+    state.voice=!!cfg.voice;
+    state.voiceKind=cfg.voiceKind||'male';
+    state.voiceURI=cfg.voiceURI||'';
+    state.tone=cfg.tone||'coach';
+    state.intervalMin=Number(cfg.intervalMin)||3;
+  }
   function p2n(n){return String(n).padStart(2,'0');}
   function fmt(ms){
     const neg=ms<0; ms=Math.abs(ms);
@@ -8424,6 +8572,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
           <option value="female">女性声</option>
           <option value="auto">自動</option>
         </select>
+        <select class="v38-ft-select" id="v38VoiceExact" title="端末の声"></select>
         <select class="v38-ft-select" id="v38Tone" title="声がけ">
           <option value="coach">応援</option>
           <option value="strict">強め</option>
@@ -8448,6 +8597,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       render();
     });
     el.querySelector('#v38VoiceKind')?.addEventListener('change',e=>{state.voiceKind=e.target.value; saveCfg(); speak('声を切り替えました'); render();});
+    el.querySelector('#v38VoiceExact')?.addEventListener('change',e=>{state.voiceURI=e.target.value; saveCfg(); speak('この声で読み上げます'); render();});
     el.querySelector('#v38Tone')?.addEventListener('change',e=>{state.tone=e.target.value; saveCfg(); speak(sampleLine()); render();});
     el.querySelector('#v38Interval')?.addEventListener('change',e=>{state.intervalMin=Number(e.target.value)||3; state.marks.clear(); saveCfg(); speak(`${state.intervalMin}分ごとに声をかけます`); render();});
     el.querySelectorAll('[data-v38-add]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -8490,6 +8640,10 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function pickVoice(){
     try{
       const voices=window.speechSynthesis.getVoices()||[];
+      if(state.voiceURI){
+        const chosen=voices.find(v=>v.voiceURI===state.voiceURI || v.name===state.voiceURI);
+        if(chosen) return chosen;
+      }
       const ja=voices.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
       const list=ja.length?ja:voices;
       if(state.voiceKind==='male'){
@@ -8501,7 +8655,20 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       return list[0]||null;
     }catch(e){return null;}
   }
-  if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=()=>render();
+  function populateVoiceSelect(root){
+    try{
+      const sel=root?.querySelector?.('#v38VoiceExact');
+      if(!sel || !('speechSynthesis' in window)) return;
+      const voices=window.speechSynthesis.getVoices()||[];
+      const ja=voices.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
+      const list=ja.length?ja:voices;
+      const current=sel.value || state.voiceURI;
+      sel.innerHTML='<option value="">端末の声: 自動選択</option>'+list.map(v=>`<option value="${v.voiceURI||v.name}">${v.name} / ${v.lang}</option>`).join('');
+      sel.value=current && list.some(v=>(v.voiceURI||v.name)===current) ? current : '';
+    }catch(e){}
+  }
+  if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=()=>{populateVoiceSelect(document); render();};
+  window.addEventListener('sasshyVoiceConfigChanged',()=>{syncCfgFromStorage(); render();});
   function sampleLine(){
     if(state.tone==='strict') return '手を止めない。今はこのタスクに戻ります。';
     if(state.tone==='calm') return '経過を確認します。次の一手に戻りましょう。';
@@ -8564,6 +8731,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
   }
   function render(){
+    syncCfgFromStorage();
     const el=ensurePanel();
     if(!el) return;
     const sess=currentSession();
@@ -8604,6 +8772,8 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       vb.classList.toggle('active', state.voice);
     }
     const vk=el.querySelector('#v38VoiceKind'); if(vk && vk.value!==state.voiceKind) vk.value=state.voiceKind;
+    populateVoiceSelect(el);
+    const ve=el.querySelector('#v38VoiceExact'); if(ve && ve.value!==state.voiceURI) ve.value=state.voiceURI||'';
     const tone=el.querySelector('#v38Tone'); if(tone && tone.value!==state.tone) tone.value=state.tone;
     const intv=el.querySelector('#v38Interval'); if(intv && Number(intv.value)!==Number(state.intervalMin)) intv.value=String(state.intervalMin);
     const hint=el.querySelector('#v38Hint');
