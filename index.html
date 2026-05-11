@@ -7170,13 +7170,22 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
       if(t.nextAction===undefined) t.nextAction='';
       if(t.planMin!==undefined) t.planMin=Math.max(1,Number(t.planMin)||30);
       if(t.done) t.done=true;
-      if(isGeneratedPurposeTask(t)){
+      if(S.runningTaskId===t.id){
+        t.adhdReview='';
+        t.adhdHiddenGenerated=false;
+        if(!t.scheduledDate) t.scheduledDate=dateKey(0);
+        if(!t.startTime){
+          const d=new Date();
+          t.startTime=`${p2v(d.getHours())}:${p2v(d.getMinutes())}`;
+        }
+      }
+      if(S.runningTaskId!==t.id && isGeneratedPurposeTask(t)){
         t.adhdHiddenGenerated=true;
         t.adhdReview='';
         delete t.scheduledDate;
         delete t.startTime;
       }
-      if(t.adhdReview==='missed'){
+      if(t.adhdReview==='missed' && S.runningTaskId!==t.id){
         delete t.scheduledDate;
         delete t.startTime;
       }
@@ -7257,6 +7266,7 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
     let moved=0;
     S.tasks.forEach(t=>{
       if(!t || t.done || t.adhdReview==='missed' || t.scheduledDate!==today) return;
+      if(S.runningTaskId===t.id) return;
       if(t.v34UserRequestedToday) return;
       if(t.v34ManualTodayDate===today) return;
       const title=String(t.title||'');
@@ -7376,11 +7386,11 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
         </div>
         <button class="v34-mode" id="v34FocusToggle" type="button">集中表示</button>
       </div>
-      <div id="v34Now"></div>
       <div class="v34-capture">
-        <input id="v34Capture" placeholder="思いついたことをここに逃がす">
+        <input id="v34Capture" placeholder="新しいタスクを追加">
         <button class="v34-btn" data-v34="capture" type="button">追加</button>
-      </div>`;
+      </div>
+      <div id="v34Now"></div>`;
     host.insertBefore(panel, anchor.nextSibling);
   }
   function renderPanel(){
@@ -7413,7 +7423,7 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
           <div class="v34-next"><b>次の一手</b>：${esc(next)}</div>
         </div>
         <div class="v34-actions">
-          ${running?'<button class="v34-btn warn" data-v34="pause" data-id="'+esc(t.id)+'">中断</button><button class="v34-btn good" data-v34="done" data-id="'+esc(t.id)+'">完了</button>':'<button class="v34-btn primary" data-v34="start5" data-id="'+esc(t.id)+'">5分だけ開始</button><button class="v34-btn" data-v34="start1" data-id="'+esc(t.id)+'">1分だけ</button>'}
+          ${running?'<button class="v34-btn warn" data-v34="pause" data-id="'+esc(t.id)+'">停止</button><button class="v34-btn good" data-v34="done" data-id="'+esc(t.id)+'">完了</button>':'<button class="v34-btn primary" data-v34="start" data-id="'+esc(t.id)+'">開始</button><button class="v34-btn" data-v34="start5" data-id="'+esc(t.id)+'">5分だけ</button><button class="v34-btn" data-v34="start1" data-id="'+esc(t.id)+'">1分だけ</button>'}
           <button class="v34-btn" data-v34="start15" data-id="${esc(t.id)}">15分枠</button>
           <button class="v34-btn" data-v34="next" data-id="${esc(t.id)}">次の一手</button>
           <button class="v34-btn warn" data-v34="snooze" data-id="${esc(t.id)}">あとで</button>
@@ -7540,9 +7550,12 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
     const inp=document.getElementById('v34Capture');
     const title=(inp?.value||'').trim();
     if(!title) return;
-    S.tasks.unshift({id:'adhd-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title,lane:'now',rank:'zako',done:false,subs:[],created:Date.now(),createdDate:dateKey(0),planMin:5,nextAction:'1分だけ触る'});
+    const today=dateKey(0);
+    const task={id:'adhd-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title,lane:'now',rank:'zako',done:false,subs:[],created:Date.now(),createdDate:today,scheduledDate:today,planMin:15,nextAction:'まず開始する',v34ManualTodayDate:today};
+    try{ task.startTime=nextOpenStartTime(task.planMin); }catch(e){}
+    S.tasks.unshift(task);
     inp.value='';
-    if(typeof addLog==='function') addLog('📝 思いつきタスクを退避: '+esc(title));
+    if(typeof addLog==='function') addLog('📝 今日のタスクを追加: '+esc(title));
     refreshAll();
   }
   function seedRequestedTodayTasks(){
@@ -7743,7 +7756,8 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
     if(act==='focus'){
       S.adhd.focusMode=!S.adhd.focusMode;
       document.body.classList.toggle('v34-adhd-focus', !!S.adhd.focusMode);
-    }else if(act==='start1' && id && typeof startFocusTask==='function') startFocusTask(id,1);
+    }else if(act==='start' && id && typeof startTask==='function') startTask(id);
+    else if(act==='start1' && id && typeof startFocusTask==='function') startFocusTask(id,1);
     else if(act==='start5' && id && typeof startFocusTask==='function') startFocusTask(id,5);
     else if(act==='start15' && id && typeof startFocusTask==='function') startFocusTask(id,15);
     else if(act==='pause' && id && typeof stopTask==='function') stopTask(id);
@@ -8623,6 +8637,45 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       return S;
     }
   }
+  function localRunningSnapshot(){
+    try{
+      if(!S || !S.runningTaskId) return null;
+      const task=(S.tasks||[]).find(t=>t.id===S.runningTaskId);
+      const session=(S.sessions||[]).find(s=>s.taskId===S.runningTaskId && !s.endedAt);
+      if(!task) return null;
+      return {
+        runningTaskId:S.runningTaskId,
+        task:JSON.parse(JSON.stringify(task)),
+        session:session?JSON.parse(JSON.stringify(session)):null
+      };
+    }catch(e){
+      return null;
+    }
+  }
+  function restoreRunningSnapshot(snap){
+    if(!snap || !snap.runningTaskId || !snap.task) return false;
+    S.tasks=Array.isArray(S.tasks)?S.tasks:[];
+    S.sessions=Array.isArray(S.sessions)?S.sessions:[];
+    let restored=false;
+    const idx=S.tasks.findIndex(t=>t.id===snap.task.id);
+    if(idx<0){
+      S.tasks.unshift(snap.task);
+      restored=true;
+    }else{
+      const remoteTask=S.tasks[idx]||{};
+      if(!remoteTask.done){
+        S.tasks[idx]=Object.assign({}, remoteTask, snap.task, {done:false, adhdReview:'', adhdHiddenGenerated:false});
+        restored=true;
+      }
+    }
+    S.runningTaskId=snap.runningTaskId;
+    const hasOpen=S.sessions.some(s=>s.taskId===snap.runningTaskId && !s.endedAt);
+    if(snap.session && !hasOpen){
+      S.sessions.push(snap.session);
+      restored=true;
+    }
+    return restored;
+  }
   function refreshApp(){
     try{ if(typeof applyTheme==='function') applyTheme(); }catch(e){}
     try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
@@ -8673,10 +8726,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   }
   function applyRemote(row){
     if(!row || !row.data || typeof S==='undefined') return;
+    const runningSnap=localRunningSnapshot();
+    let restoredRunning=false;
     applyingRemote=true;
     try{
       Object.keys(S).forEach(k=>delete S[k]);
       Object.assign(S, JSON.parse(JSON.stringify(row.data)));
+      restoredRunning=restoreRunningSnapshot(runningSnap);
       const originalSave=window.__v40OriginalSave || window.save;
       if(typeof originalSave==='function') originalSave();
       refreshApp();
@@ -8691,10 +8747,21 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }finally{
       applyingRemote=false;
     }
+    if(restoredRunning){
+      const cfg=loadCfg();
+      cfg.dirty=true;
+      cfg.localUpdatedAt=Date.now();
+      saveCfg(cfg);
+      queuePush();
+    }
   }
   async function pullRemote(force){
     const cfg=loadCfg();
     if(!valid(cfg)) { setStatus('設定が必要'); return false; }
+    if(!force && typeof S!=='undefined' && S.runningTaskId){
+      setStatus('実行中のため読込保留');
+      return false;
+    }
     try{
       const row=await fetchRemote(cfg);
       if(!row){ setStatus('クラウド未作成'); return false; }
@@ -8722,6 +8789,14 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     saveCfg(cfg);
     clearTimeout(saveTimer);
     saveTimer=setTimeout(()=>pushRemote('自動同期'),1200);
+  }
+  function flushPush(reason){
+    const cfg=loadCfg();
+    if(!cfg.enabled || !valid(cfg)) return;
+    cfg.localUpdatedAt=Date.now();
+    cfg.dirty=true;
+    saveCfg(cfg);
+    pushRemote(reason||'即時保存');
   }
   async function poll(){
     const cfg=loadCfg();
@@ -8807,7 +8882,9 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   wrapSave();
   setInterval(poll,POLL_MS);
   setTimeout(()=>{renderPanel(); poll();},600);
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) poll(); });
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden) flushPush('バックグラウンド保存'); else poll(); });
+  window.addEventListener('pagehide',()=>flushPush('ページ離脱保存'));
+  window.addEventListener('beforeunload',()=>flushPush('終了前保存'));
 })();
 </script>
 
