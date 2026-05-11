@@ -6893,6 +6893,7 @@ body.v29-timeline-overlap-fix .sched-task.dragging{
 
 <script id="v30-force-nsg30-today-script">
 (function(){
+  return;
   function addOrRepairNSG30(){
     try{
       if(!window.S || !Array.isArray(S.tasks)) return;
@@ -6950,6 +6951,7 @@ body.v29-timeline-overlap-fix .sched-task.dragging{
 
 <script id="v32-nsg30-final-fix">
 (function(){
+  return;
   function todayKeySafe(){
     if(typeof todayKey==='function') return todayKey();
     const d=new Date();
@@ -7023,6 +7025,7 @@ body.v29-timeline-overlap-fix .sched-task.dragging{
 <script>
 /* ===== v33 absolute NSG30 add: patch localStorage before render/reload once ===== */
 (function(){
+  return;
   const KEY='sasshy_quest_v5';
   const title='【社内出荷】NSG30 φ7（8,10）1台 → 株式会社YUASA 北海道工業マーケ…（北海道）';
   const nextAction='NSG30本体とφ7（8,10）仕様を確認して社内出荷処理';
@@ -7937,6 +7940,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
   }
   function saveAndRender(){
     try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('操作保存'); }catch(e){}
     render();
     try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
     try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
@@ -7944,6 +7948,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
   }
   function render(){
+    cleanupLegacyForcedTasks();
     if(!ok()) return;
     const bar=ensure(); if(!bar) return;
     const cur=bar.querySelector('#v45Current');
@@ -7956,6 +7961,27 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     const running=S.runningTaskId===t.id;
     const meta=[running?'実行中':'未着手',t.startTime||'',(t.planMin||15)+'分'].filter(Boolean).map(x=>`<span>${typeof esc==='function'?esc(String(x)):String(x)}</span>`).join('');
     cur.innerHTML=`<div class="v45-current"><div class="v45-label">${running?'RUNNING':'NEXT TASK'}</div><div class="v45-title">${typeof esc==='function'?esc(t.title||'無題'):(t.title||'無題')}</div><div class="v45-meta">${meta}</div><div class="v45-actions">${running?`<button class="v45-btn warn" data-v45="pause" data-id="${t.id}">停止</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`:`<button class="v45-btn primary" data-v45="start" data-id="${t.id}">開始</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`}<button class="v45-btn" data-v45="detail" data-id="${t.id}">詳細</button></div></div>`;
+  }
+  function cleanupLegacyForcedTasks(){
+    if(!ok()) return;
+    let changed=false;
+    (S.tasks||[]).forEach(t=>{
+      const title=String(t?.title||'');
+      if(!t || t.done) return;
+      if(/NSG30/.test(title) && /YUASA|北海道工業マーケ/.test(title) && !/長谷川体育施設|法政大学第二|NSG30-2WL-S|NSG30-2WL-G-V/.test(title)){
+        t.done=true;
+        t.scheduledDate='2026-04-27';
+        t.startTime=t.startTime||'17:00';
+        t.adhdReview='';
+        t.adhdHiddenGenerated=false;
+        if(S.runningTaskId===t.id) S.runningTaskId=null;
+        changed=true;
+      }
+    });
+    if(changed){
+      try{ if(typeof save==='function') save(); }catch(e){}
+      try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('古い強制タスク整理'); }catch(e){}
+    }
   }
   const oldSave=window.save;
   if(typeof oldSave==='function' && !oldSave.__v45TouchWrapped){
@@ -8863,7 +8889,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     merged.sessions=[...sessionMap.values()];
     if(local.runningTaskId){
       const runningTask=merged.tasks.find(t=>t.id===local.runningTaskId && !t.done);
-      if(runningTask) merged.runningTaskId=local.runningTaskId;
+      if(runningTask){
+        runningTask.scheduledDate=runningTask.scheduledDate||local.tasks.find(t=>t.id===local.runningTaskId)?.scheduledDate||(typeof todayKey==='function'?todayKey():new Date().toISOString().slice(0,10));
+        runningTask.startTime=runningTask.startTime||local.tasks.find(t=>t.id===local.runningTaskId)?.startTime||'';
+        runningTask.adhdReview='';
+        runningTask.adhdHiddenGenerated=false;
+        merged.runningTaskId=local.runningTaskId;
+      }
     }
     return merged;
   }
@@ -8891,8 +8923,30 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     if(pushing) return false;
     pushing=true;
     try{
+      let data=statePayload();
+      try{
+        const currentRemote=await fetchRemote(cfg);
+        if(currentRemote && currentRemote.data){
+          const remoteMs=Date.parse(currentRemote.updated_at)||0;
+          data=mergeRemoteWithLocal(currentRemote.data, data, remoteMs);
+          if(typeof S!=='undefined'){
+            applyingRemote=true;
+            try{
+              Object.keys(S).forEach(k=>delete S[k]);
+              Object.assign(S, JSON.parse(JSON.stringify(data)));
+              const originalSave=window.__v40OriginalSave || window.save;
+              if(typeof originalSave==='function') originalSave();
+              refreshApp();
+            }finally{
+              applyingRemote=false;
+            }
+          }
+        }
+      }catch(e){
+        // 初回作成や一時的な読込失敗では、ローカル状態をそのままアップロードする。
+      }
       const updated=nowIso();
-      const body={sync_key:cfg.syncKey,data:statePayload(),updated_at:updated};
+      const body={sync_key:cfg.syncKey,data,updated_at:updated};
       const res=await fetch(apiBase(cfg),{
         method:'POST',
         headers:headers(cfg,{Prefer:'resolution=merge-duplicates,return=representation'}),
@@ -8991,6 +9045,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     saveCfg(cfg);
     pushRemote(reason||'即時保存');
   }
+  window.sasshySyncFlush=flushPush;
   async function poll(){
     const cfg=loadCfg();
     if(!cfg.enabled || !valid(cfg) || polling) return;
