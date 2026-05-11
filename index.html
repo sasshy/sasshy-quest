@@ -9501,5 +9501,173 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 })();
 </script>
 
+<script id="v52-running-state-authority-script">
+/* ===== v52: single source of truth for running/done state ===== */
+(function(){
+  function hasState(){
+    return typeof S!=='undefined' && S && Array.isArray(S.tasks) && Array.isArray(S.sessions);
+  }
+  function taskById(id){
+    return hasState() ? S.tasks.find(t=>t && t.id===id) : null;
+  }
+  function openSessions(taskId){
+    if(!hasState()) return [];
+    return S.sessions.filter(s=>s && s.taskId===taskId && !s.endedAt);
+  }
+  function endOpenSessions(taskId, completed){
+    if(!hasState() || !taskId) return false;
+    let changed=false;
+    const now=Date.now();
+    S.sessions.forEach(s=>{
+      if(s && s.taskId===taskId && !s.endedAt){
+        s.endedAt=now;
+        s.completed=!!completed;
+        changed=true;
+      }
+    });
+    return changed;
+  }
+  function stopVoiceTimer(){
+    try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+    const timer=document.getElementById('v38FocusTimer');
+    if(timer) timer.classList.remove('show');
+    window.dispatchEvent(new CustomEvent('sasshyTimerStop'));
+  }
+  function normalizeRunning(saveIt){
+    if(!hasState()) return false;
+    let changed=false;
+
+    S.tasks.forEach(t=>{
+      if(!t || !t.id) return;
+      if(t.done){
+        if(endOpenSessions(t.id,true)) changed=true;
+        if(S.runningTaskId===t.id){
+          S.runningTaskId=null;
+          changed=true;
+        }
+      }
+    });
+
+    if(S.runningTaskId){
+      const t=taskById(S.runningTaskId);
+      const opens=openSessions(S.runningTaskId);
+      if(!t || t.done || !opens.length){
+        endOpenSessions(S.runningTaskId, !!(t&&t.done));
+        S.runningTaskId=null;
+        changed=true;
+      }else if(opens.length>1){
+        const keep=opens.sort((a,b)=>(b.startedAt||0)-(a.startedAt||0))[0];
+        opens.forEach(s=>{
+          if(s!==keep && !s.endedAt){
+            s.endedAt=Date.now();
+            s.completed=false;
+            changed=true;
+          }
+        });
+      }
+    }
+
+    S.sessions.forEach(s=>{
+      if(!s || s.endedAt || s.taskId===S.runningTaskId) return;
+      const t=taskById(s.taskId);
+      s.endedAt=Date.now();
+      s.completed=!!(t&&t.done);
+      changed=true;
+    });
+
+    if(!S.runningTaskId) stopVoiceTimer();
+    if(changed && saveIt){
+      try{ if(typeof save==='function') save(); }catch(e){}
+    }
+    return changed;
+  }
+  window.sasshyNormalizeRunningState=normalizeRunning;
+
+  const oldStart=window.startTask;
+  if(typeof oldStart==='function' && !oldStart.__v52Wrapped){
+    const wrapped=function(id){
+      normalizeRunning(false);
+      const t=taskById(id);
+      if(!t || t.done) return;
+      endOpenSessions(id,false);
+      const r=oldStart.apply(this,arguments);
+      normalizeRunning(true);
+      return r;
+    };
+    wrapped.__v52Wrapped=true;
+    window.startTask=wrapped;
+  }
+
+  const oldStop=window.stopTask;
+  if(typeof oldStop==='function' && !oldStop.__v52Wrapped){
+    const wrapped=function(id){
+      const r=oldStop.apply(this,arguments);
+      endOpenSessions(id,false);
+      if(hasState() && S.runningTaskId===id) S.runningTaskId=null;
+      normalizeRunning(true);
+      return r;
+    };
+    wrapped.__v52Wrapped=true;
+    window.stopTask=wrapped;
+  }
+
+  const oldFinish=window.finishTask;
+  if(typeof oldFinish==='function' && !oldFinish.__v52Wrapped){
+    const wrapped=function(id){
+      const r=oldFinish.apply(this,arguments);
+      const t=taskById(id);
+      if(t){
+        t.done=true;
+        if(Array.isArray(t.subs)) t.subs.forEach(s=>{s.done=true;});
+      }
+      endOpenSessions(id,true);
+      if(hasState() && S.runningTaskId===id) S.runningTaskId=null;
+      normalizeRunning(true);
+      return r;
+    };
+    wrapped.__v52Wrapped=true;
+    window.finishTask=wrapped;
+  }
+
+  const oldSave=window.save;
+  if(typeof oldSave==='function' && !oldSave.__v52Wrapped){
+    const wrapped=function(){
+      normalizeRunning(false);
+      return oldSave.apply(this,arguments);
+    };
+    wrapped.__v52Wrapped=true;
+    window.save=wrapped;
+  }
+
+  document.addEventListener('click',e=>{
+    const done=e.target.closest('[data-v45="done"],[data-v34="done"],#qtdDoneBtn,[data-act="done"],[data-v18="done"]');
+    const stop=e.target.closest('[data-v45="pause"],[data-v34="pause"],[data-act="stop"],#rbPauseBtn');
+    if(!done && !stop) return;
+    const id=(done||stop).dataset?.id || (done||stop).closest?.('[data-id]')?.dataset?.id || (typeof currentDetailId!=='undefined'?currentDetailId:null) || (hasState()?S.runningTaskId:null);
+    setTimeout(()=>{
+      if(done && id){
+        const t=taskById(id);
+        if(t) t.done=true;
+        endOpenSessions(id,true);
+        if(hasState() && S.runningTaskId===id) S.runningTaskId=null;
+      }
+      if(stop && id){
+        endOpenSessions(id,false);
+        if(hasState() && S.runningTaskId===id) S.runningTaskId=null;
+      }
+      normalizeRunning(true);
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+      try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+      try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    },0);
+    setTimeout(()=>normalizeRunning(true),250);
+  },true);
+
+  setInterval(()=>normalizeRunning(true),1000);
+  setTimeout(()=>normalizeRunning(true),500);
+})();
+</script>
+
 </body>
 </html>
