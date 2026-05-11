@@ -8046,7 +8046,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
   function voices(){
     if(!('speechSynthesis' in window)) return [];
     const all=window.speechSynthesis.getVoices()||[];
-    const ja=all.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
+    const ja=all.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese/i.test((v.lang||'')+' '+(v.name||'')));
     return ja.length?ja:all;
   }
   function pickVoice(cfg){
@@ -8055,9 +8055,11 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
       const v=list.find(x=>x.voiceURI===cfg.voiceURI || x.name===cfg.voiceURI);
       if(v) return v;
     }
-    if(cfg.voiceKind==='male') return list.find(v=>/Otoya|male|男性|男/i.test(v.name||'')) || list.find(v=>!/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
-    if(cfg.voiceKind==='female') return list.find(v=>/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
-    return list[0] || null;
+    const ja=list.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese/i.test((v.lang||'')+' '+(v.name||'')));
+    const base=ja.length?ja:list;
+    if(cfg.voiceKind==='male') return base.find(v=>/Otoya|男|男性|male/i.test(v.name||'')) || base.find(v=>/Ichiro|Taro|Haruka/i.test(v.name||'')) || base.find(v=>!(/Samantha|Victoria|Karen|Moira|Tessa|Kyoko|女|女性|female|en-|English/i.test((v.name||'')+' '+(v.lang||'')))) || base[0] || null;
+    if(cfg.voiceKind==='female') return base.find(v=>/Kyoko|女|女性|female/i.test(v.name||'')) || base[0] || null;
+    return base[0] || null;
   }
   function speak(text){
     if(!('speechSynthesis' in window)) return;
@@ -8120,7 +8122,11 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
   function render(){
     const p=ensure(); if(!p) return;
     const cfg=load();
-    const list=voices();
+      const list=voices().sort((a,b)=>{
+        const aj=/^ja/i.test(a.lang||'')?0:1;
+        const bj=/^ja/i.test(b.lang||'')?0:1;
+        return aj-bj || String(a.name||'').localeCompare(String(b.name||''));
+      });
     const exact=p.querySelector('#v48VoiceExact');
     if(exact){
       const cur=cfg.voiceURI||'';
@@ -8644,10 +8650,10 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         const chosen=voices.find(v=>v.voiceURI===state.voiceURI || v.name===state.voiceURI);
         if(chosen) return chosen;
       }
-      const ja=voices.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
+      const ja=voices.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese/i.test((v.lang||'')+' '+(v.name||'')));
       const list=ja.length?ja:voices;
       if(state.voiceKind==='male'){
-        return list.find(v=>/Otoya|male|男性|男/i.test(v.name||'')) || list.find(v=>!/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
+        return list.find(v=>/Otoya|男|男性|male/i.test(v.name||'')) || list.find(v=>/Ichiro|Taro|Haruka/i.test(v.name||'')) || list.find(v=>!(/Samantha|Victoria|Karen|Moira|Tessa|Kyoko|女|女性|female|en-|English/i.test((v.name||'')+' '+(v.lang||'')))) || list[0] || null;
       }
       if(state.voiceKind==='female'){
         return list.find(v=>/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
@@ -8660,8 +8666,12 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const sel=root?.querySelector?.('#v38VoiceExact');
       if(!sel || !('speechSynthesis' in window)) return;
       const voices=window.speechSynthesis.getVoices()||[];
-      const ja=voices.filter(v=>/ja|Japan|日本/i.test((v.lang||'')+' '+(v.name||'')));
-      const list=ja.length?ja:voices;
+      const ja=voices.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese/i.test((v.lang||'')+' '+(v.name||'')));
+      const list=(ja.length?ja:voices).sort((a,b)=>{
+        const aj=/^ja/i.test(a.lang||'')?0:1;
+        const bj=/^ja/i.test(b.lang||'')?0:1;
+        return aj-bj || String(a.name||'').localeCompare(String(b.name||''));
+      });
       const current=sel.value || state.voiceURI;
       sel.innerHTML='<option value="">端末の声: 自動選択</option>'+list.map(v=>`<option value="${v.voiceURI||v.name}">${v.name} / ${v.lang}</option>`).join('');
       sel.value=current && list.some(v=>(v.voiceURI||v.name)===current) ? current : '';
