@@ -8967,7 +8967,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=55').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=57').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9840,6 +9840,498 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       restore(sess&&sess.taskId);
     }
   },true);
+})();
+</script>
+
+<style id="v56-kintone-bridge-style">
+.v56-kintone-panel{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:12px;
+  padding:10px 12px;
+  margin:0 0 12px;
+  box-shadow:var(--shadow-xs);
+}
+.v56-kintone-panel summary{
+  list-style:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  font-size:12px;
+  font-weight:900;
+}
+.v56-kintone-panel summary::-webkit-details-marker{display:none;}
+.v56-kintone-status{
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:10px;
+  color:var(--text3);
+  font-weight:800;
+}
+.v56-kintone-body{display:grid;gap:8px;margin-top:10px;}
+.v56-kintone-row{display:grid;grid-template-columns:88px minmax(0,1fr);gap:8px;align-items:center;}
+.v56-kintone-row label{font-size:11px;font-weight:900;color:var(--text3);}
+.v56-kintone-row input{
+  min-width:0;width:100%;border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:8px;padding:9px 10px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px;
+}
+.v56-kintone-actions{display:flex;gap:7px;flex-wrap:wrap;}
+.v56-kintone-btn{
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:9px;padding:8px 10px;min-height:36px;font-family:inherit;font-size:12px;font-weight:900;cursor:pointer;
+}
+.v56-kintone-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
+.v56-kintone-note{font-size:11px;color:var(--text3);line-height:1.55;}
+@media(max-width:700px){.v56-kintone-row{grid-template-columns:1fr;}}
+</style>
+
+<script id="v56-kintone-gas-bridge-script">
+/* ===== v56: safe kintone import via Google Apps Script URL ===== */
+(function(){
+  const DEFAULT={url:'',auto:false,lastSync:0,lastError:'',lastCount:0};
+  const AUTO_MS=30*60*1000;
+  let busy=false;
+
+  function hasState(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function cfg(){
+    if(!hasState()) return {...DEFAULT};
+    S.kintoneBridge=Object.assign({}, DEFAULT, S.kintoneBridge||{});
+    return S.kintoneBridge;
+  }
+  function dkey(){
+    try{return todayKey();}catch(e){
+      const d=new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+  }
+  function hm(){
+    const d=new Date();
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+  function cleanText(v){
+    return String(v==null?'':v).replace(/\s+/g,' ').trim();
+  }
+  function taskKey(item){
+    return cleanText(item.id || item.recordId || item.$id || item.kintoneId || item.title);
+  }
+  function normalizePayload(data){
+    const arr=Array.isArray(data) ? data : Array.isArray(data?.tasks) ? data.tasks : Array.isArray(data?.records) ? data.records : [];
+    return arr.map(raw=>{
+      const title=cleanText(raw.title || raw.taskTitle || raw.name || raw.summary);
+      if(!title) return null;
+      const id=taskKey(raw);
+      const sourceId='kintone:'+id;
+      const date=cleanText(raw.date || raw.scheduledDate || raw.shipDate || dkey()) || dkey();
+      const startTime=cleanText(raw.startTime || raw.time || '');
+      const planMin=Math.max(1, Math.min(999, Number(raw.planMin || raw.minutes || raw.duration || 15)||15));
+      const subs=Array.isArray(raw.subs) ? raw.subs : Array.isArray(raw.subtasks) ? raw.subtasks : [];
+      return {
+        sourceId,
+        title,
+        lane:'now',
+        rank:raw.rank || 'mid',
+        done:false,
+        subs:subs.map(s=>({id:'sub-'+Date.now()+'-'+Math.random().toString(36).slice(2,6), title:cleanText(typeof s==='string'?s:s.title), done:false})).filter(s=>s.title),
+        created:Date.now(),
+        createdDate:dkey(),
+        scheduledDate:date,
+        startTime:startTime || hm(),
+        planMin,
+        nextAction:cleanText(raw.nextAction || raw.next || '現物と内容を確認して次の処理へ進める'),
+        v56Kintone:true,
+        v56ImportedAt:Date.now()
+      };
+    }).filter(Boolean);
+  }
+  function alreadyExists(sourceId, title){
+    return S.tasks.some(t=>t && (
+      t.sourceId===sourceId ||
+      t.v56SourceId===sourceId ||
+      (t.v56Kintone && cleanText(t.title)===cleanText(title) && t.scheduledDate===dkey())
+    ));
+  }
+  function addImportedTasks(items){
+    let added=0;
+    items.forEach(t=>{
+      if(alreadyExists(t.sourceId,t.title)) return;
+      t.id='task-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+      t.v56SourceId=t.sourceId;
+      S.tasks.unshift(t);
+      added++;
+    });
+    if(added){
+      try{ if(typeof addLog==='function') addLog('kintoneから今日のタスクを '+added+'件追加'); }catch(e){}
+      try{ if(typeof save==='function') save(); }catch(e){}
+      try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('kintone取込'); }catch(e){}
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+      try{ if(typeof renderPool==='function') renderPool(); }catch(e){}
+      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+      try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+      try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+      try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+    }
+    return added;
+  }
+  async function loadFromGas(showAlert){
+    const c=cfg();
+    const url=cleanText(c.url);
+    if(!url){ c.lastError='GAS URLが未設定'; renderPanel(); if(showAlert) alert(c.lastError); return 0; }
+    if(busy) return 0;
+    busy=true;
+    renderPanel('読込中');
+    try{
+      const sep=url.includes('?')?'&':'?';
+      const res=await fetch(url+sep+'date='+encodeURIComponent(dkey())+'&minimal=1', {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const data=await res.json();
+      if(data && data.ok===false) throw new Error(data.error || 'GAS側エラー');
+      const tasks=normalizePayload(data);
+      const added=addImportedTasks(tasks);
+      c.lastSync=Date.now();
+      c.lastError='';
+      c.lastCount=added;
+      try{ if(typeof save==='function') save(); }catch(e){}
+      renderPanel();
+      if(showAlert) alert(`kintone取込: ${added}件追加 / ${tasks.length}件取得`);
+      return added;
+    }catch(e){
+      c.lastError='読込失敗: '+(e&&e.message?e.message:e);
+      try{ if(typeof save==='function') save(); }catch(err){}
+      renderPanel();
+      if(showAlert) alert(c.lastError);
+      return 0;
+    }finally{
+      busy=false;
+    }
+  }
+  function renderPanel(tempStatus){
+    if(!hasState()) return;
+    let panel=document.getElementById('v56KintonePanel');
+    if(!panel){
+      const host=document.querySelector('#p-quest');
+      const anchor=document.getElementById('v45CommandBar') || host?.firstElementChild;
+      if(!host || !anchor) return;
+      panel=document.createElement('details');
+      panel.id='v56KintonePanel';
+      panel.className='v56-kintone-panel';
+      panel.innerHTML=`
+        <summary><span>KINTONE IMPORT / 今日の出荷タスク</span><span class="v56-kintone-status" id="v56KintoneStatus">--</span></summary>
+        <div class="v56-kintone-body">
+          <div class="v56-kintone-row"><label>GAS URL</label><input id="v56KintoneUrl" placeholder="https://script.google.com/macros/s/.../exec?token=..."></div>
+          <div class="v56-kintone-actions">
+            <button class="v56-kintone-btn primary" data-v56-kintone="load" type="button">今日分を読み込む</button>
+            <button class="v56-kintone-btn" data-v56-kintone="save" type="button">URL保存</button>
+            <button class="v56-kintone-btn" data-v56-kintone="toggle" type="button">自動ON/OFF</button>
+          </div>
+          <div class="v56-kintone-note">APIトークンはここに入れません。GAS側で読み取り専用・最小項目だけ返す前提です。重複はkintone ID/sourceIdで防ぎます。</div>
+        </div>`;
+      host.insertBefore(panel, anchor.nextSibling);
+      panel.addEventListener('click',e=>{
+        const btn=e.target.closest('[data-v56-kintone]');
+        if(!btn) return;
+        e.preventDefault();
+        const c=cfg();
+        const act=btn.dataset.v56Kintone;
+        if(act==='save'){
+          c.url=cleanText(document.getElementById('v56KintoneUrl')?.value||'');
+          try{ if(typeof save==='function') save(); }catch(err){}
+          renderPanel('保存済み');
+        }else if(act==='toggle'){
+          c.url=cleanText(document.getElementById('v56KintoneUrl')?.value||c.url||'');
+          c.auto=!c.auto;
+          try{ if(typeof save==='function') save(); }catch(err){}
+          renderPanel(c.auto?'自動ON':'自動OFF');
+          if(c.auto) loadFromGas(false);
+        }else if(act==='load'){
+          c.url=cleanText(document.getElementById('v56KintoneUrl')?.value||c.url||'');
+          try{ if(typeof save==='function') save(); }catch(err){}
+          loadFromGas(true);
+        }
+      });
+    }
+    const c=cfg();
+    const url=document.getElementById('v56KintoneUrl');
+    if(url && document.activeElement!==url) url.value=c.url||'';
+    const status=document.getElementById('v56KintoneStatus');
+    if(status){
+      const last=c.lastSync?new Date(c.lastSync).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'未読込';
+      status.textContent=tempStatus || `${c.auto?'AUTO ':'MANUAL '}${last}${c.lastError?' / ERROR':' / +'+(c.lastCount||0)}`;
+    }
+  }
+  function maybeAuto(reason){
+    const c=cfg();
+    if(!c.auto || !c.url || busy) return;
+    const last=Number(c.lastSync||0);
+    if(!last || Date.now()-last>AUTO_MS) loadFromGas(false);
+  }
+  window.sasshyLoadKintoneTasks=loadFromGas;
+  const oldRenderTasks=window.renderTasks;
+  if(typeof oldRenderTasks==='function' && !oldRenderTasks.__v56Wrapped){
+    const wrapped=function(){
+      const r=oldRenderTasks.apply(this,arguments);
+      setTimeout(()=>renderPanel(),30);
+      return r;
+    };
+    wrapped.__v56Wrapped=true;
+    window.renderTasks=wrapped;
+  }
+  setTimeout(()=>{renderPanel(); maybeAuto('startup');},900);
+  setInterval(()=>maybeAuto('interval'),AUTO_MS);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) maybeAuto('visible'); });
+})();
+</script>
+
+<style id="v57-ocr-import-style">
+.v57-ocr-panel{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:12px;
+  padding:10px 12px;
+  margin:0 0 12px;
+  box-shadow:var(--shadow-xs);
+}
+.v57-ocr-panel summary{
+  list-style:none;
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:12px;
+  font-weight:900;
+}
+.v57-ocr-panel summary::-webkit-details-marker{display:none;}
+.v57-ocr-status{
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:10px;
+  color:var(--text3);
+  font-weight:800;
+}
+.v57-ocr-body{display:grid;gap:8px;margin-top:10px;}
+.v57-ocr-body textarea{
+  width:100%;
+  min-height:130px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:9px;
+  padding:10px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:12px;
+  line-height:1.5;
+}
+.v57-ocr-file{
+  border:1px dashed var(--border2);
+  background:var(--surface2);
+  border-radius:9px;
+  padding:10px;
+}
+.v57-ocr-file input{width:100%;font-size:12px;}
+.v57-ocr-actions{display:flex;gap:7px;flex-wrap:wrap;}
+.v57-ocr-btn{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:9px;
+  padding:8px 10px;
+  min-height:36px;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+.v57-ocr-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
+.v57-ocr-note{font-size:11px;color:var(--text3);line-height:1.55;}
+@media(max-width:620px){.v57-ocr-actions .v57-ocr-btn{flex:1 1 calc(50% - 7px);}}
+</style>
+
+<script id="v57-ocr-kintone-screenshot-import-script">
+/* ===== v57: screenshot OCR/text import for kintone-like tables ===== */
+(function(){
+  const OCR_CDN='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  let loadingOcr=false;
+
+  function hasState(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function dkey(){
+    try{return todayKey();}catch(e){
+      const d=new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+  }
+  function hm(){
+    const d=new Date();
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+  function clean(v){return String(v==null?'':v).replace(/[　\t]+/g,' ').replace(/\s+/g,' ').trim();}
+  function setStatus(text){
+    const st=document.getElementById('v57OcrStatus');
+    if(st) st.textContent=text;
+  }
+  function loadTesseract(){
+    if(window.Tesseract) return Promise.resolve(window.Tesseract);
+    if(loadingOcr) return new Promise((resolve,reject)=>{
+      const started=Date.now();
+      const timer=setInterval(()=>{
+        if(window.Tesseract){clearInterval(timer);resolve(window.Tesseract);}
+        else if(Date.now()-started>30000){clearInterval(timer);reject(new Error('OCRライブラリ読込タイムアウト'));}
+      },200);
+    });
+    loadingOcr=true;
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src=OCR_CDN;
+      s.onload=()=>resolve(window.Tesseract);
+      s.onerror=()=>reject(new Error('OCRライブラリを読み込めませんでした'));
+      document.head.appendChild(s);
+    }).finally(()=>{loadingOcr=false;});
+  }
+  async function runOcr(){
+    const file=document.getElementById('v57OcrFile')?.files?.[0];
+    if(!file){alert('スクショ画像を選んでください'); return;}
+    setStatus('OCR読込中');
+    try{
+      const T=await loadTesseract();
+      setStatus('OCR中 0%');
+      const result=await T.recognize(file,'jpn+eng',{
+        logger:m=>{
+          if(m && m.status) setStatus(m.status+(m.progress!=null?' '+Math.round(m.progress*100)+'%':''));
+        }
+      });
+      const txt=result?.data?.text||'';
+      const area=document.getElementById('v57OcrText');
+      if(area) area.value=txt.trim();
+      setStatus('OCR完了');
+    }catch(e){
+      setStatus('OCR失敗');
+      alert('OCRに失敗しました。Live Textで文字をコピーして貼る方を試してください。\n'+(e&&e.message?e.message:e));
+    }
+  }
+  function parseLines(text){
+    const raw=String(text||'').split(/\n+/).map(clean).filter(Boolean);
+    const rows=[];
+    let buffer='';
+    raw.forEach(line=>{
+      const startsRow=/\d{4}[-/]\d{1,2}[-/]\d{1,2}|社内出荷|出荷|納品|発注依頼|確認/.test(line);
+      if(startsRow && buffer){
+        rows.push(buffer);
+        buffer=line;
+      }else{
+        buffer=buffer ? buffer+' '+line : line;
+      }
+    });
+    if(buffer) rows.push(buffer);
+    return rows.filter(line=>{
+      if(line.length<8) return false;
+      if(/合計|小計|税|金額|単価|検索|ページ|レコード|詳細を表示|備考のみ/.test(line)) return false;
+      return /社内出荷|出荷|納品|発注|確認|NSG|SV-|SG|CV|ホース|ノズル|[0-9]+\s*(個|台|本|枚|式)/i.test(line);
+    });
+  }
+  function lineToTask(line, index){
+    const dateMatch=line.match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/);
+    const date=dateMatch?dateMatch[0].replace(/\//g,'-').replace(/-(\d)(?=-|$)/g,'-0$1'):dkey();
+    let body=clean(line.replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/,''));
+    body=body.replace(/^(社内出荷|出荷|納品|発注依頼|確認)\s*/,'$1 ');
+    body=body.replace(/\s*(有限会社|株式会社|合同会社)/g,' $1');
+    const title='出荷準備: '+body.slice(0,120);
+    return {
+      id:'task-'+Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2,6),
+      title,
+      lane:'now',
+      rank:'mid',
+      done:false,
+      subs:[
+        {id:'sub-'+Date.now()+'-'+index+'a', title:'現物・品番を確認', done:false},
+        {id:'sub-'+Date.now()+'-'+index+'b', title:'数量を確認', done:false},
+        {id:'sub-'+Date.now()+'-'+index+'c', title:'梱包・出荷準備', done:false},
+        {id:'sub-'+Date.now()+'-'+index+'d', title:'kintone側の状態を確認', done:false}
+      ],
+      created:Date.now(),
+      createdDate:dkey(),
+      scheduledDate:date||dkey(),
+      startTime:hm(),
+      planMin:15,
+      nextAction:'現物・品番・数量を照合する',
+      v57Ocr:true,
+      v57SourceText:line
+    };
+  }
+  function exists(t){
+    return S.tasks.some(x=>x && (
+      clean(x.v57SourceText)===clean(t.v57SourceText) ||
+      (clean(x.title)===clean(t.title) && x.scheduledDate===t.scheduledDate)
+    ));
+  }
+  function importText(){
+    if(!hasState()) return;
+    const area=document.getElementById('v57OcrText');
+    const rows=parseLines(area?.value||'');
+    if(!rows.length){alert('タスク化できそうな行が見つかりませんでした。文字を少し整理してからもう一度試してください。'); return;}
+    let added=0;
+    rows.map(lineToTask).forEach(t=>{
+      if(exists(t)) return;
+      S.tasks.unshift(t);
+      added++;
+    });
+    try{ if(typeof addLog==='function') addLog('OCR/貼り付けから今日のタスクを '+added+'件追加'); }catch(e){}
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('OCR取込'); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderPool==='function') renderPool(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+    setStatus('+'+added+' / 候補'+rows.length);
+    // 完了通知はパネル内ステータスだけにして、作業の流れを止めない。
+  }
+  function ensurePanel(){
+    if(!hasState()) return null;
+    let panel=document.getElementById('v57OcrPanel');
+    if(panel) return panel;
+    const host=document.querySelector('#p-quest');
+    const anchor=document.getElementById('v56KintonePanel') || document.getElementById('v45CommandBar') || host?.firstElementChild;
+    if(!host || !anchor) return null;
+    panel=document.createElement('details');
+    panel.id='v57OcrPanel';
+    panel.className='v57-ocr-panel';
+    panel.innerHTML=`
+      <summary><span>OCR IMPORT / スクショからタスク化</span><span class="v57-ocr-status" id="v57OcrStatus">READY</span></summary>
+      <div class="v57-ocr-body">
+        <div class="v57-ocr-file"><input id="v57OcrFile" type="file" accept="image/*"></div>
+        <div class="v57-ocr-actions">
+          <button class="v57-ocr-btn" data-v57-ocr="ocr" type="button">画像をOCR</button>
+          <button class="v57-ocr-btn primary" data-v57-ocr="import" type="button">貼った文字を今日タスク化</button>
+          <button class="v57-ocr-btn" data-v57-ocr="clear" type="button">クリア</button>
+        </div>
+        <textarea id="v57OcrText" placeholder="スクショOCR結果、またはLive Textでコピーしたkintone一覧の文字をここに貼る"></textarea>
+        <div class="v57-ocr-note">画像OCRはブラウザ内で処理します。初回だけOCR用ライブラリを読み込みます。読み間違いがある時は、文字を少し直してからタスク化してください。</div>
+      </div>`;
+    host.insertBefore(panel, anchor.nextSibling);
+    panel.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-v57-ocr]');
+      if(!btn) return;
+      e.preventDefault();
+      if(btn.dataset.v57Ocr==='ocr') runOcr();
+      if(btn.dataset.v57Ocr==='import') importText();
+      if(btn.dataset.v57Ocr==='clear'){
+        const area=document.getElementById('v57OcrText'); if(area) area.value='';
+        const file=document.getElementById('v57OcrFile'); if(file) file.value='';
+        setStatus('READY');
+      }
+    });
+    return panel;
+  }
+  const oldRenderTasks=window.renderTasks;
+  if(typeof oldRenderTasks==='function' && !oldRenderTasks.__v57Wrapped){
+    const wrapped=function(){
+      const r=oldRenderTasks.apply(this,arguments);
+      setTimeout(ensurePanel,40);
+      return r;
+    };
+    wrapped.__v57Wrapped=true;
+    window.renderTasks=wrapped;
+  }
+  setTimeout(ensurePanel,1000);
 })();
 </script>
 
