@@ -3677,6 +3677,7 @@ function handleSchedAction(id, act){
   else if(act==='unschedule'){ delete t.startTime; save(); renderTasks(); }
   else if(act==='del'){
     if(S.runningTaskId===id) stopTask(id);
+    if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
     S.tasks=S.tasks.filter(x=>x.id!==id);
     save(); renderTasks(); renderTimeline();
   }
@@ -3795,6 +3796,7 @@ document.getElementById('selDelBtn').onclick=()=>{
   if(!confirm(`${selectedIds.size}件のタスクを削除する？`)) return;
   selectedIds.forEach(id=>{
     if(S.runningTaskId===id) S.runningTaskId=null;
+    if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(S.tasks.find(t=>t.id===id));
     S.tasks=S.tasks.filter(t=>t.id!==id);
   });
   setSelectMode(false);
@@ -4286,6 +4288,7 @@ document.getElementById('qtdDelBtn').onclick=()=>{
     return;
   }
   if(S.runningTaskId===currentDetailId) stopTask(currentDetailId);
+  if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(S.tasks.find(x=>x.id===currentDetailId));
   S.tasks=S.tasks.filter(x=>x.id!==currentDetailId);
   save(); renderTasks(); renderTimeline();
   closeTaskDetail();
@@ -4353,6 +4356,7 @@ if(poolBody){
     }
     else if(act==='del'){
       if(S.runningTaskId===id) stopTask(id);
+      if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
       S.tasks=S.tasks.filter(x=>x.id!==id);
       save(); renderPool(); renderTasks(); renderSchedule(); renderTimeline();
     }
@@ -4521,6 +4525,7 @@ function handleMonsterClick(e){
   }else if(act==='del'){
     if(!t.done){gainExp(FLEE_EXP); addLog(`${esc(t.title)}から <span class="flee">にげた！</span> <span class="exp">+${FLEE_EXP}EXP</span>`);}
     if(S.runningTaskId===id) stopTask(id);
+    if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
     S.tasks=S.tasks.filter(x=>x.id!==id);
     save(); renderTasks(); renderTimeline();
   }else if(act==='move'){t.lane=e.target.dataset.to; save(); renderTasks();}
@@ -7916,6 +7921,7 @@ body.v34-adhd-focus #p-quest{max-width:860px;}
 .v45-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
 .v45-btn.warn{border-color:var(--orange);color:var(--orange);}
 .v45-btn.good{border-color:var(--green);color:var(--green);}
+.v45-btn.danger{border-color:var(--red);color:var(--red);}
 .v45-current{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:11px;}
 .v45-label{font-size:10px;color:var(--text3);font-weight:900;letter-spacing:.08em;margin-bottom:5px;}
 .v45-title{font-size:18px;font-weight:950;line-height:1.35;color:var(--text);word-break:break-word;}
@@ -7979,6 +7985,11 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
         }else if(act==='done'){
           if(typeof finishTask==='function') finishTask(id);
           t.done=true; if(typeof window.sasshyCloseRunning==='function') window.sasshyCloseRunning(id,true); else if(S.runningTaskId===id) S.runningTaskId=null;
+        }else if(act==='delete'){
+          if(!confirm('このタスクを削除する？')) return;
+          if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
+          if(S.runningTaskId===id && typeof stopTask==='function') stopTask(id);
+          S.tasks=S.tasks.filter(x=>x.id!==id);
         }else if(act==='detail' && typeof openTaskDetail==='function'){
           openTaskDetail(id); return;
         }
@@ -8024,7 +8035,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     }
     const running=S.runningTaskId===t.id;
     const meta=[running?'実行中':'未着手',t.startTime||'',(t.planMin||15)+'分'].filter(Boolean).map(x=>`<span>${typeof esc==='function'?esc(String(x)):String(x)}</span>`).join('');
-    cur.innerHTML=`<div class="v45-current"><div class="v45-label">${running?'RUNNING':'NEXT TASK'}</div><div class="v45-title">${typeof esc==='function'?esc(t.title||'無題'):(t.title||'無題')}</div><div class="v45-meta">${meta}</div><div class="v45-actions">${running?`<button class="v45-btn warn" data-v45="pause" data-id="${t.id}">停止</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`:`<button class="v45-btn primary" data-v45="start" data-id="${t.id}">開始</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`}<button class="v45-btn" data-v45="detail" data-id="${t.id}">詳細</button></div></div>`;
+    cur.innerHTML=`<div class="v45-current"><div class="v45-label">${running?'RUNNING':'NEXT TASK'}</div><div class="v45-title">${typeof esc==='function'?esc(t.title||'無題'):(t.title||'無題')}</div><div class="v45-meta">${meta}</div><div class="v45-actions">${running?`<button class="v45-btn warn" data-v45="pause" data-id="${t.id}">停止</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`:`<button class="v45-btn primary" data-v45="start" data-id="${t.id}">開始</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`}<button class="v45-btn" data-v45="detail" data-id="${t.id}">詳細</button><button class="v45-btn danger" data-v45="delete" data-id="${t.id}">削除</button></div></div>`;
   }
   function cleanupLegacyForcedTasks(){
     if(!ok()) return;
@@ -8967,7 +8978,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=57').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=58').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9339,6 +9350,21 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         closeMergedSessions(merged.runningTaskId, !!(runningTask&&runningTask.done));
         merged.runningTaskId=null;
       }
+    }
+    const deleted=Array.isArray(local.deletedTaskSources)?local.deletedTaskSources:[];
+    if(deleted.length){
+      const clean=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+      const deletedSet=new Set(deleted.map(clean));
+      const removedIds=new Set();
+      merged.tasks=merged.tasks.filter(t=>{
+        const keys=[t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId,t?.title].map(clean).filter(Boolean);
+        const shouldRemove=keys.some(k=>deletedSet.has(k));
+        if(shouldRemove && t?.id) removedIds.add(t.id);
+        return !shouldRemove;
+      });
+      if(removedIds.has(merged.runningTaskId)) merged.runningTaskId=null;
+      merged.sessions=merged.sessions.filter(s=>!removedIds.has(s?.taskId));
+      merged.deletedTaskSources=[...deletedSet].slice(-500);
     }
     return merged;
   }
@@ -10142,6 +10168,17 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 }
 .v57-ocr-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
 .v57-ocr-note{font-size:11px;color:var(--text3);line-height:1.55;}
+.v57-preview{display:grid;gap:7px;}
+.v57-preview-item{
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;
+  border:1px solid var(--border);background:var(--surface2);border-radius:9px;padding:8px;
+}
+.v57-preview-item input[type="checkbox"]{margin-top:10px;}
+.v57-preview-title{
+  width:100%;border:1px solid var(--border);background:var(--surface);color:var(--text);
+  border-radius:7px;padding:8px;font-family:inherit;font-size:13px;font-weight:800;
+}
+.v57-preview-meta{font-size:10px;color:var(--text3);font-family:'SF Mono','JetBrains Mono',monospace;margin-top:4px;}
 @media(max-width:620px){.v57-ocr-actions .v57-ocr-btn{flex:1 1 calc(50% - 7px);}}
 </style>
 
@@ -10163,6 +10200,39 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   }
   function clean(v){return String(v==null?'':v).replace(/[　\t]+/g,' ').replace(/\s+/g,' ').trim();}
+  function normalizeOcrText(v){
+    return clean(v)
+      .replace(/社内\s*出荷/g,'社内出荷')
+      .replace(/[_＿]+/g,' ')
+      .replace(/株\s*式\s*会\s*社/g,'株式会社')
+      .replace(/有限\s*会\s*社/g,'有限会社')
+      .replace(/合同\s*会\s*社/g,'合同会社')
+      .replace(/渡辺\s*パイ\s*プ/g,'渡辺パイプ')
+      .replace(/イシ\s*グロ/g,'イシグロ')
+      .replace(/名\s*古屋/g,'名古屋')
+      .replace(/宇賀\s*寿一/g,'宇賀寿一')
+      .replace(/サー\s*ビス\s*セ/g,'サービスセ')
+      .replace(/コー\s*ティ\s*ング\s*ホー\s*ス/g,'コーティングホース')
+      .replace(/(\d+)\s*[人入]\s*(台|個|本|枚|式|台)/g,'$1$2')
+      .replace(/(\d+)\s*A&/g,'$1台')
+      .replace(/(\d+)\s+(台|個|本|枚|式)/g,'$1$2')
+      .replace(/([A-Z]{1,4})\s*-\s*([A-Z0-9])/gi,'$1-$2')
+      .replace(/([A-Z0-9])\s*\*\s*([0-9A-Z])/gi,'$1*$2')
+      .replace(/φ\s*/gi,'φ');
+  }
+  function rememberDeletedTask(t){
+    if(!hasState() || !t) return;
+    S.deletedTaskSources=Array.isArray(S.deletedTaskSources)?S.deletedTaskSources:[];
+    const keys=[t.v57SourceText,t.v57SourceKey,t.v56SourceId,t.sourceId,t.title].map(clean).filter(Boolean);
+    keys.forEach(k=>{ if(!S.deletedTaskSources.includes(k)) S.deletedTaskSources.push(k); });
+    S.deletedTaskSources=S.deletedTaskSources.slice(-500);
+  }
+  window.sasshyRememberDeletedTask=rememberDeletedTask;
+  function isDeletedSource(t){
+    const list=Array.isArray(S.deletedTaskSources)?S.deletedTaskSources:[];
+    const keys=[t.v57SourceText,t.v57SourceKey,t.title].map(clean).filter(Boolean);
+    return keys.some(k=>list.includes(k));
+  }
   function setStatus(text){
     const st=document.getElementById('v57OcrStatus');
     if(st) st.textContent=text;
@@ -10207,7 +10277,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
   }
   function parseLines(text){
-    const raw=String(text||'').split(/\n+/).map(clean).filter(Boolean);
+    const raw=String(text||'').split(/\n+/).map(normalizeOcrText).filter(Boolean);
     const rows=[];
     let buffer='';
     raw.forEach(line=>{
@@ -10226,13 +10296,47 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       return /社内出荷|出荷|納品|発注|確認|NSG|SV-|SG|CV|ホース|ノズル|[0-9]+\s*(個|台|本|枚|式)/i.test(line);
     });
   }
+  function companyAndProduct(line){
+    let s=normalizeOcrText(line);
+    s=s.replace(/^\d+\s*/,'').replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/,'').replace(/社内出荷\s*[|_]?/,'');
+    const companyMarkers=['渡辺パイプ','イシグロ','有限会社','株式会社','合同会社','㈱'];
+    let companyIdx=-1;
+    companyMarkers.forEach(m=>{
+      const i=s.indexOf(m);
+      if(i>=0 && (companyIdx<0 || i<companyIdx)) companyIdx=i;
+    });
+    let company='';
+    let product=s;
+    if(companyIdx>=0){
+      company=s.slice(companyIdx);
+      product=s.slice(0,companyIdx);
+    }
+    company=company
+      .replace(/\s*(北海道|青森\s*県|岩手\s*県|宮城\s*県|秋田\s*県|山形\s*県|福島\s*県|茨城\s*県|栃木\s*県|群馬\s*県|埼玉\s*県|千葉\s*県|東京\s*都|神奈川\s*県|新潟\s*県|富山\s*県|石川\s*県|福井\s*県|山梨\s*県|長野\s*県|岐阜\s*県|静岡\s*県|愛知\s*県|三重\s*県|滋賀\s*県|京都\s*府|大阪\s*府|兵庫\s*県|奈良\s*県|和歌山\s*県|鳥取\s*県|島根\s*県|岡山\s*県|広島\s*県|山口\s*県|徳島\s*県|香川\s*県|愛媛\s*県|高知\s*県|福岡\s*県|佐賀\s*県|長崎\s*県|熊本\s*県|大分\s*県|宮崎\s*県|鹿児島\s*県|沖縄\s*県).*$/,'')
+      .replace(/\s*FER.*$/,'')
+      .replace(/….*$/,'')
+      .replace(/^イシグロ\s*販\s*/,'イシグロ ')
+      .replace(/有限会社\s*宇賀寿一\s*商店/,'有限会社宇賀寿一商店')
+      .replace(/渡辺パイプ\s*株式会社\s*千葉\s*サービスセ.*/,'渡辺パイプ株式会社 千葉サービスセンター')
+      .replace(/名古屋\s*支店/,'名古屋支店')
+      .replace(/\s+/g,' ')
+      .trim();
+    product=product
+      .replace(/^(社内出荷|出荷)\s*/,'')
+      .replace(/^[:：\s]+/,'')
+      .replace(/\s*(定価|仕切|前\s*金|市川市|現場|では|県|FER|」|!|→).*$/,'')
+      .replace(/\s+/g,' ')
+      .trim();
+    if(!product) product=s.slice(0,80);
+    if(!company) company='会社名未読取';
+    return {company:company.slice(0,42), product:product.slice(0,70)};
+  }
   function lineToTask(line, index){
     const dateMatch=line.match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/);
     const date=dateMatch?dateMatch[0].replace(/\//g,'-').replace(/-(\d)(?=-|$)/g,'-0$1'):dkey();
-    let body=clean(line.replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/,''));
-    body=body.replace(/^(社内出荷|出荷|納品|発注依頼|確認)\s*/,'$1 ');
-    body=body.replace(/\s*(有限会社|株式会社|合同会社)/g,' $1');
-    const title='出荷準備: '+body.slice(0,120);
+    const normalized=normalizeOcrText(line);
+    const parts=companyAndProduct(normalized);
+    const title=`出荷準備: ${parts.company} / ${parts.product}`;
     return {
       id:'task-'+Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2,6),
       title,
@@ -10252,22 +10356,57 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       planMin:15,
       nextAction:'現物・品番・数量を照合する',
       v57Ocr:true,
-      v57SourceText:line
+      v57SourceText:line,
+      v57SourceKey:normalized,
+      v57Company:parts.company,
+      v57Product:parts.product
     };
   }
   function exists(t){
+    if(isDeletedSource(t)) return true;
     return S.tasks.some(x=>x && (
       clean(x.v57SourceText)===clean(t.v57SourceText) ||
+      clean(x.v57SourceKey)===clean(t.v57SourceKey) ||
       (clean(x.title)===clean(t.title) && x.scheduledDate===t.scheduledDate)
     ));
   }
-  function importText(){
+  function renderPreview(){
     if(!hasState()) return;
     const area=document.getElementById('v57OcrText');
     const rows=parseLines(area?.value||'');
     if(!rows.length){alert('タスク化できそうな行が見つかりませんでした。文字を少し整理してからもう一度試してください。'); return;}
+    const tasks=rows.map(lineToTask).filter(t=>!exists(t));
+    const box=document.getElementById('v57OcrPreview');
+    if(!box) return;
+    if(!tasks.length){
+      box.innerHTML='<div class="v57-ocr-note">新しく追加できる候補はありません。削除済み・追加済みは除外しました。</div>';
+      setStatus('候補0');
+      return;
+    }
+    box.innerHTML=tasks.map((t,i)=>`
+      <div class="v57-preview-item" data-v57-preview="${i}">
+        <input type="checkbox" checked>
+        <div>
+          <input class="v57-preview-title" value="${(typeof esc==='function'?esc(t.title):t.title)}">
+          <div class="v57-preview-meta">${t.scheduledDate} / ${t.planMin}分 / ${typeof esc==='function'?esc(t.v57SourceText):t.v57SourceText}</div>
+        </div>
+      </div>`).join('');
+    box.dataset.tasks=JSON.stringify(tasks);
+    setStatus('候補'+tasks.length);
+  }
+  function importPreview(){
+    if(!hasState()) return;
+    const box=document.getElementById('v57OcrPreview');
+    let tasks=[];
+    try{tasks=JSON.parse(box?.dataset?.tasks||'[]');}catch(e){tasks=[];}
+    if(!tasks.length){renderPreview(); return;}
     let added=0;
-    rows.map(lineToTask).forEach(t=>{
+    [...box.querySelectorAll('.v57-preview-item')].forEach(item=>{
+      const idx=Number(item.dataset.v57Preview);
+      const t=tasks[idx];
+      if(!t || !item.querySelector('input[type="checkbox"]')?.checked) return;
+      const title=item.querySelector('.v57-preview-title')?.value.trim();
+      if(title) t.title=title;
       if(exists(t)) return;
       S.tasks.unshift(t);
       added++;
@@ -10281,7 +10420,9 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
     try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
     try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
-    setStatus('+'+added+' / 候補'+rows.length);
+    setStatus('+'+added+' / 確認済み'+tasks.length);
+    box.innerHTML='';
+    box.dataset.tasks='[]';
     // 完了通知はパネル内ステータスだけにして、作業の流れを止めない。
   }
   function ensurePanel(){
@@ -10300,10 +10441,12 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         <div class="v57-ocr-file"><input id="v57OcrFile" type="file" accept="image/*"></div>
         <div class="v57-ocr-actions">
           <button class="v57-ocr-btn" data-v57-ocr="ocr" type="button">画像をOCR</button>
-          <button class="v57-ocr-btn primary" data-v57-ocr="import" type="button">貼った文字を今日タスク化</button>
+          <button class="v57-ocr-btn" data-v57-ocr="preview" type="button">候補を作る</button>
+          <button class="v57-ocr-btn primary" data-v57-ocr="import" type="button">確認した候補を追加</button>
           <button class="v57-ocr-btn" data-v57-ocr="clear" type="button">クリア</button>
         </div>
         <textarea id="v57OcrText" placeholder="スクショOCR結果、またはLive Textでコピーしたkintone一覧の文字をここに貼る"></textarea>
+        <div class="v57-preview" id="v57OcrPreview"></div>
         <div class="v57-ocr-note">画像OCRはブラウザ内で処理します。初回だけOCR用ライブラリを読み込みます。読み間違いがある時は、文字を少し直してからタスク化してください。</div>
       </div>`;
     host.insertBefore(panel, anchor.nextSibling);
@@ -10312,10 +10455,12 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       if(!btn) return;
       e.preventDefault();
       if(btn.dataset.v57Ocr==='ocr') runOcr();
-      if(btn.dataset.v57Ocr==='import') importText();
+      if(btn.dataset.v57Ocr==='preview') renderPreview();
+      if(btn.dataset.v57Ocr==='import') importPreview();
       if(btn.dataset.v57Ocr==='clear'){
         const area=document.getElementById('v57OcrText'); if(area) area.value='';
         const file=document.getElementById('v57OcrFile'); if(file) file.value='';
+        const preview=document.getElementById('v57OcrPreview'); if(preview){preview.innerHTML=''; preview.dataset.tasks='[]';}
         setStatus('READY');
       }
     });
