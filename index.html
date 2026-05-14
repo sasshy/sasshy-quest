@@ -3194,32 +3194,32 @@ function renderSchedule(){
     return t.scheduledDate===viewDate;
   });
 
-  // ルーティン項目（時刻あり）
-  // 今日表示: 全ルーティン項目 / 過去日表示: その日に実行されたログがあるものだけ
+  // ルーティン項目
+  // 目安時刻だけでは予定に入れず、実際に開始/完了した履歴だけを表示する。
   const routineLog=getRoutineLog(viewDate);
-  let routineAsTasks=[];
-  if(isToday){
-    routineAsTasks=(S.routine||[]).filter(r=>r.time && !isRoutineHiddenToday(r.id, viewDate)).map(r=>({
+  const routineSessionMap=new Map();
+  (S.sessions||[]).filter(s=>s.date===viewDate && String(s.taskId||'').startsWith('routine:')).forEach(s=>{
+    const rid=String(s.taskId).slice(8);
+    const prev=routineSessionMap.get(rid);
+    if(!prev || (s.startedAt||0)>(prev.startedAt||0)) routineSessionMap.set(rid,s);
+  });
+  const routineAsTasks=(S.routine||[]).filter(r=>{
+    const taskId='routine:'+r.id;
+    return routineSessionMap.has(r.id) || S.runningTaskId===taskId;
+  }).map(r=>{
+    const s=routineSessionMap.get(r.id);
+    const started=s&&s.startedAt?new Date(s.startedAt):null;
+    const planMin=(s&&s.startedAt&&s.endedAt)?Math.max(1,Math.round((s.endedAt-s.startedAt)/60000)):(r.planMin||5);
+    return {
       id:'routine:'+r.id,
       title:r.name,
-      startTime:r.time,
-      planMin:r.planMin||5,
+      startTime:started?`${p2(started.getHours())}:${p2(started.getMinutes())}`:(r.time||''),
+      planMin,
       rank:'routine',
-      done:routineLog.includes(r.id),
+      done:routineLog.includes(r.id) || !!(s&&s.completed),
       isRoutine:true
-    }));
-  }else{
-    // 過去日: その日完了したルーティンだけ（達成の痕跡として）
-    routineAsTasks=(S.routine||[]).filter(r=>r.time && routineLog.includes(r.id)).map(r=>({
-      id:'routine:'+r.id,
-      title:r.name,
-      startTime:r.time,
-      planMin:r.planMin||5,
-      rank:'routine',
-      done:true,
-      isRoutine:true
-    }));
-  }
+    };
+  }).filter(r=>r.startTime);
   // Googleカレンダー予定（読み込み専用）
   const gcalDayEvents=gcalEventsForDate(viewDate);
   const gcalAsTasks=gcalDayEvents.filter(e=>!e.allDay && e.startTime).map(e=>({
@@ -5238,14 +5238,27 @@ function renderWeekQ(){
       if(t.done && sessionTaskIds.has(t.id)) return true;
       return false;
     });
-    // ルーティン（今日のみ）
-    const routineItems=(isToday && S.routine)?S.routine.filter(r=>r.time && !isRoutineHiddenToday(r.id, d.key)).map(r=>({
-      title:r.name,
-      startTime:r.time,
-      planMin:r.planMin||5,
-      done:routineLog.includes(r.id),
-      isRoutine:true
-    })):[];
+    // ルーティンは目安時刻だけでは週表示に出さず、開始/完了した履歴だけ出す
+    const routineSessionMap=new Map();
+    (S.sessions||[]).filter(s=>s.date===d.key && String(s.taskId||'').startsWith('routine:')).forEach(s=>{
+      const rid=String(s.taskId).slice(8);
+      const prev=routineSessionMap.get(rid);
+      if(!prev || (s.startedAt||0)>(prev.startedAt||0)) routineSessionMap.set(rid,s);
+    });
+    const routineItems=(S.routine||[]).filter(r=>{
+      const taskId='routine:'+r.id;
+      return routineSessionMap.has(r.id) || S.runningTaskId===taskId;
+    }).map(r=>{
+      const s=routineSessionMap.get(r.id);
+      const started=s&&s.startedAt?new Date(s.startedAt):null;
+      return {
+        title:r.name,
+        startTime:started?`${p2(started.getHours())}:${p2(started.getMinutes())}`:(r.time||''),
+        planMin:(s&&s.startedAt&&s.endedAt)?Math.max(1,Math.round((s.endedAt-s.startedAt)/60000)):(r.planMin||5),
+        done:getRoutineLog(d.key).includes(r.id) || !!(s&&s.completed),
+        isRoutine:true
+      };
+    }).filter(r=>r.startTime);
     const gcalItems=gcalEventsForDate(d.key).filter(e=>!e.allDay && e.startTime).map(e=>({
       title:e.title,
       startTime:e.startTime,
@@ -5795,7 +5808,7 @@ window.renderLifeCommand=renderLC;setTimeout(renderLC,0);
     if(!openSession(h.id)){
       S.sessions.push({id:uid(), taskId, title:'[ルーティン] '+h.name, rank:'routine', startedAt:Date.now(), endedAt:null, completed:false, date:todayKey()});
     }
-    addLog('▶ <span class="exp">[ルーティン] '+esc(h.name)+'</span> 開始。今日の予定に自動配置');
+    addLog('▶ <span class="exp">[ルーティン] '+esc(h.name)+'</span> を今やる');
     rerenderAll();
   };
 
@@ -5835,6 +5848,16 @@ window.renderLifeCommand=renderLC;setTimeout(renderLC,0);
     rerenderAll();
   };
 
+  window.skipRoutineToday = function(id){
+    const h=rfind(id); if(!h) return;
+    if(S.runningTaskId===rk(h.id)) S.runningTaskId=null;
+    hideRoutineForToday(h.id);
+    unmarkRoutineDone(h.id);
+    S.sessions=(S.sessions||[]).filter(s=>!(s.taskId===rk(h.id) && s.date===todayKey()));
+    addLog('↩ <span class="combo">[ルーティン] '+esc(h.name)+'</span> は今日はスキップ');
+    rerenderAll();
+  };
+
   window.renderRoutine = function(){
     if(typeof normalizeRoutineDurations==='function') normalizeRoutineDurations();
     const listEl=document.getElementById('routineList'); if(!listEl) return;
@@ -5859,7 +5882,7 @@ window.renderLifeCommand=renderLC;setTimeout(renderLC,0);
           const status=running?'<span class="habit-status running">実行中</span>':(done?'<span class="habit-status done">完了</span>':'<span class="habit-status">未完了</span>');
           const mainBtns=running
             ? '<button class="habit-btn pause" data-act="pause">中断</button><button class="habit-btn done" data-act="finish">完了</button>'
-            : (done?'<button class="habit-btn" data-act="unfinish">未完了へ</button>':'<button class="habit-btn primary" data-act="start">▶ 開始</button><button class="habit-btn done" data-act="finish">✓ 完了</button>');
+            : (done?'<button class="habit-btn" data-act="unfinish">未完了へ</button>':'<button class="habit-btn primary" data-act="start">今やる</button><button class="habit-btn done" data-act="finish">今日やった</button><button class="habit-btn" data-act="skip">今日はスキップ</button>');
           return `<div class="habit-item ${done?'done':''} ${running?'running':''}" data-id="${h.id}">
             <div class="habit-chk" data-act="finish" title="完了"></div>
             <span class="habit-name" data-act="edit">${esc(h.name)}</span>
@@ -5921,12 +5944,13 @@ window.renderLifeCommand=renderLC;setTimeout(renderLC,0);
     const item=e.target.closest('.habit-item'); if(!item) return;
     const act=e.target.dataset.act; if(!act) return;
     const id=item.dataset.id; const h=rfind(id); if(!h) return;
-    if(['start','pause','finish','unfinish','detail'].includes(act)){
+    if(['start','pause','finish','unfinish','skip','detail'].includes(act)){
       e.preventDefault(); e.stopImmediatePropagation();
       if(act==='start') startRoutine(id);
       else if(act==='pause') pauseRoutine(id);
       else if(act==='finish') finishRoutine(id);
       else if(act==='unfinish') unfinishRoutine(id);
+      else if(act==='skip') skipRoutineToday(id);
       else if(act==='detail') openTaskDetail(rk(id));
     }
   },true);
@@ -5992,11 +6016,11 @@ window.renderLifeCommand=renderLC;setTimeout(renderLC,0);
   function state(x){ if(x.running)return{cls:'running',icon:'▶',label:'実行中'}; if(x.done)return{cls:'done',icon:'✓',label:'完了'}; if(x.paused)return{cls:'paused',icon:'⏸',label:'中断中'}; return{cls:'todo',icon:'□',label:'未着手'}; }
   function nt(t){return{id:t.id,kind:'task',title:t.title||'',startTime:t.startTime||'',planMin:t.planMin||30,scheduledDate:t.scheduledDate||'',rank:t.rank||'zako',done:!!t.done,running:S.runningTaskId===t.id,paused:paused(t),nextAction:t.nextAction||'',raw:t};}
   function nr(r){const id='routine:'+r.id;return{id,kind:'routine',title:r.name||'',startTime:r.time||'',planMin:r.planMin||5,scheduledDate:todayKey(),rank:'routine',done:rDone(r),running:S.runningTaskId===id,paused:false,nextAction:'',raw:r};}
-  function todayItems(){const today=todayKey(); const ts=(S.tasks||[]).filter(t=>t.scheduledDate===today||S.runningTaskId===t.id||(t.done&&t.scheduledDate===today)).map(nt); const rs=(S.routine||[]).filter(r=>!isRoutineHiddenToday(r.id,today) && (r.time||rDone(r)||S.runningTaskId==='routine:'+r.id)).map(nr); return ts.concat(rs).sort((a,b)=>{if(a.running!==b.running)return a.running?-1:1;if(a.done!==b.done)return a.done?1:-1;if(a.startTime&&b.startTime)return a.startTime.localeCompare(b.startTime);if(a.startTime)return -1;if(b.startTime)return 1;return 0;});}
+  function todayItems(){const today=todayKey(); const ts=(S.tasks||[]).filter(t=>t.scheduledDate===today||S.runningTaskId===t.id||(t.done&&t.scheduledDate===today)).map(nt); const rs=(S.routine||[]).filter(r=>!isRoutineHiddenToday(r.id,today) && (rDone(r)||S.runningTaskId==='routine:'+r.id)).map(nr); return ts.concat(rs).sort((a,b)=>{if(a.running!==b.running)return a.running?-1:1;if(a.done!==b.done)return a.done?1:-1;if(a.startTime&&b.startTime)return a.startTime.localeCompare(b.startTime);if(a.startTime)return -1;if(b.startTime)return 1;return 0;});}
   function backlog(){return (S.tasks||[]).filter(t=>!t.done&&!t.scheduledDate&&S.runningTaskId!==t.id).map(nt).sort((a,b)=>{const rb={boss:3,mid:2,zako:1};return (rb[b.rank]||1)-(rb[a.rank]||1)||((a.raw.created||0)-(b.raw.created||0));});}
   function pick(){if(S.runningTaskId){if(String(S.runningTaskId).startsWith('routine:')){const r=routine(S.runningTaskId); if(r)return nr(r);} const t=task(S.runningTaskId); if(t)return nt(t);} try{const t=pickQuestTarget(); if(t)return nt(t);}catch(e){} return todayItems().find(x=>!x.done)||backlog()[0]||null;}
   function ensure(){ if(document.getElementById('v18Board'))return; const a=document.querySelector('#p-quest .q-add'); if(!a)return; const d=document.createElement('div'); d.id='v18Board'; d.className='v18-board'; d.innerHTML='<div class="v18-section"><div class="v18-section-head"><div class="v18-section-title">NEXT BATTLE / 今やる</div><div class="v18-count" id="v18NowState">--</div></div><div id="v18Now"></div></div><div class="v18-two-col"><div class="v18-section"><div class="v18-section-head"><div class="v18-section-title">TODAY QUEUE / 今日の予定</div><div class="v18-count" id="v18TodayCount">0</div></div><div class="v18-list" id="v18TodayList"></div></div><div class="v18-section"><div class="v18-section-head"><div class="v18-section-title">BACKLOG / 時間未定</div><div class="v18-count" id="v18BacklogCount">0</div></div><div class="v18-list" id="v18BacklogList"></div></div></div>'; a.parentNode.insertBefore(d,a); }
-  function nowCard(x){const h=document.getElementById('v18Now'), stEl=document.getElementById('v18NowState'); if(!h)return; if(!x){h.innerHTML='<div class="v18-empty">次にやるタスクがありません。下のフォームから追加できます。</div>'; if(stEl)stEl.textContent='EMPTY'; return;} const s=state(x); if(stEl)stEl.textContent=s.label; const meta=[]; if(x.startTime)meta.push('<span>📌 '+esc(x.startTime)+'</span>'); meta.push('<span>'+(x.planMin||30)+'分</span>'); meta.push(x.kind==='routine'?'<span>ROUTINE</span>':'<span>'+String(x.rank||'zako').toUpperCase()+'</span>'); if(x.paused)meta.push('<span>前回中断あり</span>'); const next=x.nextAction?esc(x.nextAction):(x.kind==='routine'?'時刻になったら開始、または今すぐ開始':'未設定。必要なら「次の一手」で再開点を書く'); h.innerHTML='<div class="v18-next-card '+s.cls+'"><div class="v18-next-label">'+s.icon+' '+s.label+'</div><div class="v18-next-name">'+(x.kind==='routine'?'🎯 ':(RANK_EMOJI[x.rank||'zako']||''))+esc(x.title)+'</div><div class="v18-next-meta">'+meta.join('')+'</div><div class="v18-next-action"><b>次の一手</b>：'+next+'</div><div class="v18-btns">'+(x.running?'<button class="v18-btn warn" data-v18="pause" data-id="'+x.id+'">中断</button><button class="v18-btn good" data-v18="done" data-id="'+x.id+'">完了</button>':'<button class="v18-btn primary" data-v18="start" data-id="'+x.id+'">開始して予定に入れる</button><button class="v18-btn" data-v18="focus5" data-id="'+x.id+'">5分だけ</button>')+(x.kind==='task'?'<button class="v18-btn" data-v18="next" data-id="'+x.id+'">次の一手</button><button class="v18-btn warn" data-v18="flee" data-id="'+x.id+'">退避理由</button>':'')+'<button class="v18-btn" data-v18="edit" data-id="'+x.id+'">詳細</button></div></div>';}
+  function nowCard(x){const h=document.getElementById('v18Now'), stEl=document.getElementById('v18NowState'); if(!h)return; if(!x){h.innerHTML='<div class="v18-empty">次にやるタスクがありません。下のフォームから追加できます。</div>'; if(stEl)stEl.textContent='EMPTY'; return;} const s=state(x); if(stEl)stEl.textContent=s.label; const meta=[]; if(x.startTime)meta.push('<span>📌 '+esc(x.startTime)+'</span>'); meta.push('<span>'+(x.planMin||30)+'分</span>'); meta.push(x.kind==='routine'?'<span>ROUTINE</span>':'<span>'+String(x.rank||'zako').toUpperCase()+'</span>'); if(x.paused)meta.push('<span>前回中断あり</span>'); const next=x.nextAction?esc(x.nextAction):(x.kind==='routine'?'必要な時だけ「今やる」で開始':'未設定。必要なら「次の一手」で再開点を書く'); h.innerHTML='<div class="v18-next-card '+s.cls+'"><div class="v18-next-label">'+s.icon+' '+s.label+'</div><div class="v18-next-name">'+(x.kind==='routine'?'🎯 ':(RANK_EMOJI[x.rank||'zako']||''))+esc(x.title)+'</div><div class="v18-next-meta">'+meta.join('')+'</div><div class="v18-next-action"><b>次の一手</b>：'+next+'</div><div class="v18-btns">'+(x.running?'<button class="v18-btn warn" data-v18="pause" data-id="'+x.id+'">中断</button><button class="v18-btn good" data-v18="done" data-id="'+x.id+'">完了</button>':'<button class="v18-btn primary" data-v18="start" data-id="'+x.id+'">開始して予定に入れる</button><button class="v18-btn" data-v18="focus5" data-id="'+x.id+'">5分だけ</button>')+(x.kind==='task'?'<button class="v18-btn" data-v18="next" data-id="'+x.id+'">次の一手</button><button class="v18-btn warn" data-v18="flee" data-id="'+x.id+'">退避理由</button>':'')+'<button class="v18-btn" data-v18="edit" data-id="'+x.id+'">詳細</button></div></div>';}
   function row(x){const s=state(x); const meta=[]; if(x.startTime)meta.push('<span>'+esc(x.startTime)+'</span>'); if(x.planMin)meta.push('<span>'+x.planMin+'分</span>'); if(x.kind==='routine')meta.push('<span>ROUTINE</span>'); if(x.kind==='task'&&x.rank)meta.push('<span>'+String(x.rank).toUpperCase()+'</span>'); let actual=0; try{actual=x.kind==='task'?getTaskActualMin(x.id):0;}catch(e){} if(actual)meta.push('<span>実'+actual+'分</span>'); const next=x.nextAction?'<div class="v18-na">↳ '+esc(x.nextAction)+'</div>':''; const act=x.running?'<button class="v18-icon-btn warn" data-v18="pause" data-id="'+x.id+'">中断</button><button class="v18-icon-btn good" data-v18="done" data-id="'+x.id+'">完了</button>':(x.done?'<button class="v18-icon-btn" data-v18="edit" data-id="'+x.id+'">詳細</button>':'<button class="v18-icon-btn primary" data-v18="start" data-id="'+x.id+'">開始</button><button class="v18-icon-btn good" data-v18="done" data-id="'+x.id+'">完了</button>'); return '<div class="v18-task '+s.cls+'"><div class="v18-state" title="'+s.label+'">'+s.icon+'</div><div><div class="v18-title">'+(x.kind==='routine'?'🎯 ':'')+esc(x.title)+'</div><div class="v18-sub">'+meta.join('')+'</div>'+next+'</div><div class="v18-row-actions">'+act+'<button class="v18-icon-btn" data-v18="edit" data-id="'+x.id+'">⋯</button></div></div>';}
   function render(){ensure(); if(!document.getElementById('v18Board'))return; nowCard(pick()); const ti=todayItems(), bl=backlog().slice(0,12); const tl=document.getElementById('v18TodayList'), b=document.getElementById('v18BacklogList'); const tc=document.getElementById('v18TodayCount'), bc=document.getElementById('v18BacklogCount'); if(tc)tc.textContent=ti.length+'件'; if(bc)bc.textContent=bl.length+'件'; if(tl)tl.innerHTML=ti.length?ti.map(row).join(''):'<div class="v18-empty">今日の予定はまだありません。開始するとここに入ります。</div>'; if(b)b.innerHTML=bl.length?bl.map(row).join(''):'<div class="v18-empty">時間未定タスクはありません。</div>';}
   function refresh(){try{renderPool();}catch(e){} try{renderSchedule();}catch(e){} try{renderTimeline();}catch(e){} try{updateRunningBadge();}catch(e){} try{renderQuestCoach();}catch(e){} render();}
@@ -8978,7 +9002,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=58').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=59').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
