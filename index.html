@@ -9017,7 +9017,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=60').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=62').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -10248,11 +10248,18 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       .replace(/有限\s*会\s*社/g,'有限会社')
       .replace(/合同\s*会\s*社/g,'合同会社')
       .replace(/渡辺\s*パイ\s*プ/g,'渡辺パイプ')
+      .replace(/エイ\s*チエ\s*ス\s*ジャ\s*パン/g,'エイチエスジャパン')
+      .replace(/太陽\s*建\s*機\s*レンタ\s*ル/g,'太陽建機レンタル')
+      .replace(/川口\s*支店/g,'川口支店')
       .replace(/イシ\s*グロ/g,'イシグロ')
       .replace(/名\s*古屋/g,'名古屋')
       .replace(/宇賀\s*寿一/g,'宇賀寿一')
       .replace(/サー\s*ビス\s*セ/g,'サービスセ')
       .replace(/コー\s*ティ\s*ング\s*ホー\s*ス/g,'コーティングホース')
+      .replace(/タケ\s*ノコ/g,'タケノコ')
+      .replace(/出\s*荷\s*日/g,'出荷日')
+      .replace(/東\s*京\s*都/g,'東京都')
+      .replace(/滋賀\s*県/g,'滋賀県')
       .replace(/(\d+)\s*[人入]\s*(台|個|本|枚|式|台)/g,'$1$2')
       .replace(/(\d+)\s*A&/g,'$1台')
       .replace(/(\d+)\s+(台|個|本|枚|式)/g,'$1$2')
@@ -10268,9 +10275,17 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     S.deletedTaskSources=S.deletedTaskSources.slice(-500);
   }
   window.sasshyRememberDeletedTask=rememberDeletedTask;
+  function sourceKeys(t){
+    return [t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId,t?.title].map(clean).filter(Boolean);
+  }
+  function forgetDeletedSource(t){
+    if(!hasState() || !t || !Array.isArray(S.deletedTaskSources)) return;
+    const keys=new Set(sourceKeys(t));
+    S.deletedTaskSources=S.deletedTaskSources.filter(k=>!keys.has(clean(k)));
+  }
   function isDeletedSource(t){
     const list=Array.isArray(S.deletedTaskSources)?S.deletedTaskSources:[];
-    const keys=[t.v57SourceText,t.v57SourceKey,t.title].map(clean).filter(Boolean);
+    const keys=sourceKeys(t);
     return keys.some(k=>list.includes(k));
   }
   function setStatus(text){
@@ -10317,11 +10332,40 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
   }
   function parseLines(text){
-    const raw=String(text||'').split(/\n+/).map(normalizeOcrText).filter(Boolean);
+    const normalizeDateMarks=v=>normalizeOcrText(v)
+      .replace(/(20\d{2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{1,2})/g,'$1-$2-$3')
+      .replace(/社内\s*出荷/g,'社内出荷');
+    const splitJoinedRecords=line=>{
+      const s=normalizeDateMarks(line);
+      if(!s) return [];
+      const starts=[];
+      const dateRe=/(?:^|\s)(?:\d{1,5}\s+)?20\d{2}-\d{1,2}-\d{1,2}\b/g;
+      let m;
+      while((m=dateRe.exec(s))){
+        const head=m[0].match(/^\s+/)?.[0]?.length||0;
+        starts.push(m.index+head);
+      }
+      if(starts.length<2){
+        const shipStarts=[];
+        const shipRe=/(?:^|\s)(?:\d{1,5}\s+)?社内出荷\b/g;
+        while((m=shipRe.exec(s))){
+          const head=m[0].match(/^\s+/)?.[0]?.length||0;
+          shipStarts.push(m.index+head);
+        }
+        if(shipStarts.length>=2){
+          shipStarts.push(s.length);
+          return shipStarts.slice(0,-1).map((start,i)=>s.slice(start,shipStarts[i+1]).trim()).filter(Boolean);
+        }
+        return [s];
+      }
+      starts.push(s.length);
+      return starts.slice(0,-1).map((start,i)=>s.slice(start,starts[i+1]).trim()).filter(Boolean);
+    };
+    const raw=String(text||'').replace(/\r/g,'\n').split(/\n+/).flatMap(splitJoinedRecords).filter(Boolean);
     const rows=[];
     let buffer='';
     raw.forEach(line=>{
-      const startsRow=/\d{4}[-/]\d{1,2}[-/]\d{1,2}|社内出荷|出荷|納品|発注依頼|確認/.test(line);
+      const startsRow=/^(?:\d{1,5}\s+)?(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|社内出荷|出荷|納品|発注依頼|確認)/.test(line);
       if(startsRow && buffer){
         rows.push(buffer);
         buffer=line;
@@ -10330,26 +10374,34 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       }
     });
     if(buffer) rows.push(buffer);
-    return rows.filter(line=>{
+    return rows.flatMap(splitJoinedRecords).map(x=>x.trim()).filter((line,idx,arr)=>{
       if(line.length<8) return false;
       if(/合計|小計|税|金額|単価|検索|ページ|レコード|詳細を表示|備考のみ/.test(line)) return false;
-      return /社内出荷|出荷|納品|発注|確認|NSG|SV-|SG|CV|ホース|ノズル|[0-9]+\s*(個|台|本|枚|式)/i.test(line);
+      if(!/社内出荷|出荷|納品|発注|確認|NSG|SV-|SG|CV|ホース|ノズル|[0-9]+\s*(個|台|本|枚|式)/i.test(line)) return false;
+      return arr.findIndex(x=>clean(x)===clean(line))===idx;
     });
   }
   function companyAndProduct(line){
     let s=normalizeOcrText(line);
-    s=s.replace(/^\d+\s*/,'').replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/,'').replace(/社内出荷\s*[|_]?/,'');
-    const companyMarkers=['渡辺パイプ','イシグロ','有限会社','株式会社','合同会社','㈱'];
-    let companyIdx=-1;
-    companyMarkers.forEach(m=>{
-      const i=s.indexOf(m);
-      if(i>=0 && (companyIdx<0 || i<companyIdx)) companyIdx=i;
-    });
+    s=s.replace(/^\d{1,5}\s+(?=20\d{2}[-/]\d{1,2}[-/]\d{1,2})/,'')
+      .replace(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/,'')
+      .replace(/^\d{1,5}\s+/,'')
+      .replace(/社内出荷\s*[|_]?/,'')
+      .replace(/^[_＿\s]+/,'');
+    const prefRe=/(北海道|青森\s*県|岩手\s*県|宮城\s*県|秋田\s*県|山形\s*県|福島\s*県|茨城\s*県|栃木\s*県|群馬\s*県|埼玉\s*県|千葉\s*県|東京都|東京\s*都|神奈川\s*県|新潟\s*県|富山\s*県|石川\s*県|福井\s*県|山梨\s*県|長野\s*県|岐阜\s*県|静岡\s*県|愛知\s*県|三重\s*県|滋賀県|滋賀\s*県|京都\s*府|大阪\s*府|兵庫\s*県|奈良\s*県|和歌山\s*県|鳥取\s*県|島根\s*県|岡山\s*県|広島\s*県|山口\s*県|徳島\s*県|香川\s*県|愛媛\s*県|高知\s*県|福岡\s*県|佐賀\s*県|長崎\s*県|熊本\s*県|大分\s*県|宮崎\s*県|鹿児島\s*県|沖縄\s*県)/;
+    const prefMatch=s.match(prefRe);
+    const beforePref=prefMatch?s.slice(0,prefMatch.index):s;
+    const tokens=beforePref.split(/\s+/).filter(Boolean);
+    let companyIdx=tokens.findIndex(tok=>/(株式会社|有限会社|合同会社|㈱|エイチエスジャパン|太陽建機レンタル|イシグロ|渡辺パイプ)/.test(tok));
     let company='';
     let product=s;
     if(companyIdx>=0){
-      company=s.slice(companyIdx);
-      product=s.slice(0,companyIdx);
+      let start=companyIdx;
+      if(/^(株式会社|有限会社|合同会社|㈱)$/.test(tokens[companyIdx])) start=Math.max(0,companyIdx-6);
+      else if(/(株式会社|有限会社|合同会社|㈱)$/.test(tokens[companyIdx])) start=companyIdx;
+      const end=Math.min(tokens.length, companyIdx+4);
+      company=tokens.slice(start,end).join(' ');
+      product=tokens.slice(0,start).join(' ');
     }
     company=company
       .replace(/\s*(北海道|青森\s*県|岩手\s*県|宮城\s*県|秋田\s*県|山形\s*県|福島\s*県|茨城\s*県|栃木\s*県|群馬\s*県|埼玉\s*県|千葉\s*県|東京\s*都|神奈川\s*県|新潟\s*県|富山\s*県|石川\s*県|福井\s*県|山梨\s*県|長野\s*県|岐阜\s*県|静岡\s*県|愛知\s*県|三重\s*県|滋賀\s*県|京都\s*府|大阪\s*府|兵庫\s*県|奈良\s*県|和歌山\s*県|鳥取\s*県|島根\s*県|岡山\s*県|広島\s*県|山口\s*県|徳島\s*県|香川\s*県|愛媛\s*県|高知\s*県|福岡\s*県|佐賀\s*県|長崎\s*県|熊本\s*県|大分\s*県|宮崎\s*県|鹿児島\s*県|沖縄\s*県).*$/,'')
@@ -10359,6 +10411,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       .replace(/有限会社\s*宇賀寿一\s*商店/,'有限会社宇賀寿一商店')
       .replace(/渡辺パイプ\s*株式会社\s*千葉\s*サービスセ.*/,'渡辺パイプ株式会社 千葉サービスセンター')
       .replace(/名古屋\s*支店/,'名古屋支店')
+      .replace(/\s+(株式会社|有限会社|合同会社)/g,'$1')
       .replace(/\s+/g,' ')
       .trim();
     product=product
@@ -10403,8 +10456,9 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       v57FullTitle:title
     };
   }
-  function existsInList(t, list){
-    if(isDeletedSource(t)) return true;
+  function existsInList(t, list, opts){
+    opts=opts||{};
+    if(!opts.ignoreDeleted && isDeletedSource(t)) return true;
     return (list||[]).some(x=>x && (
       clean(x.v57SourceText)===clean(t.v57SourceText) ||
       clean(x.v57SourceKey)===clean(t.v57SourceKey) ||
@@ -10417,7 +10471,11 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     const area=document.getElementById('v57OcrText');
     const rows=parseLines(area?.value||'');
     if(!rows.length){alert('タスク化できそうな行が見つかりませんでした。文字を少し整理してからもう一度試してください。'); return;}
-    const tasks=rows.map(lineToTask).filter(t=>!exists(t));
+    const tasks=rows.map(lineToTask).map(t=>({
+      ...t,
+      v57AlreadyExists:existsInList(t,S.tasks||[],{ignoreDeleted:true}),
+      v57WasDeleted:isDeletedSource(t)
+    }));
     const box=document.getElementById('v57OcrPreview');
     if(!box) return;
     if(!tasks.length){
@@ -10425,16 +10483,21 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       setStatus('候補0');
       return;
     }
-    box.innerHTML=tasks.map((t,i)=>`
+    box.innerHTML=tasks.map((t,i)=>{
+      const disabled=t.v57AlreadyExists?'disabled':'';
+      const checked=(!t.v57AlreadyExists && !t.v57WasDeleted)?'checked':'';
+      const state=t.v57AlreadyExists?'追加済み':(t.v57WasDeleted?'削除済み候補':'新規');
+      return `
       <div class="v57-preview-item" data-v57-preview="${i}">
-        <input type="checkbox" checked>
+        <input type="checkbox" ${checked} ${disabled}>
         <div>
           <textarea class="v57-preview-title">${(typeof esc==='function'?esc(t.title):t.title)}</textarea>
-          <div class="v57-preview-meta">${t.scheduledDate} / ${t.planMin}分 / ${typeof esc==='function'?esc(t.v57SourceText):t.v57SourceText}</div>
+          <div class="v57-preview-meta">${state} / ${t.scheduledDate} / ${t.planMin}分 / ${typeof esc==='function'?esc(t.v57SourceText):t.v57SourceText}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     box.dataset.tasks=JSON.stringify(tasks);
-    setStatus('候補'+tasks.length);
+    setStatus('候補'+tasks.length+' / 新規'+tasks.filter(t=>!t.v57AlreadyExists&&!t.v57WasDeleted).length);
   }
   function importPreview(){
     if(!hasState()) return;
@@ -10450,7 +10513,10 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       if(!t || !item.querySelector('input[type="checkbox"]')?.checked) return;
       const title=item.querySelector('.v57-preview-title')?.value.trim();
       if(title) t.title=title;
-      if(existsInList(t, existingBefore)) return;
+      if(existsInList(t, existingBefore,{ignoreDeleted:true})) return;
+      forgetDeletedSource(t);
+      delete t.v57AlreadyExists;
+      delete t.v57WasDeleted;
       t.id='task-'+Date.now()+'-'+idx+'-'+Math.random().toString(36).slice(2,7);
       t.created=Date.now();
       S.tasks.unshift(t);
