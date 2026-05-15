@@ -3465,6 +3465,14 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
     if(!task) return null;
     return {type:'task', ref:task, startTime:task.startTime, planMin:task.planMin||30};
   };
+  const markManualTimelineEdit=(task)=>{
+    if(!task || isRoutineTask) return;
+    task.v45TouchedAt=Date.now();
+    task.v34ManualTodayDate=todayKey();
+    task.v34UserRequestedToday=true;
+    task.adhdReview='';
+    task.adhdHiddenGenerated=false;
+  };
 
   if(!getTaskLike()) return;
 
@@ -3507,6 +3515,7 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
 
     const cur=getTaskLike();
     if(!cur) return;
+    window.__sasshyTimelineDragging=true;
     const tStart=hmToMin(cur.startTime);
     origStartMin=tStart<startMin?tStart+24*60:tStart;
     origPlanMin=cur.planMin||30;
@@ -3546,6 +3555,7 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
       if(tCur && oldStart!==newHm){
         if(isRoutineTask) tCur.time=newHm;
         else tCur.startTime=newHm;
+        markManualTimelineEdit(tCur);
         el.classList.add('dragging');
         // DOMの位置だけ更新（再描画しない＝滑らか）
         const offset=(newStart-startHour*60)*PPM;
@@ -3565,6 +3575,7 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
       const tCur=cur && cur.ref;
       if(tCur && tCur.planMin!==newPlan){
         tCur.planMin=newPlan;
+        markManualTimelineEdit(tCur);
         el.classList.add('dragging');
         el.style.setProperty('--v35-card-height', Math.max(newPlan*PPM+3,8)+'px');
         el.style.height=Math.max(newPlan*PPM+3,8)+'px';
@@ -3613,13 +3624,17 @@ function attachTaskDrag(el, PPM, startHour, startMin, endMin){
         renderSchedule();
         renderTimeline();
       }else{
+        const cur=getTaskLike();
+        if(cur && cur.ref) markManualTimelineEdit(cur.ref);
         syncCompletedSession(id);
         save();
+        try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('タイムライン変更'); }catch(err){}
         renderTasks();
         renderSchedule();
         renderTimeline();
       }
     }
+    window.__sasshyTimelineDragging=false;
     dragMode=null;
   };
 
@@ -9002,7 +9017,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=59').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=60').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -10201,6 +10216,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 .v57-preview-title{
   width:100%;border:1px solid var(--border);background:var(--surface);color:var(--text);
   border-radius:7px;padding:8px;font-family:inherit;font-size:13px;font-weight:800;
+  min-height:58px;line-height:1.45;resize:vertical;
 }
 .v57-preview-meta{font-size:10px;color:var(--text3);font-family:'SF Mono','JetBrains Mono',monospace;margin-top:4px;}
 @media(max-width:620px){.v57-ocr-actions .v57-ocr-btn{flex:1 1 calc(50% - 7px);}}
@@ -10353,7 +10369,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       .trim();
     if(!product) product=s.slice(0,80);
     if(!company) company='会社名未読取';
-    return {company:company.slice(0,42), product:product.slice(0,70)};
+    return {company, product};
   }
   function lineToTask(line, index){
     const dateMatch=line.match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/);
@@ -10383,17 +10399,19 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       v57SourceText:line,
       v57SourceKey:normalized,
       v57Company:parts.company,
-      v57Product:parts.product
+      v57Product:parts.product,
+      v57FullTitle:title
     };
   }
-  function exists(t){
+  function existsInList(t, list){
     if(isDeletedSource(t)) return true;
-    return S.tasks.some(x=>x && (
+    return (list||[]).some(x=>x && (
       clean(x.v57SourceText)===clean(t.v57SourceText) ||
       clean(x.v57SourceKey)===clean(t.v57SourceKey) ||
-      (clean(x.title)===clean(t.title) && x.scheduledDate===t.scheduledDate)
+      (clean(x.title)===clean(t.title) && x.scheduledDate===t.scheduledDate && clean(x.v57SourceText||'')===clean(t.v57SourceText||''))
     ));
   }
+  function exists(t){ return existsInList(t, S.tasks||[]); }
   function renderPreview(){
     if(!hasState()) return;
     const area=document.getElementById('v57OcrText');
@@ -10411,7 +10429,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       <div class="v57-preview-item" data-v57-preview="${i}">
         <input type="checkbox" checked>
         <div>
-          <input class="v57-preview-title" value="${(typeof esc==='function'?esc(t.title):t.title)}">
+          <textarea class="v57-preview-title">${(typeof esc==='function'?esc(t.title):t.title)}</textarea>
           <div class="v57-preview-meta">${t.scheduledDate} / ${t.planMin}分 / ${typeof esc==='function'?esc(t.v57SourceText):t.v57SourceText}</div>
         </div>
       </div>`).join('');
@@ -10425,13 +10443,16 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     try{tasks=JSON.parse(box?.dataset?.tasks||'[]');}catch(e){tasks=[];}
     if(!tasks.length){renderPreview(); return;}
     let added=0;
+    const existingBefore=JSON.parse(JSON.stringify(S.tasks||[]));
     [...box.querySelectorAll('.v57-preview-item')].forEach(item=>{
       const idx=Number(item.dataset.v57Preview);
       const t=tasks[idx];
       if(!t || !item.querySelector('input[type="checkbox"]')?.checked) return;
       const title=item.querySelector('.v57-preview-title')?.value.trim();
       if(title) t.title=title;
-      if(exists(t)) return;
+      if(existsInList(t, existingBefore)) return;
+      t.id='task-'+Date.now()+'-'+idx+'-'+Math.random().toString(36).slice(2,7);
+      t.created=Date.now();
       S.tasks.unshift(t);
       added++;
     });
@@ -10501,6 +10522,86 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     window.renderTasks=wrapped;
   }
   setTimeout(ensurePanel,1000);
+})();
+</script>
+
+<style id="v60-ocr-drag-stability-style">
+/* ===== v60: OCR preview readability + stable timeline drag ===== */
+.v57-preview-title{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.v57-preview-meta{
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.45;
+}
+body.v35-timeline-drag .sched-task{
+  transition:box-shadow .12s ease, outline-color .12s ease !important;
+}
+body.v35-timeline-drag .sched-resize-handle{
+  height:12px !important;
+  max-height:55% !important;
+  top:auto !important;
+  left:0 !important;
+  right:0 !important;
+  bottom:0 !important;
+  z-index:80 !important;
+  opacity:1 !important;
+  cursor:ns-resize !important;
+  background:
+    linear-gradient(to bottom, transparent 0, transparent 4px, var(--border2) 4px, var(--border2) 7px, transparent 7px) !important;
+}
+body.v35-timeline-drag .sched-task:hover .sched-resize-handle{
+  background:
+    linear-gradient(to bottom, transparent 0, transparent 3px, var(--orange) 3px, var(--orange) 8px, transparent 8px) !important;
+}
+body.v35-timeline-drag .sched-task.moving,
+body.v35-timeline-drag .sched-task.resizing,
+body.v35-timeline-drag .sched-task.dragging{
+  transform:none !important;
+  transition:none !important;
+}
+body.v35-timeline-drag .sched-task.moving:hover,
+body.v35-timeline-drag .sched-task.resizing:hover,
+body.v35-timeline-drag .sched-task.dragging:hover{
+  height:var(--v35-card-height, 58px) !important;
+  min-height:8px !important;
+}
+body.v35-timeline-drag .sched-task.moving.v35-micro:hover,
+body.v35-timeline-drag .sched-task.resizing.v35-micro:hover,
+body.v35-timeline-drag .sched-task.dragging.v35-micro:hover,
+body.v35-timeline-drag .sched-task.moving.v35-tiny:hover,
+body.v35-timeline-drag .sched-task.resizing.v35-tiny:hover,
+body.v35-timeline-drag .sched-task.dragging.v35-tiny:hover,
+body.v35-timeline-drag .sched-task.moving.v35-short:hover,
+body.v35-timeline-drag .sched-task.resizing.v35-short:hover,
+body.v35-timeline-drag .sched-task.dragging.v35-short:hover{
+  height:var(--v35-card-height, 58px) !important;
+  min-height:8px !important;
+  background:var(--surface) !important;
+}
+@media(max-width:700px){
+  body.v35-timeline-drag .sched-resize-handle{height:16px !important;max-height:55% !important;}
+}
+</style>
+
+<script id="v60-timeline-drag-render-guard-script">
+/* ===== v60: keep timeline from re-rendering while a card is being dragged ===== */
+(function(){
+  const oldRenderSchedule=window.renderSchedule;
+  if(typeof oldRenderSchedule==='function' && !oldRenderSchedule.__v60DragGuard){
+    const wrapped=function(){
+      if(window.__sasshyTimelineDragging) return;
+      return oldRenderSchedule.apply(this,arguments);
+    };
+    wrapped.__v60DragGuard=true;
+    window.renderSchedule=wrapped;
+  }
+  const release=()=>{ setTimeout(()=>{ window.__sasshyTimelineDragging=false; },0); };
+  ['mouseup','touchend','touchcancel','pointerup','pointercancel','blur'].forEach(type=>{
+    window.addEventListener(type, release, true);
+  });
 })();
 </script>
 
