@@ -8045,7 +8045,13 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     const inp=document.getElementById('v45AddInput');
     const title=(inp?.value||'').trim();
     if(!title) return;
-    const t={id:'task-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),title,lane:'now',rank:'zako',done:false,subs:[],created:Date.now(),createdDate:dkey(),scheduledDate:dkey(),startTime:hm(),planMin:15,nextAction:'開始する',v34ManualTodayDate:dkey(),v45TouchedAt:Date.now()};
+    const now=Date.now();
+    const recentDup=S.tasks.some(t=>t && !t.done && String(t.title||'').trim()===title && Number(t.created||0)>now-3000);
+    if(recentDup){
+      if(inp) inp.value='';
+      return;
+    }
+    const t={id:'task-'+now+'-'+Math.random().toString(36).slice(2,7),title,lane:'now',rank:'zako',done:false,subs:[],created:now,createdDate:dkey(),scheduledDate:dkey(),startTime:hm(),planMin:15,nextAction:'開始する',v34ManualTodayDate:dkey(),v45TouchedAt:now};
     S.tasks.unshift(t);
     if(inp) inp.value='';
     if(typeof addLog==='function') addLog('📝 今日のタスクを追加: '+(typeof esc==='function'?esc(title):title));
@@ -8068,13 +8074,19 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     const cur=bar.querySelector('#v45Current');
     const t=pick();
     if(!cur) return;
-    if(!t){
-      cur.innerHTML='<div class="v45-current"><div class="v45-label">NOW</div><div class="v45-title">今日のタスクなし</div></div>';
+    if(!t || !S.runningTaskId || S.runningTaskId!==t.id){
+      if(cur.dataset.v45Sig!=='idle'){
+        cur.innerHTML='';
+        cur.dataset.v45Sig='idle';
+      }
       return;
     }
     const running=S.runningTaskId===t.id;
     const meta=[running?'実行中':'未着手',t.startTime||'',(t.planMin||15)+'分'].filter(Boolean).map(x=>`<span>${typeof esc==='function'?esc(String(x)):String(x)}</span>`).join('');
-    cur.innerHTML=`<div class="v45-current"><div class="v45-label">${running?'RUNNING':'NEXT TASK'}</div><div class="v45-title">${typeof esc==='function'?esc(t.title||'無題'):(t.title||'無題')}</div><div class="v45-meta">${meta}</div><div class="v45-actions">${running?`<button class="v45-btn warn" data-v45="pause" data-id="${t.id}">停止</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`:`<button class="v45-btn primary" data-v45="start" data-id="${t.id}">開始</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button>`}<button class="v45-btn" data-v45="detail" data-id="${t.id}">詳細</button><button class="v45-btn danger" data-v45="delete" data-id="${t.id}">削除</button></div></div>`;
+    const sig=[t.id,t.title,t.startTime,t.planMin,S.runningTaskId,t.done].join('|');
+    if(cur.dataset.v45Sig===sig) return;
+    cur.dataset.v45Sig=sig;
+    cur.innerHTML=`<div class="v45-current"><div class="v45-label">RUNNING</div><div class="v45-title">${typeof esc==='function'?esc(t.title||'無題'):(t.title||'無題')}</div><div class="v45-meta">${meta}</div><div class="v45-actions"><button class="v45-btn warn" data-v45="pause" data-id="${t.id}">停止</button><button class="v45-btn good" data-v45="done" data-id="${t.id}">完了</button><button class="v45-btn" data-v45="detail" data-id="${t.id}">詳細</button><button class="v45-btn danger" data-v45="delete" data-id="${t.id}">削除</button></div></div>`;
   }
   function cleanupLegacyForcedTasks(){
     if(!ok()) return;
@@ -8110,7 +8122,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     window.save=wrapped;
   }
   setTimeout(render,300);
-  setInterval(render,1500);
+  setInterval(render,10000);
 })();
 </script>
 <style id="v48-voice-settings-style">
@@ -8272,7 +8284,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
   if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=render;
   window.addEventListener('sasshyVoiceConfigChanged',render);
   setTimeout(render,500);
-  setInterval(render,3000);
+  setInterval(()=>{ const p=document.getElementById('v48VoiceSettings'); if(p && p.open) render(); },15000);
 })();
 </script>
 <script id="v50-stop-running-fix-script">
@@ -9095,7 +9107,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=64').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=65').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9479,7 +9491,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const deletedSet=new Set(deleted.map(clean));
       const removedIds=new Set();
       merged.tasks=merged.tasks.filter(t=>{
-        const keys=[t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId,t?.title].map(clean).filter(Boolean);
+        const keys=[t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId].map(clean).filter(Boolean);
         const shouldRemove=keys.some(k=>deletedSet.has(k));
         if(shouldRemove && t?.id) removedIds.add(t.id);
         return !shouldRemove;
@@ -10353,13 +10365,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function rememberDeletedTask(t){
     if(!hasState() || !t) return;
     S.deletedTaskSources=Array.isArray(S.deletedTaskSources)?S.deletedTaskSources:[];
-    const keys=[t.v57SourceText,t.v57SourceKey,t.v56SourceId,t.sourceId,t.title].map(clean).filter(Boolean);
+    const keys=[t.v57SourceText,t.v57SourceKey,t.v56SourceId,t.sourceId].map(clean).filter(Boolean);
     keys.forEach(k=>{ if(!S.deletedTaskSources.includes(k)) S.deletedTaskSources.push(k); });
     S.deletedTaskSources=S.deletedTaskSources.slice(-500);
   }
   window.sasshyRememberDeletedTask=rememberDeletedTask;
   function sourceKeys(t){
-    return [t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId,t?.title].map(clean).filter(Boolean);
+    return [t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId].map(clean).filter(Boolean);
   }
   function forgetDeletedSource(t){
     if(!hasState() || !t || !Array.isArray(S.deletedTaskSources)) return;
@@ -10847,6 +10859,136 @@ body.v35-timeline-drag .sched-task.dragging.v35-short:hover{
     e.stopImmediatePropagation();
     forceStopTask(id);
   },true);
+})();
+</script>
+
+<style id="v65-delete-undo-and-stability-style">
+.v65-undo-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border:1px solid var(--orange);
+  background:var(--orange-glow);
+  color:var(--text);
+  border-radius:10px;
+  padding:9px 10px;
+  margin:0 0 10px;
+  font-size:12px;
+  font-weight:900;
+}
+.v65-undo-bar button{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:8px;
+  padding:7px 10px;
+  font-size:12px;
+  font-weight:900;
+  font-family:inherit;
+  cursor:pointer;
+  white-space:nowrap;
+}
+</style>
+
+<script id="v65-delete-undo-and-stability-script">
+/* ===== v65: undo deleted tasks + prevent title-wide deletion ===== */
+(function(){
+  function hasState(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function clone(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return null;}}
+  function escText(v){return typeof esc==='function'?esc(String(v||'')):String(v||'');}
+  function sourceKeys(t){
+    return [t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId].map(v=>String(v==null?'':v).replace(/\s+/g,' ').trim()).filter(Boolean);
+  }
+  function ensureStack(){
+    if(!hasState()) return [];
+    S.deletedTaskUndo=Array.isArray(S.deletedTaskUndo)?S.deletedTaskUndo:[];
+    return S.deletedTaskUndo;
+  }
+  function pushDeleted(t){
+    if(!hasState() || !t || !t.id) return;
+    const stack=ensureStack();
+    const snap=clone(t);
+    if(!snap) return;
+    stack.push({task:snap,ts:Date.now()});
+    while(stack.length>20) stack.shift();
+    renderUndo();
+  }
+  const oldRemember=window.sasshyRememberDeletedTask;
+  window.sasshyRememberDeletedTask=function(t){
+    pushDeleted(t);
+    if(typeof oldRemember==='function') return oldRemember.apply(this,arguments);
+  };
+  function refresh(){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('削除を元に戻す'); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderPool==='function') renderPool(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof renderQuestCoach==='function') renderQuestCoach(); }catch(e){}
+    renderUndo();
+  }
+  function restoreLast(){
+    if(!hasState()) return;
+    const stack=ensureStack();
+    let item=null;
+    while(stack.length && !item) item=stack.pop();
+    if(!item || !item.task) { renderUndo(); return; }
+    const t=clone(item.task);
+    if(!t) return;
+    if(S.tasks.some(x=>x&&x.id===t.id)){
+      renderUndo();
+      return;
+    }
+    t.done=false;
+    t.undoneAt=Date.now();
+    delete t.completedAt;
+    delete t.doneAt;
+    S.tasks.unshift(t);
+    const keys=new Set(sourceKeys(t));
+    if(keys.size && Array.isArray(S.deletedTaskSources)){
+      S.deletedTaskSources=S.deletedTaskSources.filter(k=>!keys.has(String(k==null?'':k).replace(/\s+/g,' ').trim()));
+    }
+    try{ if(typeof addLog==='function') addLog('↩ 削除したタスクを復元: '+escText(t.title||'無題')); }catch(e){}
+    refresh();
+  }
+  function renderUndo(){
+    const host=document.querySelector('#p-quest');
+    if(!host) return;
+    let bar=document.getElementById('v65UndoBar');
+    const stack=hasState()?ensureStack():[];
+    const last=stack[stack.length-1];
+    if(!last || !last.task){
+      if(bar) bar.remove();
+      return;
+    }
+    if(!bar){
+      bar=document.createElement('div');
+      bar.id='v65UndoBar';
+      bar.className='v65-undo-bar';
+      const anchor=document.getElementById('v45CommandBar') || host.firstElementChild;
+      host.insertBefore(bar, anchor ? anchor.nextSibling : host.firstChild);
+      bar.addEventListener('click',e=>{
+        const btn=e.target.closest('[data-v65-undo]');
+        if(!btn) return;
+        e.preventDefault();
+        restoreLast();
+      });
+    }
+    bar.innerHTML='<span>削除: '+escText(last.task.title||'無題')+'</span><button type="button" data-v65-undo>元に戻す</button>';
+  }
+  document.addEventListener('keydown',e=>{
+    const tag=e.target&&e.target.tagName?e.target.tagName.toLowerCase():'';
+    if(e.target&&(e.target.isContentEditable||tag==='input'||tag==='textarea'||tag==='select')) return;
+    if((e.metaKey||e.ctrlKey) && String(e.key||'').toLowerCase()==='z' && hasState() && ensureStack().length){
+      e.preventDefault();
+      restoreLast();
+    }
+  },true);
+  setTimeout(renderUndo,500);
+  window.sasshyRestoreDeletedTask=restoreLast;
 })();
 </script>
 
