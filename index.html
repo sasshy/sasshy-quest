@@ -9107,7 +9107,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=65').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=66').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -10601,7 +10601,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     try{tasks=JSON.parse(box?.dataset?.tasks||'[]');}catch(e){tasks=[];}
     if(!tasks.length){renderPreview(); return;}
     let added=0;
-    const existingBefore=JSON.parse(JSON.stringify(S.tasks||[]));
+    const existingBefore=S.tasks||[];
     [...box.querySelectorAll('.v57-preview-item')].forEach(item=>{
       const idx=Number(item.dataset.v57Preview);
       const t=tasks[idx];
@@ -10631,6 +10631,49 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     box.dataset.tasks='[]';
     // 完了通知はパネル内ステータスだけにして、作業の流れを止めない。
   }
+  window.sasshyV57PreviewTasksFromText=function(text){
+    if(!hasState()) return [];
+    const seen=new Set();
+    return parseLines(text).map(lineToTask).filter(t=>{
+      const key=clean(t.v57SourceKey||t.v57SourceText||t.title);
+      if(!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).map(t=>({
+      ...t,
+      v57AlreadyExists:existsInList(t,S.tasks||[],{ignoreDeleted:true}),
+      v57WasDeleted:isDeletedSource(t)
+    }));
+  };
+  window.sasshyV57ImportTasks=function(tasks, opts){
+    if(!hasState()) return {added:0, skipped:0};
+    opts=opts||{};
+    let added=0, skipped=0;
+    const live=S.tasks||[];
+    (tasks||[]).forEach((raw,idx)=>{
+      if(!raw || !raw.title){ skipped++; return; }
+      const t=JSON.parse(JSON.stringify(raw));
+      if(!opts.allowDeleted && isDeletedSource(t)){ skipped++; return; }
+      if(existsInList(t,live,{ignoreDeleted:true})){ skipped++; return; }
+      forgetDeletedSource(t);
+      delete t.v57AlreadyExists;
+      delete t.v57WasDeleted;
+      t.id='task-'+Date.now()+'-'+idx+'-'+Math.random().toString(36).slice(2,7);
+      t.created=Date.now();
+      S.tasks.unshift(t);
+      added++;
+    });
+    if(added){
+      try{ if(typeof addLog==='function') addLog('OCR/貼り付けから今日のタスクを '+added+'件追加'); }catch(e){}
+      try{ if(typeof save==='function') save(); }catch(e){}
+      try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('OCR取込'); }catch(e){}
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+      try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+      try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+      try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+    }
+    return {added, skipped};
+  };
   function ensurePanel(){
     if(!hasState()) return null;
     let panel=document.getElementById('v57OcrPanel');
@@ -10989,6 +11032,809 @@ body.v35-timeline-drag .sched-task.dragging.v35-short:hover{
   },true);
   setTimeout(renderUndo,500);
   window.sasshyRestoreDeletedTask=restoreLast;
+})();
+</script>
+
+<style id="v66-simple-quest-style">
+/* ===== v66: simplify QUEST surface and make task actions obvious ===== */
+body.v66-simple-quest #cdBox,
+body.v66-simple-quest .quest-coach,
+body.v66-simple-quest .quest-status-legend,
+body.v66-simple-quest .warchest,
+body.v66-simple-quest .purpose-code,
+body.v66-simple-quest #p-quest > .q-add,
+body.v66-simple-quest #p-quest > .pool-section.pool-main,
+body.v66-simple-quest #v34Panel,
+body.v66-simple-quest #v40SyncPanel,
+body.v66-simple-quest #v45CommandBar,
+body.v66-simple-quest #v48VoiceSettings,
+body.v66-simple-quest #v56KintonePanel,
+body.v66-simple-quest #v57OcrPanel{
+  display:none !important;
+}
+body.v66-simple-quest #p-quest{
+  max-width:980px;
+  margin:0 auto;
+}
+.v66-desk{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:12px;
+  padding:12px;
+  margin:0 0 14px;
+  box-shadow:var(--shadow-xs);
+}
+.v66-topline{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.v66-title{
+  font-size:13px;
+  font-weight:950;
+  color:var(--text);
+}
+.v66-subtle{
+  font-size:11px;
+  color:var(--text3);
+  font-weight:700;
+}
+.v66-add{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 74px auto;
+  gap:8px;
+  align-items:center;
+}
+.v66-add input,
+.v66-import textarea{
+  width:100%;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:10px 11px;
+  font-family:inherit;
+  font-size:14px;
+  outline:none;
+}
+.v66-add input:focus,
+.v66-import textarea:focus{
+  border-color:var(--text);
+  background:var(--surface);
+}
+.v66-add input[type="number"]{
+  text-align:center;
+}
+.v66-btn{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:9px 11px;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.v66-btn:hover{border-color:var(--text);background:var(--surface3);}
+.v66-btn.primary{background:var(--text);border-color:var(--text);color:var(--surface);}
+.v66-btn.good{border-color:var(--green);color:var(--green);}
+.v66-btn.warn{border-color:var(--orange);color:var(--orange);}
+.v66-btn.danger{border-color:var(--red);color:var(--red);}
+.v66-import{
+  margin-top:10px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface2);
+}
+.v66-import summary{
+  cursor:pointer;
+  list-style:none;
+  padding:10px 11px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:12px;
+  font-weight:950;
+}
+.v66-import summary::-webkit-details-marker{display:none;}
+.v66-import-body{
+  padding:0 10px 10px;
+}
+.v66-import textarea{
+  min-height:86px;
+  resize:vertical;
+  background:var(--surface);
+}
+.v66-import-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+  margin:8px 0;
+}
+.v66-import-actions input[type="file"]{
+  flex:1 1 190px;
+  min-width:0;
+  font-size:12px;
+  color:var(--text2);
+}
+.v66-status{
+  font-size:11px;
+  color:var(--text3);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  white-space:nowrap;
+}
+.v66-preview{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-top:8px;
+}
+.v66-candidate{
+  display:grid;
+  grid-template-columns:22px minmax(0,1fr);
+  gap:8px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface);
+  padding:8px;
+}
+.v66-candidate textarea{
+  min-height:42px;
+  padding:7px 8px;
+  font-size:12px;
+}
+.v66-candidate-meta{
+  margin-top:4px;
+  color:var(--text3);
+  font-size:10.5px;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.v66-list-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:12px 0 7px;
+}
+.v66-list{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+.v66-group{
+  margin:8px 0 1px;
+  font-size:10.5px;
+  font-weight:950;
+  color:var(--text3);
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.v66-task{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  border-radius:9px;
+  padding:9px;
+}
+.v66-task.running{
+  border-color:var(--red);
+  background:var(--red-glow);
+}
+.v66-task.overdue{
+  border-color:var(--orange);
+  background:var(--orange-glow);
+}
+.v66-task-title{
+  color:var(--text);
+  font-size:14px;
+  font-weight:850;
+  line-height:1.35;
+  word-break:break-word;
+}
+.v66-task-meta{
+  margin-top:3px;
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  color:var(--text3);
+  font-size:11px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v66-task-actions{
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.v66-empty{
+  border:1px dashed var(--border);
+  color:var(--text3);
+  border-radius:9px;
+  padding:14px;
+  text-align:center;
+  font-size:12px;
+}
+body.v66-simple-quest .sched-hdr{
+  margin-top:14px !important;
+}
+body.v66-simple-quest .sched-task:not(.gcal){
+  height:max(var(--v35-card-height, 38px), 38px) !important;
+  min-height:38px !important;
+  padding:6px 48px 6px 9px !important;
+  overflow:hidden !important;
+  border-radius:9px !important;
+  border-left-width:6px !important;
+  box-shadow:var(--shadow-sm) !important;
+}
+body.v66-simple-quest .sched-task:not(.gcal):hover{
+  height:max(var(--v35-card-height, 38px), 38px) !important;
+  min-height:38px !important;
+  overflow:visible !important;
+  z-index:90 !important;
+}
+body.v66-simple-quest .sched-task-title,
+body.v66-simple-quest .sched-task-title.compact{
+  display:-webkit-box !important;
+  -webkit-line-clamp:2 !important;
+  -webkit-box-orient:vertical !important;
+  white-space:normal !important;
+  overflow:hidden !important;
+  font-size:13px !important;
+  line-height:1.25 !important;
+  font-weight:900 !important;
+  padding-right:0 !important;
+}
+body.v66-simple-quest .sched-task-time,
+body.v66-simple-quest .sched-task-time.compact{
+  display:block !important;
+  margin-top:2px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  font-size:10.5px !important;
+  line-height:1.2 !important;
+}
+body.v66-simple-quest .sched-task.done:after,
+body.v66-simple-quest .sched-task.running:after{
+  right:45px !important;
+}
+.v66-tl-del{
+  position:absolute;
+  top:5px;
+  right:5px;
+  z-index:95;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--red);
+  border-radius:7px;
+  min-width:34px;
+  height:24px;
+  padding:0 7px;
+  font-size:11px;
+  font-weight:950;
+  font-family:inherit;
+  cursor:pointer;
+  pointer-events:auto !important;
+}
+.v66-tl-del:hover{
+  border-color:var(--red);
+  background:var(--red-glow);
+}
+body.v66-simple-quest .sched-task,
+body.v66-simple-quest .sched-task *{
+  pointer-events:auto !important;
+}
+body.v66-simple-quest .sched-resize-handle{
+  left:0 !important;
+  right:44px !important;
+}
+@media(max-width:620px){
+  .v66-add{grid-template-columns:minmax(0,1fr) 64px;}
+  .v66-add .v66-btn.primary{grid-column:1 / -1;}
+  .v66-task{grid-template-columns:1fr;}
+  .v66-task-actions{justify-content:flex-start;}
+  .v66-btn{padding:8px 10px;}
+}
+</style>
+
+<script id="v66-simple-quest-script">
+/* ===== v66: simple QUEST, safe add/delete, direct OCR import ===== */
+(function(){
+  const OCR_CDN='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  let loadingOcr=false;
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function dkey(){try{return todayKey();}catch(e){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}}
+  function hm(){const d=new Date();return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
+  function escText(v){
+    const s=String(v==null?'':v);
+    return typeof esc==='function'?esc(s):s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function clean(v){return String(v==null?'':v).replace(/[　\t]+/g,' ').replace(/\s+/g,' ').trim();}
+  function sourceKey(t){return clean(t&&((t.v57SourceKey||t.v57SourceText||t.v66SourceKey||t.v56SourceId||t.sourceId)||''));}
+  function clone(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return null;}}
+  function taskDate(t){return t&&t.scheduledDate?String(t.scheduledDate):'';}
+  function deletedSource(t){
+    const key=sourceKey(t);
+    return !!(key && Array.isArray(S.deletedTaskSources) && S.deletedTaskSources.map(clean).includes(key));
+  }
+  function duplicateOf(t){
+    const key=sourceKey(t);
+    const title=clean(t.title).toLowerCase();
+    const date=taskDate(t);
+    return (S.tasks||[]).find(x=>{
+      if(!x || x.id===t.id) return false;
+      const xKey=sourceKey(x);
+      if(key && xKey && key===xKey) return true;
+      return !x.done && clean(x.title).toLowerCase()===title && taskDate(x)===date;
+    }) || null;
+  }
+  function normalizeTask(raw, opts){
+    opts=opts||{};
+    const now=Date.now();
+    const t=Object.assign({}, raw||{});
+    t.title=clean(t.title);
+    if(!t.title) return null;
+    t.id=t.id||('task-'+now+'-'+Math.random().toString(36).slice(2,7));
+    t.lane=t.lane||'now';
+    t.rank=t.rank||'zako';
+    t.done=false;
+    t.subs=Array.isArray(t.subs)?t.subs:[];
+    t.created=Number(t.created||0)||now;
+    t.createdDate=t.createdDate||dkey();
+    t.planMin=Math.max(1, Math.min(999, Number(t.planMin||opts.planMin||15)||15));
+    if(opts.today && !t.scheduledDate) t.scheduledDate=dkey();
+    if(t.startTime && !t.scheduledDate) t.scheduledDate=dkey();
+    t.v45TouchedAt=now;
+    return t;
+  }
+  function addTaskSafe(raw, opts){
+    if(!ok()) return {added:false, reason:'state'};
+    opts=opts||{};
+    const t=normalizeTask(raw, opts);
+    if(!t) return {added:false, reason:'empty'};
+    if(!opts.allowDeleted && deletedSource(t)) return {added:false, reason:'deleted', task:t};
+    const dup=duplicateOf(t);
+    if(dup) return {added:false, reason:'duplicate', task:dup};
+    S.tasks.unshift(t);
+    return {added:true, task:t};
+  }
+  window.sasshyAddTaskSafe=addTaskSafe;
+
+  function refresh(reason){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(reason && typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    renderSimple();
+  }
+  function closeOpenSessions(id, completed){
+    const now=Date.now();
+    (S.sessions||[]).forEach(s=>{
+      if(s && s.taskId===id && !s.endedAt){
+        s.endedAt=now;
+        s.completed=!!completed;
+      }
+    });
+    if(S.runningTaskId===id) S.runningTaskId=null;
+    try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+  }
+  function deleteTaskById(id, opts){
+    if(!ok() || !id || String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return false;
+    const idx=S.tasks.findIndex(t=>t&&t.id===id);
+    if(idx<0) return false;
+    const t=S.tasks[idx];
+    if(opts&&opts.confirm && !confirm('このタスクを削除する？')) return false;
+    const snap=clone(t);
+    closeOpenSessions(id,false);
+    if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(snap||t);
+    S.tasks.splice(idx,1);
+    try{ if(typeof addLog==='function') addLog('🗑 '+escText((snap||t).title||'タスク')+' を削除'); }catch(e){}
+    refresh('タスク削除');
+    return true;
+  }
+  window.sasshyDeleteTaskById=deleteTaskById;
+
+  function finishTaskSafe(id){
+    if(!ok()) return;
+    const t=S.tasks.find(x=>x&&x.id===id);
+    if(!t || t.done) return;
+    if(typeof askCompletionDate==='function' && !askCompletionDate(t)) return;
+    if(typeof finishTask==='function') finishTask(id);
+    t.done=true;
+    t.completedAt=Date.now();
+    if(t.subs) t.subs.forEach(s=>s.done=true);
+    closeOpenSessions(id,true);
+    const exp=(typeof RANK_EXP!=='undefined' && RANK_EXP[t.rank||'zako']) ? RANK_EXP[t.rank||'zako'] : 10;
+    if(typeof S.totalKills==='number') S.totalKills++;
+    try{ if(typeof gainExp==='function') gainExp(exp); }catch(e){}
+    try{ if(typeof addLog==='function') addLog((typeof RANK_EMOJI!=='undefined'?(RANK_EMOJI[t.rank||'zako']||''):'')+' <span class="defeat">'+escText(t.title)+'</span> 完了 <span class="exp">+'+exp+'EXP</span>'); }catch(e){}
+    refresh('タスク完了');
+  }
+  function startOrPause(id){
+    if(!ok()) return;
+    if(S.runningTaskId===id){
+      if(typeof window.sasshyForceStopTask==='function') window.sasshyForceStopTask(id);
+      else { closeOpenSessions(id,false); refresh('中断'); }
+      return;
+    }
+    if(typeof startTask==='function') startTask(id);
+    else{
+      const t=S.tasks.find(x=>x&&x.id===id);
+      if(t){ t.scheduledDate=t.scheduledDate||dkey(); t.startTime=t.startTime||hm(); S.runningTaskId=id; }
+    }
+    refresh('タスク開始');
+  }
+  function scheduleTask(id){
+    if(typeof openSetDateModal==='function') openSetDateModal(id);
+  }
+  function addQuick(){
+    if(!ok()) return;
+    const titleEl=document.getElementById('v66QuickTitle');
+    const minEl=document.getElementById('v66QuickMin');
+    const title=clean(titleEl&&titleEl.value);
+    const planMin=Math.max(1, Math.min(999, Number(minEl&&minEl.value)||15));
+    const st=document.getElementById('v66Status');
+    if(!title){ if(titleEl) titleEl.focus(); return; }
+    const r=addTaskSafe({title, planMin, scheduledDate:dkey(), nextAction:'開始する'}, {today:true});
+    if(r.added){
+      if(titleEl) titleEl.value='';
+      if(minEl) minEl.value='15';
+      try{ if(typeof addLog==='function') addLog('📝 今日のタスクを追加: '+escText(title)); }catch(e){}
+      if(st) st.textContent='追加しました';
+      refresh('タスク追加');
+      setTimeout(()=>{ if(titleEl) titleEl.focus(); },0);
+    }else if(st){
+      st.textContent=r.reason==='duplicate'?'同じタスクがあります':'追加できませんでした';
+    }
+  }
+
+  function ensureDesk(){
+    document.body.classList.add('v66-simple-quest');
+    let desk=document.getElementById('v66QuestDesk');
+    if(desk) return desk;
+    const host=document.querySelector('#p-quest');
+    if(!host) return null;
+    desk=document.createElement('div');
+    desk.id='v66QuestDesk';
+    desk.className='v66-desk';
+    desk.innerHTML=`
+      <div class="v66-topline">
+        <div><div class="v66-title">今日やること</div><div class="v66-subtle">追加、開始、完了、削除だけをここに集約</div></div>
+        <div class="v66-status" id="v66Status">v66 SIMPLE</div>
+      </div>
+      <div class="v66-add">
+        <input id="v66QuickTitle" type="text" placeholder="タスクを1つ入れる">
+        <input id="v66QuickMin" type="number" min="1" max="999" value="15" aria-label="予定分">
+        <button class="v66-btn primary" data-v66="add" type="button">追加</button>
+      </div>
+      <details class="v66-import" id="v66ImportBox">
+        <summary><span>スクショ/貼り付けから追加</span><span class="v66-status" id="v66ImportStatus">READY</span></summary>
+        <div class="v66-import-body">
+          <div class="v66-import-actions">
+            <input id="v66OcrFile" type="file" accept="image/*">
+            <button class="v66-btn" data-v66="ocr" type="button">画像を読む</button>
+            <button class="v66-btn" data-v66="preview" type="button">候補を見る</button>
+            <button class="v66-btn primary" data-v66="import" type="button">貼り付けを追加</button>
+            <button class="v66-btn" data-v66="clear-import" type="button">クリア</button>
+          </div>
+          <textarea id="v66ImportText" placeholder="スクショのOCR文字、またはLive Textでコピーした一覧を貼る"></textarea>
+          <div class="v66-preview" id="v66ImportPreview"></div>
+        </div>
+      </details>
+      <div class="v66-list-head"><div class="v66-title">未完了タスク</div><div class="v66-subtle" id="v66TaskCount">0件</div></div>
+      <div class="v66-list" id="v66TaskList"></div>`;
+    const badge=document.getElementById('runningBadge');
+    host.insertBefore(desk, badge ? badge.nextSibling : host.firstChild);
+    desk.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-v66]');
+      if(!btn) return;
+      const act=btn.dataset.v66;
+      const id=btn.closest('[data-id]')?.dataset.id || btn.dataset.id;
+      e.preventDefault();
+      if(act==='add') addQuick();
+      else if(act==='start' && id) startOrPause(id);
+      else if(act==='done' && id) finishTaskSafe(id);
+      else if(act==='schedule' && id) scheduleTask(id);
+      else if(act==='detail' && id && typeof openTaskDetail==='function') openTaskDetail(id);
+      else if(act==='delete' && id) deleteTaskById(id);
+      else if(act==='ocr') runOcr();
+      else if(act==='preview') renderImportPreview();
+      else if(act==='import') importFromBox(false);
+      else if(act==='clear-import') clearImport();
+    });
+    desk.addEventListener('keydown',e=>{
+      if(e.target&&e.target.id==='v66QuickTitle' && e.key==='Enter' && !e.isComposing && e.keyCode!==229){
+        e.preventDefault(); addQuick();
+      }
+      if(e.target&&e.target.id==='v66QuickMin' && e.key==='Enter'){
+        e.preventDefault(); addQuick();
+      }
+    });
+    return desk;
+  }
+  function groupLabel(key){
+    return {running:'実行中',overdue:'過ぎた',today:'今日',backlog:'日付なし',future:'この先'}[key]||key;
+  }
+  function renderSimpleList(){
+    const list=document.getElementById('v66TaskList');
+    const count=document.getElementById('v66TaskCount');
+    if(!list || !ok()) return;
+    const today=dkey();
+    const tasks=(S.tasks||[]).filter(t=>t && !t.done && !t.adhdHiddenGenerated);
+    if(count) count.textContent=tasks.length+'件';
+    if(!tasks.length){
+      list.innerHTML='<div class="v66-empty">今見えるタスクはありません。上の入力欄に1つだけ入れればOK。</div>';
+      return;
+    }
+    const groups={running:[],overdue:[],today:[],backlog:[],future:[]};
+    tasks.forEach(t=>{
+      if(S.runningTaskId===t.id) groups.running.push(t);
+      else if(t.scheduledDate && t.scheduledDate<today) groups.overdue.push(t);
+      else if(t.scheduledDate===today) groups.today.push(t);
+      else if(!t.scheduledDate) groups.backlog.push(t);
+      else groups.future.push(t);
+    });
+    const sort=(a,b)=>{
+      if(!!a.startTime!==!!b.startTime) return a.startTime?-1:1;
+      if(a.startTime&&b.startTime) return a.startTime.localeCompare(b.startTime);
+      return (b.v45TouchedAt||b.created||0)-(a.v45TouchedAt||a.created||0);
+    };
+    Object.keys(groups).forEach(k=>groups[k].sort(sort));
+    const item=t=>{
+      const running=S.runningTaskId===t.id;
+      const overdue=t.scheduledDate && t.scheduledDate<today;
+      const meta=[
+        t.scheduledDate?String(t.scheduledDate).slice(5).replace('-','/'):'日付なし',
+        t.startTime||'時刻なし',
+        (t.planMin||15)+'分'
+      ];
+      return `<div class="v66-task ${running?'running':''} ${overdue?'overdue':''}" data-id="${escText(t.id)}">
+        <div>
+          <div class="v66-task-title">${escText(t.title||'無題')}</div>
+          <div class="v66-task-meta">${meta.map(x=>`<span>${escText(x)}</span>`).join('')}</div>
+        </div>
+        <div class="v66-task-actions">
+          <button class="v66-btn ${running?'warn':'primary'}" data-v66="start" type="button">${running?'中断':'開始'}</button>
+          <button class="v66-btn good" data-v66="done" type="button">完了</button>
+          <button class="v66-btn" data-v66="schedule" type="button">時刻</button>
+          <button class="v66-btn danger" data-v66="delete" type="button">削除</button>
+        </div>
+      </div>`;
+    };
+    let html='';
+    ['running','overdue','today','backlog','future'].forEach(k=>{
+      if(!groups[k].length) return;
+      html+=`<div class="v66-group">${groupLabel(k)} ${groups[k].length}</div>`+groups[k].map(item).join('');
+    });
+    list.innerHTML=html;
+  }
+  function renderSimple(){
+    ensureDesk();
+    renderSimpleList();
+    decorateSchedule();
+  }
+
+  function parseFallback(text){
+    const seen=new Set();
+    return String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(line=>{
+      if(line.length<4) return false;
+      if(/合計|小計|検索|ページ|レコード/.test(line)) return false;
+      if(seen.has(line)) return false;
+      seen.add(line);
+      return true;
+    }).map((line,i)=>({
+      id:'task-'+Date.now()+'-'+i+'-'+Math.random().toString(36).slice(2,7),
+      title:/出荷|納品|発注|確認|NSG|ホース|ノズル/i.test(line)?'確認: '+line.slice(0,90):line.slice(0,90),
+      lane:'now',
+      rank:'mid',
+      done:false,
+      subs:[],
+      created:Date.now(),
+      createdDate:dkey(),
+      scheduledDate:dkey(),
+      planMin:15,
+      nextAction:'内容を確認する',
+      v66SourceKey:line
+    }));
+  }
+  function parsedImportTasks(){
+    const text=document.getElementById('v66ImportText')?.value||'';
+    if(window.sasshyV57PreviewTasksFromText) return window.sasshyV57PreviewTasksFromText(text);
+    return parseFallback(text).map(t=>({...t, v57AlreadyExists:!!duplicateOf(t), v57WasDeleted:deletedSource(t)}));
+  }
+  function setImportStatus(text){
+    const st=document.getElementById('v66ImportStatus');
+    if(st) st.textContent=text;
+  }
+  function renderImportPreview(){
+    if(!ok()) return [];
+    const tasks=parsedImportTasks();
+    const box=document.getElementById('v66ImportPreview');
+    if(!box) return tasks;
+    if(!tasks.length){
+      box.innerHTML='<div class="v66-empty">候補が見つかりません。表の文字をそのまま貼るか、画像を読み直してください。</div>';
+      setImportStatus('候補0');
+      return tasks;
+    }
+    box.dataset.tasks=JSON.stringify(tasks);
+    box.innerHTML=tasks.map((t,i)=>{
+      const exists=!!t.v57AlreadyExists;
+      const deleted=!!t.v57WasDeleted;
+      const checked=(!exists && !deleted)?'checked':'';
+      const disabled=exists?'disabled':'';
+      const state=exists?'追加済み':(deleted?'削除済み':'新規');
+      return `<div class="v66-candidate" data-v66-candidate="${i}">
+        <input type="checkbox" ${checked} ${disabled}>
+        <div>
+          <textarea>${escText(t.title||'無題')}</textarea>
+          <div class="v66-candidate-meta">${state} / ${escText(t.scheduledDate||dkey())} / ${escText(t.v57SourceText||t.v66SourceKey||'')}</div>
+        </div>
+      </div>`;
+    }).join('');
+    setImportStatus('候補'+tasks.length);
+    return tasks;
+  }
+  function importFromBox(usePreviewOnly){
+    if(!ok()) return;
+    const box=document.getElementById('v66ImportPreview');
+    let tasks=[];
+    if(box && box.dataset.tasks){
+      try{tasks=JSON.parse(box.dataset.tasks||'[]');}catch(e){tasks=[];}
+    }
+    if(!tasks.length && !usePreviewOnly) tasks=parsedImportTasks();
+    const selected=[];
+    const items=box?[...box.querySelectorAll('.v66-candidate')]:[];
+    if(items.length){
+      items.forEach(item=>{
+        const idx=Number(item.dataset.v66Candidate);
+        const t=tasks[idx];
+        if(!t || !item.querySelector('input[type="checkbox"]')?.checked) return;
+        const title=clean(item.querySelector('textarea')?.value||t.title);
+        if(title) t.title=title;
+        selected.push(t);
+      });
+    }else{
+      tasks.forEach(t=>{ if(!t.v57AlreadyExists && !t.v57WasDeleted) selected.push(t); });
+    }
+    if(!selected.length){
+      setImportStatus('追加0');
+      if(!tasks.length) renderImportPreview();
+      return;
+    }
+    let result={added:0, skipped:0};
+    if(window.sasshyV57ImportTasks){
+      result=window.sasshyV57ImportTasks(selected,{allowDeleted:items.length>0});
+    }else{
+      selected.forEach(t=>{
+        const r=addTaskSafe(t,{allowDeleted:items.length>0});
+        if(r.added) result.added++; else result.skipped++;
+      });
+      if(result.added) refresh('OCR取込');
+    }
+    setImportStatus('追加'+result.added+' / スキップ'+result.skipped);
+    if(box){ box.innerHTML=''; box.dataset.tasks='[]'; }
+    renderSimple();
+  }
+  function clearImport(){
+    const area=document.getElementById('v66ImportText'); if(area) area.value='';
+    const file=document.getElementById('v66OcrFile'); if(file) file.value='';
+    const box=document.getElementById('v66ImportPreview'); if(box){box.innerHTML=''; box.dataset.tasks='[]';}
+    setImportStatus('READY');
+  }
+  function loadTesseract(){
+    if(window.Tesseract) return Promise.resolve(window.Tesseract);
+    if(loadingOcr) return new Promise((resolve,reject)=>{
+      const started=Date.now();
+      const timer=setInterval(()=>{
+        if(window.Tesseract){clearInterval(timer); resolve(window.Tesseract);}
+        else if(Date.now()-started>30000){clearInterval(timer); reject(new Error('OCR読込タイムアウト'));}
+      },200);
+    });
+    loadingOcr=true;
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src=OCR_CDN;
+      s.onload=()=>resolve(window.Tesseract);
+      s.onerror=()=>reject(new Error('OCRライブラリを読み込めませんでした'));
+      document.head.appendChild(s);
+    }).finally(()=>{loadingOcr=false;});
+  }
+  async function runOcr(){
+    const file=document.getElementById('v66OcrFile')?.files?.[0];
+    if(!file){ alert('スクショ画像を選んでください'); return; }
+    setImportStatus('OCR読込中');
+    try{
+      const T=await loadTesseract();
+      const result=await T.recognize(file,'jpn+eng',{logger:m=>{
+        if(m&&m.status) setImportStatus('OCR '+(m.progress!=null?Math.round(m.progress*100)+'%':''));
+      }});
+      const area=document.getElementById('v66ImportText');
+      if(area) area.value=(result&&result.data&&result.data.text?result.data.text:'').trim();
+      setImportStatus('候補作成中');
+      renderImportPreview();
+    }catch(e){
+      setImportStatus('OCR失敗');
+      alert('OCRに失敗しました。Live Textでコピーして貼る方を試してください。\n'+(e&&e.message?e.message:e));
+    }
+  }
+  function decorateSchedule(){
+    if(!ok()) return;
+    document.querySelectorAll('.sched-task[data-id]:not(.gcal)').forEach(el=>{
+      const id=el.dataset.id;
+      if(!id || id.startsWith('routine:') || el.querySelector('.v66-tl-del')) return;
+      const btn=document.createElement('button');
+      btn.className='v66-tl-del';
+      btn.type='button';
+      btn.dataset.id=id;
+      btn.textContent='削除';
+      btn.addEventListener('mousedown',e=>e.stopPropagation());
+      btn.addEventListener('touchstart',e=>e.stopPropagation(),{passive:true});
+      btn.addEventListener('click',e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        deleteTaskById(id);
+      });
+      el.appendChild(btn);
+    });
+  }
+  function handleTimelineDeleteEvent(e){
+    const tlDel=e.target.closest?.('.v66-tl-del');
+    if(!tlDel) return false;
+    const id=tlDel.dataset?.id || tlDel.closest?.('[data-id]')?.dataset?.id;
+    if(!id) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    deleteTaskById(id);
+    return true;
+  }
+  document.addEventListener('pointerup',handleTimelineDeleteEvent,true);
+  document.addEventListener('mouseup',handleTimelineDeleteEvent,true);
+  document.addEventListener('click',e=>{
+    if(handleTimelineDeleteEvent(e)) return;
+    const btn=e.target.closest?.('[data-act="del"],[data-v45="delete"],#qtdDeleteBtn');
+    if(!btn || e.target.closest?.('#v66QuestDesk')) return;
+    const id=btn.dataset?.id || btn.closest?.('[data-id]')?.dataset?.id || (typeof currentDetailId!=='undefined'?currentDetailId:null);
+    if(!id || String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    deleteTaskById(id);
+    try{ if(btn.id==='qtdDeleteBtn' && typeof closeTaskDetail==='function') closeTaskDetail(); }catch(err){}
+  },true);
+
+  const oldRenderTasks=window.renderTasks;
+  if(typeof oldRenderTasks==='function' && !oldRenderTasks.__v66Wrapped){
+    const wrapped=function(){
+      const r=oldRenderTasks.apply(this,arguments);
+      setTimeout(renderSimple,0);
+      return r;
+    };
+    wrapped.__v66Wrapped=true;
+    window.renderTasks=wrapped;
+  }
+  const oldRenderSchedule=window.renderSchedule;
+  if(typeof oldRenderSchedule==='function' && !oldRenderSchedule.__v66Wrapped){
+    const wrapped=function(){
+      const r=oldRenderSchedule.apply(this,arguments);
+      setTimeout(decorateSchedule,0);
+      return r;
+    };
+    wrapped.__v66Wrapped=true;
+    window.renderSchedule=wrapped;
+  }
+  setTimeout(renderSimple,300);
 })();
 </script>
 
