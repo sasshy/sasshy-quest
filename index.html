@@ -8154,7 +8154,7 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
 /* ===== v48: always-visible voice settings ===== */
 (function(){
   const CFG_KEY='sasshy_v38_voice_timer_cfg';
-  const DEFAULT={voice:false,voiceKind:'male',voiceURI:'',tone:'coach',intervalMin:3};
+  const DEFAULT={voice:false,voiceKind:'male',voiceURI:'',tone:'coach',intervalMin:3,rate:0.92,pitch:0.96};
   function load(){try{return Object.assign({},DEFAULT,JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {...DEFAULT};}}
   function save(cfg){localStorage.setItem(CFG_KEY,JSON.stringify(Object.assign({},DEFAULT,cfg))); window.dispatchEvent(new CustomEvent('sasshyVoiceConfigChanged'));}
   function voices(){
@@ -8169,19 +8169,32 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
       const v=list.find(x=>x.voiceURI===cfg.voiceURI || x.name===cfg.voiceURI);
       if(v) return v;
     }
-    const ja=list.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese/i.test((v.lang||'')+' '+(v.name||'')));
+    const ja=list.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese|日本語/i.test((v.lang||'')+' '+(v.name||'')));
     const base=ja.length?ja:list;
-    if(cfg.voiceKind==='male') return base.find(v=>/Otoya|男|男性|male/i.test(v.name||'')) || base.find(v=>/Ichiro|Taro|Haruka/i.test(v.name||'')) || base.find(v=>!(/Samantha|Victoria|Karen|Moira|Tessa|Kyoko|女|女性|female|en-|English/i.test((v.name||'')+' '+(v.lang||'')))) || base[0] || null;
-    if(cfg.voiceKind==='female') return base.find(v=>/Kyoko|女|女性|female/i.test(v.name||'')) || base[0] || null;
-    return base[0] || null;
+    const score=v=>{
+      const hay=((v.name||'')+' '+(v.lang||'')).toLowerCase();
+      let s=0;
+      if(/^ja/i.test(v.lang||'') || /japan|japanese|日本|日本語/i.test(hay)) s+=80;
+      if(/premium|enhanced|neural|natural|google|microsoft|online/i.test(hay)) s+=35;
+      if(/compact|siri/i.test(hay)) s-=12;
+      if(cfg.voiceKind==='male'){
+        if(/otoya|keita|ichiro|taro|男|男性|male/i.test(hay)) s+=30;
+        if(/kyoko|nanami|female|女性|女/i.test(hay)) s-=12;
+      }else if(cfg.voiceKind==='female'){
+        if(/kyoko|nanami|haruka|female|女性|女/i.test(hay)) s+=30;
+        if(/otoya|keita|ichiro|taro|male|男性|男/i.test(hay)) s-=12;
+      }
+      return s;
+    };
+    return [...base].sort((a,b)=>score(b)-score(a))[0] || null;
   }
   function speak(text){
     if(!('speechSynthesis' in window)) return;
     const cfg=load();
     const u=new SpeechSynthesisUtterance(text);
     u.lang='ja-JP';
-    u.rate=1.05;
-    u.pitch=1;
+    u.rate=Math.max(0.75,Math.min(1.15,Number(cfg.rate)||0.92));
+    u.pitch=Math.max(0.75,Math.min(1.25,Number(cfg.pitch)||0.96));
     const v=pickVoice(cfg);
     if(v) u.voice=v;
     window.speechSynthesis.cancel();
@@ -8204,8 +8217,9 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
         </div>
         <div class="v48-row"><label>声タイプ</label><select id="v48VoiceKind"><option value="male">男性声</option><option value="female">女性声</option><option value="auto">自動</option></select></div>
         <div class="v48-row"><label>端末の声</label><select id="v48VoiceExact"></select></div>
-        <div class="v48-row"><label>声がけ</label><select id="v48Tone"><option value="coach">応援</option><option value="strict">強め</option><option value="calm">淡々</option></select></div>
+        <div class="v48-row"><label>声がけ</label><select id="v48Tone"><option value="coach">応援</option><option value="buddy">相棒</option><option value="strict">強め</option><option value="calm">淡々</option></select></div>
         <div class="v48-row"><label>間隔</label><select id="v48Interval"><option value="2">2分ごと</option><option value="3">3分ごと</option><option value="5">5分ごと</option></select></div>
+        <div class="v48-row"><label>話速</label><select id="v48Rate"><option value="0.86">ゆっくり</option><option value="0.92">自然</option><option value="1.0">普通</option></select></div>
         <div class="v48-note">定期アナウンスは、タスクを「開始」して音声ONの間だけ流れます。iPhoneは最初にテスト再生か音声ONを押す必要があります。</div>
       </div>`;
     const anchor=document.getElementById('v45CommandBar') || host.firstElementChild;
@@ -8226,9 +8240,10 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
       if(e.target.id==='v48VoiceExact') cfg.voiceURI=e.target.value;
       if(e.target.id==='v48Tone') cfg.tone=e.target.value;
       if(e.target.id==='v48Interval') cfg.intervalMin=Number(e.target.value)||3;
+      if(e.target.id==='v48Rate') cfg.rate=Number(e.target.value)||0.92;
       cfg.voice=true;
       save(cfg);
-      speak('設定を変更しました');
+      speak('設定を変更しました。少し自然な速さで読み上げます。');
       render();
     });
     return panel;
@@ -8250,8 +8265,9 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
     const kind=p.querySelector('#v48VoiceKind'); if(kind) kind.value=cfg.voiceKind||'male';
     const tone=p.querySelector('#v48Tone'); if(tone) tone.value=cfg.tone||'coach';
     const intv=p.querySelector('#v48Interval'); if(intv) intv.value=String(cfg.intervalMin||3);
+    const rate=p.querySelector('#v48Rate'); if(rate) rate.value=String(cfg.rate||0.92);
     const sum=p.querySelector('#v48VoiceSummary');
-    if(sum) sum.textContent=`${cfg.voice?'ON':'OFF'} / ${cfg.voiceKind==='male'?'男性':cfg.voiceKind==='female'?'女性':'自動'} / ${cfg.intervalMin||3}分`;
+    if(sum) sum.textContent=`${cfg.voice?'ON':'OFF'} / ${cfg.voiceKind==='male'?'男性':cfg.voiceKind==='female'?'女性':'自動'} / ${cfg.intervalMin||3}分 / ${cfg.rate||0.92}x`;
   }
   if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=render;
   window.addEventListener('sasshyVoiceConfigChanged',render);
@@ -8690,11 +8706,11 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   const CFG_KEY='sasshy_v38_voice_timer_cfg';
   function loadCfg(){
-    try{return Object.assign({voice:false, voiceKind:'male', voiceURI:'', tone:'coach', intervalMin:3}, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {voice:false, voiceKind:'male', voiceURI:'', tone:'coach', intervalMin:3};}
+    try{return Object.assign({voice:false, voiceKind:'male', voiceURI:'', tone:'coach', intervalMin:3, rate:0.92, pitch:0.96}, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return {voice:false, voiceKind:'male', voiceURI:'', tone:'coach', intervalMin:3, rate:0.92, pitch:0.96};}
   }
-  function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify({voice:state.voice,voiceKind:state.voiceKind,voiceURI:state.voiceURI,tone:state.tone,intervalMin:state.intervalMin})); window.dispatchEvent(new CustomEvent('sasshyVoiceConfigChanged'));}catch(e){}}
+  function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify({voice:state.voice,voiceKind:state.voiceKind,voiceURI:state.voiceURI,tone:state.tone,intervalMin:state.intervalMin,rate:state.rate,pitch:state.pitch})); window.dispatchEvent(new CustomEvent('sasshyVoiceConfigChanged'));}catch(e){}}
   const cfg0=loadCfg();
-  const state={sessionId:null,marks:new Set(),voice:!!cfg0.voice,voiceKind:cfg0.voiceKind||'male',voiceURI:cfg0.voiceURI||'',tone:cfg0.tone||'coach',intervalMin:Number(cfg0.intervalMin)||3,lastRender:0};
+  const state={sessionId:null,marks:new Set(),voice:!!cfg0.voice,voiceKind:cfg0.voiceKind||'male',voiceURI:cfg0.voiceURI||'',tone:cfg0.tone||'coach',intervalMin:Number(cfg0.intervalMin)||3,rate:Number(cfg0.rate)||0.92,pitch:Number(cfg0.pitch)||0.96,lastRender:0,lastPhrase:''};
   function syncCfgFromStorage(){
     const cfg=loadCfg();
     state.voice=!!cfg.voice;
@@ -8702,6 +8718,8 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     state.voiceURI=cfg.voiceURI||'';
     state.tone=cfg.tone||'coach';
     state.intervalMin=Number(cfg.intervalMin)||3;
+    state.rate=Number(cfg.rate)||0.92;
+    state.pitch=Number(cfg.pitch)||0.96;
   }
   function p2n(n){return String(n).padStart(2,'0');}
   function fmt(ms){
@@ -8750,6 +8768,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         <select class="v38-ft-select" id="v38VoiceExact" title="端末の声"></select>
         <select class="v38-ft-select" id="v38Tone" title="声がけ">
           <option value="coach">応援</option>
+          <option value="buddy">相棒</option>
           <option value="strict">強め</option>
           <option value="calm">淡々</option>
         </select>
@@ -8757,6 +8776,11 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
           <option value="2">2分ごと</option>
           <option value="3">3分ごと</option>
           <option value="5">5分ごと</option>
+        </select>
+        <select class="v38-ft-select" id="v38Rate" title="話速">
+          <option value="0.86">ゆっくり</option>
+          <option value="0.92">自然</option>
+          <option value="1.0">普通</option>
         </select>
       </div>`;
     anchor.parentNode.insertBefore(el, anchor.nextSibling);
@@ -8766,7 +8790,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       try{
         if(state.voice && 'speechSynthesis' in window){
           window.speechSynthesis.cancel();
-          speak('音声タイマーをオンにしました。ここから一緒に戻します。');
+          speak('音声タイマーをオンにしました。ここから一緒に戻していきます。');
         }
       }catch(e){}
       render();
@@ -8775,6 +8799,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     el.querySelector('#v38VoiceExact')?.addEventListener('change',e=>{state.voiceURI=e.target.value; saveCfg(); speak('この声で読み上げます'); render();});
     el.querySelector('#v38Tone')?.addEventListener('change',e=>{state.tone=e.target.value; saveCfg(); speak(sampleLine()); render();});
     el.querySelector('#v38Interval')?.addEventListener('change',e=>{state.intervalMin=Number(e.target.value)||3; state.marks.clear(); saveCfg(); speak(`${state.intervalMin}分ごとに声をかけます`); render();});
+    el.querySelector('#v38Rate')?.addEventListener('change',e=>{state.rate=Number(e.target.value)||0.92; saveCfg(); speak('この速さで読み上げます。少し聞き取りやすくします。'); render();});
     el.querySelectorAll('[data-v38-add]').forEach(btn=>btn.addEventListener('click',()=>{
       const add=Number(btn.dataset.v38Add)||5;
       const sess=currentSession();
@@ -8814,8 +8839,8 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     try{
       const u=new SpeechSynthesisUtterance(text);
       u.lang='ja-JP';
-      u.rate=1.05;
-      u.pitch=1;
+      u.rate=Math.max(0.75,Math.min(1.15,Number(state.rate)||0.92));
+      u.pitch=Math.max(0.75,Math.min(1.25,Number(state.pitch)||0.96));
       const v=pickVoice();
       if(v) u.voice=v;
       window.speechSynthesis.cancel();
@@ -8829,15 +8854,24 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         const chosen=voices.find(v=>v.voiceURI===state.voiceURI || v.name===state.voiceURI);
         if(chosen) return chosen;
       }
-      const ja=voices.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese/i.test((v.lang||'')+' '+(v.name||'')));
+      const ja=voices.filter(v=>/^ja(?:-|_)?|Japan|日本|Japanese|日本語/i.test((v.lang||'')+' '+(v.name||'')));
       const list=ja.length?ja:voices;
-      if(state.voiceKind==='male'){
-        return list.find(v=>/Otoya|男|男性|male/i.test(v.name||'')) || list.find(v=>/Ichiro|Taro|Haruka/i.test(v.name||'')) || list.find(v=>!(/Samantha|Victoria|Karen|Moira|Tessa|Kyoko|女|女性|female|en-|English/i.test((v.name||'')+' '+(v.lang||'')))) || list[0] || null;
-      }
-      if(state.voiceKind==='female'){
-        return list.find(v=>/Kyoko|female|女性|女/i.test(v.name||'')) || list[0] || null;
-      }
-      return list[0]||null;
+      const score=v=>{
+        const hay=((v.name||'')+' '+(v.lang||'')).toLowerCase();
+        let s=0;
+        if(/^ja/i.test(v.lang||'') || /japan|japanese|日本|日本語/i.test(hay)) s+=80;
+        if(/premium|enhanced|neural|natural|google|microsoft|online/i.test(hay)) s+=35;
+        if(/compact|siri/i.test(hay)) s-=12;
+        if(state.voiceKind==='male'){
+          if(/otoya|keita|ichiro|taro|男|男性|male/i.test(hay)) s+=30;
+          if(/kyoko|nanami|female|女性|女/i.test(hay)) s-=12;
+        }else if(state.voiceKind==='female'){
+          if(/kyoko|nanami|haruka|female|女性|女/i.test(hay)) s+=30;
+          if(/otoya|keita|ichiro|taro|male|男性|男/i.test(hay)) s-=12;
+        }
+        return s;
+      };
+      return [...list].sort((a,b)=>score(b)-score(a))[0]||null;
     }catch(e){return null;}
   }
   function populateVoiceSelect(root){
@@ -8858,20 +8892,63 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   }
   if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged=()=>{populateVoiceSelect(document); render();};
   window.addEventListener('sasshyVoiceConfigChanged',()=>{syncCfgFromStorage(); render();});
+  function pickLine(list){
+    const arr=(list||[]).filter(Boolean);
+    if(!arr.length) return '';
+    let line=arr[Math.floor(Math.random()*arr.length)];
+    if(arr.length>1 && line===state.lastPhrase){
+      line=arr.find(x=>x!==state.lastPhrase) || line;
+    }
+    state.lastPhrase=line;
+    return line;
+  }
+  function phraseSet(kind){
+    const sets={
+      coach:{
+        start:['よし、開始です。まず一手だけいきましょう。','大丈夫、全部じゃなくて最初の一手だけでいいです。','今ここから戻せます。まず手元を見ましょう。'],
+        periodic:['いい感じです。次の一手だけ続けましょう。','ここで一回戻ります。画面か手元を見て、次へ。','進んでいます。小さく続ければ大丈夫です。','今の流れを切らさず、あと一手だけ。'],
+        remain:['残り{remain}分です。仕上げるより、次の状態を見える形にしましょう。','残り{remain}分。いったん区切りを作る時間です。','あと{remain}分です。最後に何を残すか決めましょう。'],
+        over:['{over}分超過です。いったん止めるか、延長するか選びましょう。','時間を超えています。ここで状態確認です。','{over}分オーバーです。続けるなら、次の一手をひとつだけ。'],
+        calm:['経過を確認します。次の一手に戻りましょう。','今の状態を見ます。無理に急がず、次だけ進めます。'],
+        now:['今は経過{elapsed}分です。','経過{elapsed}分。ここで一度、次の一手を確認しましょう。']
+      },
+      buddy:{
+        start:['始めたのえらい。ここから一緒に戻ろう。','よし、まず触れた。それで十分。次の一手だけいこう。','今からで大丈夫。手元を見て、一緒に進めよう。'],
+        periodic:['戻ってきたら勝ち。今、次の一手だけやろう。','いいよ、まだいける。小さく続けよう。','迷ったら手元を見る。次の一手だけでいい。','大きく進めなくていい。止まらない方を選ぼう。'],
+        remain:['残り{remain}分。完璧じゃなくて、区切りを作ろう。','あと{remain}分。ここから片づけモードに入ろう。','残り{remain}分、最後に見える形だけ残そう。'],
+        over:['{over}分超えた。責めなくていい、いったん選び直そう。','時間を超えてる。続けるなら一手だけ、やめるなら保存しよう。','{over}分オーバー。今ここで立て直せる。'],
+        calm:['ちょっと確認しよう。今やる一手に戻れば大丈夫。','焦らなくていい。次に触る場所だけ決めよう。'],
+        now:['経過{elapsed}分。ちゃんと動いてる。','今、{elapsed}分経過。次だけ見よう。']
+      },
+      strict:{
+        start:['開始。今はこのタスクだけ見ます。','スタート。手を止めず、まず一手。','今から集中。別のことは後で。'],
+        periodic:['手を止めない。次の一手を続けます。','今、脱線チェック。画面に戻ります。','ここで戻る。次の操作をしてください。','考えすぎない。手を動かします。'],
+        remain:['残り{remain}分。終わらせる範囲を決めます。','あと{remain}分。区切りまで持っていきます。','残り{remain}分。今すぐ仕上げの動きに入ります。'],
+        over:['{over}分超過。延長するなら理由を決めます。','時間超過。続けるか止めるか選択。','{over}分オーバー。今すぐ状態確認。'],
+        calm:['経過確認。次の一手に戻ります。','手元確認。次を実行します。'],
+        now:['経過{elapsed}分。次の一手を実行。','今{elapsed}分経過。戻ります。']
+      },
+      calm:{
+        start:['開始しました。まず一つ確認しましょう。','タイマーを始めました。今の作業に戻ります。','ここから記録します。落ち着いて進めましょう。'],
+        periodic:['経過を確認します。次の一手に戻りましょう。','今の状態を見ます。続きに戻ります。','少し進めたところです。次を確認しましょう。','作業時間を確認します。無理なく続けましょう。'],
+        remain:['残り{remain}分です。区切りを意識しましょう。','あと{remain}分です。今の状態を整えましょう。','残り{remain}分。終わり方を考える時間です。'],
+        over:['{over}分超過しています。状態を確認しましょう。','予定時間を過ぎています。続けるか決めましょう。','{over}分過ぎています。一度区切りましょう。'],
+        calm:['経過を確認します。次の一手に戻りましょう。','状況を確認して、次を選びましょう。'],
+        now:['経過{elapsed}分です。','今は{elapsed}分経過しています。']
+      }
+    };
+    return sets[kind]||sets.coach;
+  }
+  function fill(line, data){
+    return String(line||'').replace(/\{elapsed\}/g,data.elapsed??'').replace(/\{remain\}/g,data.remain??'').replace(/\{over\}/g,data.over??'');
+  }
   function sampleLine(){
-    if(state.tone==='strict') return '手を止めない。今はこのタスクに戻ります。';
-    if(state.tone==='calm') return '経過を確認します。次の一手に戻りましょう。';
-    return '大丈夫、今の一手に戻れば進みます。';
+    return pickLine(phraseSet(state.tone).periodic);
   }
   function cueLine(elapsedMin, remainMin, overMin){
-    const base = overMin!==null
-      ? `経過${elapsedMin}分、${overMin}分超過です。`
-      : remainMin!==null
-        ? `経過${elapsedMin}分、残り${remainMin}分です。`
-        : `経過${elapsedMin}分です。`;
-    if(state.tone==='strict') return base+'今すぐ画面か手元を見て、次の一手を続けます。';
-    if(state.tone==='calm') return base+'状況を確認して、次の一手に戻りましょう。';
-    return base+'よし、ここで戻れれば勝ちです。次の一手だけやりましょう。';
+    const set=phraseSet(state.tone);
+    const key=overMin!==null?'over':(remainMin!==null?'remain':'periodic');
+    return `経過${elapsedMin}分。`+fill(pickLine(set[key]),{elapsed:elapsedMin,remain:remainMin,over:overMin});
   }
   function mark(key,text){
     if(state.marks.has(key)) return;
@@ -8886,7 +8963,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     const remaining=focusMin>0 ? focusMin*60000-elapsed : null;
     const em=Math.floor(elapsed/60000);
     if(remaining===null){
-      if(force) speak(`経過${em}分です`);
+      if(force) speak(fill(pickLine(phraseSet(state.tone).now),{elapsed:em}));
       return;
     }
     if(remaining>=0){
@@ -8906,14 +8983,14 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
     const remaining=focusMs-elapsed;
     const totalMin=Math.round(focusMs/60000);
-    if(elapsed<3000) mark('start', `${totalMin}分タイマーを開始しました`);
+    if(elapsed<3000) mark('start', `${totalMin}分タイマーを開始しました。`+pickLine(phraseSet(state.tone).start));
     if(elapsedMin>0 && elapsedMin%interval===0 && remaining>60000){
       mark('periodic-'+elapsedMin, cueLine(elapsedMin, Math.ceil(remaining/60000), null));
     }
     [10,5,3,1].forEach(min=>{
-      if(totalMin>=min && remaining<=min*60000 && remaining>0) mark('remain-'+min, `残り${min}分です`);
+      if(totalMin>=min && remaining<=min*60000 && remaining>0) mark('remain-'+min, `残り${min}分です。`+fill(pickLine(phraseSet(state.tone).remain),{remain:min,elapsed:elapsedMin}));
     });
-    if(remaining<=0) mark('timeup', state.tone==='strict'?'時間です。延長するなら理由を決めます。まず手を止めて確認。':'時間です。終わっていなくても、いまの状態を確認しましょう');
+    if(remaining<=0) mark('timeup', '時間です。'+fill(pickLine(phraseSet(state.tone).over),{over:0,elapsed:elapsedMin}));
     if(remaining<0){
       const overMin=Math.floor((-remaining)/60000);
       if(overMin>0 && overMin%interval===0) mark('over-'+overMin, cueLine(elapsedMin, null, overMin));
@@ -8965,6 +9042,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     const ve=el.querySelector('#v38VoiceExact'); if(ve && ve.value!==state.voiceURI) ve.value=state.voiceURI||'';
     const tone=el.querySelector('#v38Tone'); if(tone && tone.value!==state.tone) tone.value=state.tone;
     const intv=el.querySelector('#v38Interval'); if(intv && Number(intv.value)!==Number(state.intervalMin)) intv.value=String(state.intervalMin);
+    const rate=el.querySelector('#v38Rate'); if(rate && Number(rate.value)!==Number(state.rate)) rate.value=String(state.rate);
     const hint=el.querySelector('#v38Hint');
     if(hint){
       hint.textContent=focusMs
@@ -9017,7 +9095,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=63').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=64').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
