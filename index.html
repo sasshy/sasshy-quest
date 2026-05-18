@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.7').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.8').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9335,12 +9335,19 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function apiBase(cfg){
     return String(cfg.url||'').replace(/\/+$/,'')+'/rest/v1/'+TABLE;
   }
+  function looksLikeJwt(key){
+    return String(key||'').split('.').length===3;
+  }
   function headers(cfg, extra){
-    return Object.assign({
-      apikey:cfg.anonKey,
-      Authorization:'Bearer '+cfg.anonKey,
+    const key=String(cfg.anonKey||'').trim();
+    const h={
+      apikey:key,
       'Content-Type':'application/json'
-    }, extra||{});
+    };
+    // v70.8: Supabase publishable keys (sb_publishable_...) are not JWTs.
+    // Send Authorization only for legacy JWT anon keys.
+    if(looksLikeJwt(key)) h.Authorization='Bearer '+key;
+    return Object.assign(h, extra||{});
   }
   function setStatus(text){
     lastStatus=text;
@@ -9565,7 +9572,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       <summary><span>Cloud Sync / PC・iPhone同期</span><span class="v40-sync-status" id="v40SyncStatus">--</span></summary>
       <div class="v40-sync-body">
         <div class="v40-sync-row"><label>Supabase URL</label><input id="v40SyncUrl" placeholder="https://xxxx.supabase.co"></div>
-        <div class="v40-sync-row"><label>anon key</label><input id="v40SyncAnon" placeholder="eyJ..." type="password"></div>
+        <div class="v40-sync-row"><label>API key</label><input id="v40SyncAnon" placeholder="sb_publishable_... または eyJ..." type="password"></div>
         <div class="v40-sync-row"><label>同期キー</label><input id="v40SyncKey" placeholder="自分だけの長い合言葉"></div>
         <div class="v40-sync-actions">
           <button class="v40-sync-btn primary" data-v40-sync="save" type="button">設定保存</button>
@@ -9573,7 +9580,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
           <button class="v40-sync-btn" data-v40-sync="push" type="button">この端末をアップロード</button>
           <button class="v40-sync-btn" data-v40-sync="pull" type="button">クラウドから読込</button>
         </div>
-        <div class="v40-sync-note">PCとiPhoneで同じURL・anon key・同期キーを入れると同期します。最初は、データが正しい端末で「この端末をアップロード」を押してください。</div>
+        <div class="v40-sync-note">PCとiPhoneで同じURL・API key・同期キーを入れると同期します。API key は Supabase の publishable key または Legacy anon key を使います。</div>
       </div>`;
     host.insertBefore(panel, anchor.nextSibling);
     panel.addEventListener('click',async e=>{
