@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.8').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.9').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9426,31 +9426,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     pushing=true;
     try{
       const data=statePayload();
-      try{
-        const currentRemote=await fetchRemote(cfg);
-        if(currentRemote){
-          const remoteMs=Date.parse(currentRemote.updated_at)||0;
-          const localMs=Number(cfg.localUpdatedAt||0);
-          if(!force && remoteMs && localMs<=remoteMs){
-            cfg.remoteUpdatedAt=remoteMs;
-            cfg.lastSyncAt=Date.now();
-            cfg.dirty=false;
-            saveCfg(cfg);
-            setStatus(localMs<remoteMs?'クラウドの方が新しいため保存スキップ':'最新です');
-            return false;
-          }
-        }
-      }catch(e){
-        if(!force){
-          setStatus('保存前確認失敗: '+e.message);
-          return false;
-        }
-      }
+      // v70.9: do not pre-read before saving. Some Supabase policies allow
+      // upsert but reject the preflight SELECT, which blocked auto sync.
       const updated=nowIso();
       const body={sync_key:cfg.syncKey,data,updated_at:updated};
       const res=await fetch(apiBase(cfg),{
         method:'POST',
-        headers:headers(cfg,{Prefer:'resolution=merge-duplicates,return=representation'}),
+        headers:headers(cfg,{Prefer:'resolution=merge-duplicates,return=minimal'}),
         body:JSON.stringify(body)
       });
       if(!res.ok) throw new Error('push '+res.status);
