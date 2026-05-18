@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.9').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.10').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9338,6 +9338,28 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function looksLikeJwt(key){
     return String(key||'').split('.').length===3;
   }
+  function keyProblem(cfg){
+    const key=String(cfg?.anonKey||'').trim();
+    if(/^sb_secret_/i.test(key)) return 'secret key はブラウザで使えません。publishable key を入れてください';
+    if(!key) return 'API key が未入力';
+    return '';
+  }
+  async function responseError(prefix, res){
+    let msg='';
+    try{
+      const txt=(await res.clone().text()||'').trim();
+      if(txt){
+        try{
+          const j=JSON.parse(txt);
+          msg=j.message||j.msg||j.error_description||j.error||txt;
+        }catch(e){
+          msg=txt;
+        }
+      }
+    }catch(e){}
+    msg=String(msg||'').replace(/\s+/g,' ').slice(0,140);
+    return new Error(prefix+' '+res.status+(msg?' '+msg:''));
+  }
   function headers(cfg, extra){
     const key=String(cfg.anonKey||'').trim();
     const h={
@@ -9413,15 +9435,19 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     try{ if(typeof renderQuestCoach==='function') renderQuestCoach(); }catch(e){}
   }
   async function fetchRemote(cfg){
+    const kp=keyProblem(cfg);
+    if(kp) throw new Error(kp);
     const url=apiBase(cfg)+'?sync_key=eq.'+encodeURIComponent(cfg.syncKey)+'&select=sync_key,data,updated_at&limit=1';
     const res=await fetch(url,{headers:headers(cfg)});
-    if(!res.ok) throw new Error('fetch '+res.status);
+    if(!res.ok) throw await responseError('fetch', res);
     const rows=await res.json();
     return rows && rows[0] ? rows[0] : null;
   }
   async function pushRemote(reason, force){
     const cfg=loadCfg();
     if(!valid(cfg)) return false;
+    const kp=keyProblem(cfg);
+    if(kp){ setStatus(kp); return false; }
     if(pushing) return false;
     pushing=true;
     try{
@@ -9435,7 +9461,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         headers:headers(cfg,{Prefer:'resolution=merge-duplicates,return=minimal'}),
         body:JSON.stringify(body)
       });
-      if(!res.ok) throw new Error('push '+res.status);
+      if(!res.ok) throw await responseError('push', res);
       const rows=await res.json().catch(()=>[]);
       const remoteTime=Date.parse((rows&&rows[0]&&rows[0].updated_at)||updated)||Date.now();
       cfg.remoteUpdatedAt=remoteTime;
@@ -9562,7 +9588,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
           <button class="v40-sync-btn" data-v40-sync="push" type="button">この端末をアップロード</button>
           <button class="v40-sync-btn" data-v40-sync="pull" type="button">クラウドから読込</button>
         </div>
-        <div class="v40-sync-note">PCとiPhoneで同じURL・API key・同期キーを入れると同期します。API key は Supabase の publishable key または Legacy anon key を使います。</div>
+        <div class="v40-sync-note">PCとiPhoneで同じURL・API key・同期キーを入れると同期します。API key は Supabase の publishable key または Legacy anon key を使います。secret key はiPhone/ブラウザでは使えません。</div>
       </div>`;
     host.insertBefore(panel, anchor.nextSibling);
     panel.addEventListener('click',async e=>{

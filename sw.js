@@ -1,4 +1,4 @@
-const CACHE_NAME = "sasshy-quest-v70.9";
+const CACHE_NAME = "sasshy-quest-v70.10";
 const ASSETS = [
   "./manifest.webmanifest",
   "./icon.svg"
