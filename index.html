@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.5').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.6').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9306,6 +9306,9 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   let lastStatus='未設定';
 
   function nowIso(){return new Date().toISOString();}
+  function localWriteMs(cfg){
+    return Math.max(Date.now(), Number(cfg?.localUpdatedAt||0)+1, Number(cfg?.remoteUpdatedAt||0)+1);
+  }
   function loadCfg(){
     try{
       return Object.assign({
@@ -9390,127 +9393,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
     return restored;
   }
-  function mergeRemoteWithLocal(remoteData, localData, remoteMs){
-    const merged=JSON.parse(JSON.stringify(remoteData||{}));
-    const local=localData||{};
-    merged.tasks=Array.isArray(merged.tasks)?merged.tasks:[];
-    merged.sessions=Array.isArray(merged.sessions)?merged.sessions:[];
-    const byId=new Map();
-    merged.tasks.forEach((t,i)=>{
-      if(t && t.id) byId.set(t.id,{task:t,index:i});
-    });
-    function closeMergedSessions(taskId, completed){
-      merged.sessions.forEach(s=>{
-        if(s && s.taskId===taskId && !s.endedAt){
-          s.endedAt=Date.now();
-          s.completed=!!completed;
-        }
-      });
-    }
-    (Array.isArray(local.tasks)?local.tasks:[]).forEach(lt=>{
-      if(!lt || !lt.id) return;
-      const hit=byId.get(lt.id);
-      const isRunning=local.runningTaskId===lt.id;
-      const localOnly=!hit;
-      const localNew=(Number(lt.created||lt.createdAt||0) > (Number(remoteMs)||0)-5*60*1000);
-      const localActive=!lt.done && (lt.scheduledDate || lt.startTime || lt.v34ManualTodayDate || lt.v45TouchedAt);
-      const localUndoneAt=Number(lt.undoneAt||0);
-      const remoteDoneAt=Number((hit&&hit.task&&(hit.task.completedAt||hit.task.doneAt))||0);
-      if(hit && !lt.done && (hit.task||{}).done && localUndoneAt && localUndoneAt>=remoteDoneAt){
-        const undoneCopy=JSON.parse(JSON.stringify(lt));
-        delete undoneCopy.completedAt;
-        delete undoneCopy.doneAt;
-        undoneCopy.done=false;
-        merged.tasks[hit.index]=Object.assign({}, hit.task||{}, undoneCopy, {done:false});
-        if(merged.runningTaskId===lt.id) merged.runningTaskId=null;
-        merged.sessions=merged.sessions.filter(s=>!(s && s.taskId===lt.id && s.completed));
-        return;
-      }
-      if(lt.done){
-        const doneCopy=JSON.parse(JSON.stringify(lt));
-        doneCopy.done=true;
-        doneCopy.completedAt=doneCopy.completedAt || doneCopy.doneAt || Date.now();
-        if(hit){
-          merged.tasks[hit.index]=Object.assign({}, hit.task||{}, doneCopy, {done:true});
-        }else{
-          merged.tasks.unshift(doneCopy);
-        }
-        if(merged.runningTaskId===lt.id) merged.runningTaskId=null;
-        closeMergedSessions(lt.id,true);
-        return;
-      }
-      if(localOnly && !lt.done){
-        merged.tasks.unshift(JSON.parse(JSON.stringify(lt)));
-        return;
-      }
-      if(!hit) return;
-      const rt=hit.task||{};
-      const remoteLooksOlder=!rt.done && (
-        (lt.startTime && !rt.startTime) ||
-        (lt.scheduledDate && !rt.scheduledDate) ||
-        (Number(lt.v45TouchedAt||0) > Number(rt.v45TouchedAt||0))
-      );
-      if(isRunning || localNew || (localActive && remoteLooksOlder)){
-        merged.tasks[hit.index]=Object.assign({}, rt, JSON.parse(JSON.stringify(lt)), {done:false, adhdReview:'', adhdHiddenGenerated:false});
-      }
-    });
-    const sessionKey=s=>(s&&s.id)?s.id:[s?.taskId,s?.startedAt].join('|');
-    const sessionMap=new Map();
-    merged.sessions.forEach(s=>sessionMap.set(sessionKey(s),s));
-    (Array.isArray(local.sessions)?local.sessions:[]).forEach(ls=>{
-      if(!ls) return;
-      const key=sessionKey(ls);
-      const localTask=(Array.isArray(local.tasks)?local.tasks:[]).find(t=>t.id===ls.taskId);
-      if(localTask && localTask.done){
-        const doneSession=JSON.parse(JSON.stringify(ls));
-        if(!doneSession.endedAt) doneSession.endedAt=Date.now();
-        doneSession.completed=true;
-        sessionMap.set(key, doneSession);
-      }else if(ls.endedAt){
-        const stoppedSession=JSON.parse(JSON.stringify(ls));
-        stoppedSession.completed=!!stoppedSession.completed;
-        sessionMap.set(key, stoppedSession);
-        if(merged.runningTaskId===ls.taskId) merged.runningTaskId=null;
-      }else if(!sessionMap.has(key) || (!ls.endedAt && local.runningTaskId===ls.taskId)){
-        sessionMap.set(key, JSON.parse(JSON.stringify(ls)));
-      }
-    });
-    merged.sessions=[...sessionMap.values()];
-    if(local.runningTaskId){
-      const runningTask=merged.tasks.find(t=>t.id===local.runningTaskId && !t.done);
-      if(runningTask){
-        runningTask.scheduledDate=runningTask.scheduledDate||local.tasks.find(t=>t.id===local.runningTaskId)?.scheduledDate||(typeof todayKey==='function'?todayKey():new Date().toISOString().slice(0,10));
-        runningTask.startTime=runningTask.startTime||local.tasks.find(t=>t.id===local.runningTaskId)?.startTime||'';
-        runningTask.adhdReview='';
-        runningTask.adhdHiddenGenerated=false;
-        merged.runningTaskId=local.runningTaskId;
-      }
-    }
-    if(merged.runningTaskId){
-      const runningTask=merged.tasks.find(t=>t.id===merged.runningTaskId);
-      const hasOpen=merged.sessions.some(s=>s.taskId===merged.runningTaskId && !s.endedAt);
-      if(!runningTask || runningTask.done || !hasOpen){
-        closeMergedSessions(merged.runningTaskId, !!(runningTask&&runningTask.done));
-        merged.runningTaskId=null;
-      }
-    }
-    const deleted=Array.isArray(local.deletedTaskSources)?local.deletedTaskSources:[];
-    if(deleted.length){
-      const clean=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
-      const deletedSet=new Set(deleted.map(clean));
-      const removedIds=new Set();
-      merged.tasks=merged.tasks.filter(t=>{
-        const keys=[t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId].map(clean).filter(Boolean);
-        const shouldRemove=keys.some(k=>deletedSet.has(k));
-        if(shouldRemove && t?.id) removedIds.add(t.id);
-        return !shouldRemove;
-      });
-      if(removedIds.has(merged.runningTaskId)) merged.runningTaskId=null;
-      merged.sessions=merged.sessions.filter(s=>!removedIds.has(s?.taskId));
-      merged.deletedTaskSources=[...deletedSet].slice(-500);
-    }
-    return merged;
-  }
+  // v70.6: mergeRemoteWithLocal removed. Sync is Last-Write-Wins: push writes local state, pull writes remote state.
   function refreshApp(){
     try{ if(typeof applyTheme==='function') applyTheme(); }catch(e){}
     try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
@@ -9529,33 +9412,32 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     const rows=await res.json();
     return rows && rows[0] ? rows[0] : null;
   }
-  async function pushRemote(reason){
+  async function pushRemote(reason, force){
     const cfg=loadCfg();
     if(!valid(cfg)) return false;
     if(pushing) return false;
     pushing=true;
     try{
-      let data=statePayload();
+      const data=statePayload();
       try{
         const currentRemote=await fetchRemote(cfg);
-        if(currentRemote && currentRemote.data){
+        if(currentRemote){
           const remoteMs=Date.parse(currentRemote.updated_at)||0;
-          data=mergeRemoteWithLocal(currentRemote.data, data, remoteMs);
-          if(typeof S!=='undefined'){
-            applyingRemote=true;
-            try{
-              Object.keys(S).forEach(k=>delete S[k]);
-              Object.assign(S, JSON.parse(JSON.stringify(data)));
-              const originalSave=window.__v40OriginalSave || window.save;
-              if(typeof originalSave==='function') originalSave();
-              refreshApp();
-            }finally{
-              applyingRemote=false;
-            }
+          const localMs=Number(cfg.localUpdatedAt||0);
+          if(!force && remoteMs && localMs<=remoteMs){
+            cfg.remoteUpdatedAt=remoteMs;
+            cfg.lastSyncAt=Date.now();
+            cfg.dirty=false;
+            saveCfg(cfg);
+            setStatus(localMs<remoteMs?'クラウドの方が新しいため保存スキップ':'最新です');
+            return false;
           }
         }
       }catch(e){
-        // 初回作成や一時的な読込失敗では、ローカル状態をそのままアップロードする。
+        if(!force){
+          setStatus('保存前確認失敗: '+e.message);
+          return false;
+        }
       }
       const updated=nowIso();
       const body={sync_key:cfg.syncKey,data,updated_at:updated};
@@ -9584,12 +9466,11 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function applyRemote(row){
     if(!row || !row.data || typeof S==='undefined') return;
     const runningSnap=localRunningSnapshot();
-    const localBefore=JSON.parse(JSON.stringify(S));
     const remoteMs=Date.parse(row.updated_at)||Date.now();
     let restoredRunning=false;
     applyingRemote=true;
     try{
-      const nextData=mergeRemoteWithLocal(row.data, localBefore, remoteMs);
+      const nextData=JSON.parse(JSON.stringify(row.data));
       Object.keys(S).forEach(k=>delete S[k]);
       Object.assign(S, nextData);
       restoredRunning=restoreRunningSnapshot(runningSnap);
@@ -9606,10 +9487,10 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }finally{
       applyingRemote=false;
     }
-    if(restoredRunning || JSON.stringify(localBefore.tasks||[])!==JSON.stringify(S.tasks||[])){
+    if(restoredRunning){
       const cfg=loadCfg();
       cfg.dirty=true;
-      cfg.localUpdatedAt=Date.now();
+      cfg.localUpdatedAt=localWriteMs(cfg);
       saveCfg(cfg);
       queuePush();
     }
@@ -9625,11 +9506,8 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const row=await fetchRemote(cfg);
       if(!row){ setStatus('クラウド未作成'); return false; }
       const remoteMs=Date.parse(row.updated_at)||0;
-      if(force || remoteMs>Number(cfg.remoteUpdatedAt||0)){
-        if(cfg.dirty && !force){
-          setStatus('未保存変更あり。先にアップロード推奨');
-          return false;
-        }
+      const localMs=Number(cfg.localUpdatedAt||0);
+      if(force || remoteMs>localMs){
         applyRemote(row);
         return true;
       }
@@ -9643,7 +9521,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function queuePush(){
     const cfg=loadCfg();
     if(!cfg.enabled || !valid(cfg) || applyingRemote) return;
-    cfg.localUpdatedAt=Date.now();
+    cfg.localUpdatedAt=localWriteMs(cfg);
     cfg.dirty=true;
     saveCfg(cfg);
     clearTimeout(saveTimer);
@@ -9652,7 +9530,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
   function flushPush(reason){
     const cfg=loadCfg();
     if(!cfg.enabled || !valid(cfg)) return;
-    cfg.localUpdatedAt=Date.now();
+    cfg.localUpdatedAt=localWriteMs(cfg);
     cfg.dirty=true;
     saveCfg(cfg);
     pushRemote(reason||'即時保存');
@@ -9712,7 +9590,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
         setStatus(cfg.enabled?'自動同期ON':'自動同期OFF');
         if(cfg.enabled) poll();
       }else if(act==='push'){
-        await pushRemote('手動アップロード');
+        await pushRemote('手動アップロード', true);
       }else if(act==='pull'){
         await pullRemote(true);
       }
@@ -13916,7 +13794,7 @@ body.v701-sync-open .v701-sync-toggle{
 </script>
 
 <style id="v702-fixes-style">
-/* v70.2: pin HERO to the top of QUEST, make deletion stick across cloud sync */
+/* v70.2: pin HERO to the top of QUEST */
 body.v68-quest #p-quest{
   display:flex;
   flex-direction:column;
@@ -13935,391 +13813,8 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
 }
 </style>
 
-<script id="v702-deletion-tombstone-script">
-/* ===== v70.2: deletion tombstones =====
-   The v40 Supabase sync merges remote→local on every push, which re-adds tasks
-   you just deleted. Fix: record deleted task IDs (and source keys) as tombstones
-   in S.deletedTaskTombstones, then keep filtering them out after every sync /
-   render. Undo (restore) removes the tombstone for the restored task. */
-(function(){
-  function ensureTombstones(){
-    if(typeof S==='undefined' || !S) return null;
-    if(!Array.isArray(S.deletedTaskTombstones)) S.deletedTaskTombstones=[];
-    return S.deletedTaskTombstones;
-  }
-  function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
-  function sourceOf(t){
-    if(!t) return '';
-    return clean(t.v57SourceKey||t.v57SourceText||t.v66SourceKey||t.v56SourceId||t.sourceId||'');
-  }
-  function recordTombstone(t){
-    const ts=ensureTombstones();
-    if(!ts || !t || !t.id) return;
-    if(ts.some(x=>x && x.id===t.id)) return;
-    ts.push({
-      id:String(t.id),
-      title:String(t.title||''),
-      source:sourceOf(t),
-      deletedAt:Date.now()
-    });
-    while(ts.length>500) ts.shift();
-  }
-  function originalSave(){
-    const sv=window.__v40OriginalSave||window.save;
-    try{ if(typeof sv==='function') sv(); }catch(e){}
-  }
-  function purge(){
-    const ts=ensureTombstones();
-    if(!ts || !ts.length) return false;
-    if(typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
-    // v70.5: ID-only matching. Source-based matching wrongly purged fresh OCR
-    // re-imports (which get a NEW id but the same source text as a prior
-    // deleted task). The existing v40 deletedTaskSources mechanism already
-    // handles source-based filtering correctly; we don't need to duplicate it.
-    const ids=new Set(ts.map(t=>t&&t.id).filter(Boolean).map(String));
-    const before=S.tasks.length;
-    S.tasks=S.tasks.filter(t=>{
-      if(!t) return false;
-      if(ids.has(String(t.id))) return false;
-      return true;
-    });
-    const removed=before-S.tasks.length;
-    if(removed>0){
-      if(S.runningTaskId && ids.has(String(S.runningTaskId))) S.runningTaskId=null;
-      originalSave();
-    }
-    return removed>0;
-  }
-
-  function wrapDelete(){
-    const orig=window.sasshyDeleteTaskById;
-    if(!orig || orig.__v702Tombstoned) return false;
-    const w=function(id, opts){
-      try{
-        const t=(typeof S!=='undefined' && S && Array.isArray(S.tasks))?S.tasks.find(x=>x&&x.id===id):null;
-        if(t) recordTombstone(t);
-      }catch(e){}
-      return orig.call(this, id, opts);
-    };
-    w.__v702Tombstoned=true;
-    window.sasshyDeleteTaskById=w;
-    return true;
-  }
-
-  function wrapRestore(){
-    const orig=window.sasshyRestoreDeletedTask;
-    if(!orig || orig.__v702Tombstoned) return false;
-    const w=function(){
-      const beforeIds=new Set(((typeof S!=='undefined' && S && Array.isArray(S.tasks))?S.tasks:[]).map(t=>t&&t.id).filter(Boolean));
-      const r=orig.apply(this, arguments);
-      try{
-        const ts=ensureTombstones();
-        if(ts && ts.length){
-          const after=(typeof S!=='undefined' && S && Array.isArray(S.tasks))?S.tasks:[];
-          const newTasks=after.filter(t=>t && !beforeIds.has(t.id));
-          if(newTasks.length){
-            const newIds=new Set(newTasks.map(t=>String(t.id)));
-            const newSrcs=new Set(newTasks.map(sourceOf).filter(Boolean));
-            S.deletedTaskTombstones=ts.filter(x=>{
-              if(!x) return false;
-              if(newIds.has(String(x.id))) return false;
-              if(x.source && newSrcs.has(x.source)) return false;
-              return true;
-            });
-            originalSave();
-          }
-        }
-      }catch(e){}
-      return r;
-    };
-    w.__v702Tombstoned=true;
-    window.sasshyRestoreDeletedTask=w;
-    return true;
-  }
-
-  function wrapAdd(){
-    const orig=window.sasshyAddTaskSafe;
-    if(!orig || orig.__v702Tombstoned) return false;
-    const w=function(raw, opts){
-      const r=orig.call(this, raw, opts);
-      try{
-        if(r && r.added && r.task){
-          const ts=ensureTombstones();
-          if(ts && ts.length){
-            const tId=String(r.task.id||'');
-            const tSrc=sourceOf(r.task);
-            const next=ts.filter(x=>{
-              if(!x) return false;
-              if(tId && String(x.id)===tId) return false;
-              if(tSrc && x.source===tSrc) return false;
-              return true;
-            });
-            if(next.length!==ts.length){
-              S.deletedTaskTombstones=next;
-              originalSave();
-            }
-          }
-        }
-      }catch(e){}
-      return r;
-    };
-    w.__v702Tombstoned=true;
-    window.sasshyAddTaskSafe=w;
-    return true;
-  }
-
-  // After purging, also re-render and trigger sync so the cloud agrees.
-  function purgeAndRender(){
-    const removed=purge();
-    if(removed){
-      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
-      try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
-      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
-    }
-    return removed;
-  }
-
-  setInterval(purgeAndRender, 1200);
-
-  function tryWrap(){
-    let done=true;
-    if(!wrapDelete()) done=false;
-    if(!wrapRestore()) done=false;
-    if(!wrapAdd()) done=false;
-    return done;
-  }
-  setTimeout(()=>{
-    if(!tryWrap()){
-      let tries=0;
-      const iv=setInterval(()=>{
-        if(tryWrap() || ++tries>40) clearInterval(iv);
-      },200);
-    }
-    purgeAndRender();
-  }, 800);
-})();
-</script>
-
-<script id="v703-sync-response-filter-script">
-/* ===== v70.3: filter Supabase responses by tombstones =====
-   Root cause of "deleted tasks come back": mergeRemoteWithLocal in the v40
-   sync layer starts from the remote payload and only ADDS local tasks. If a
-   task is in remote but not in local (because the user deleted it), the
-   merge keeps it. To fix this without modifying v40's merge, we wrap
-   window.fetch and, for Supabase app_state reads, filter the tombstoned
-   tasks out of the response BEFORE it reaches v40. The merge now sees a
-   clean remote and the next push uploads the clean state to the cloud. */
-(function(){
-  if(window.__v703FetchWrapped) return;
-  const origFetch=window.fetch;
-  if(typeof origFetch!=='function') return;
-
-  function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
-  function sourceOf(t){
-    if(!t) return '';
-    return clean(t.v57SourceKey||t.v57SourceText||t.v66SourceKey||t.v56SourceId||t.sourceId||'');
-  }
-  function getTombstones(){
-    try{
-      if(typeof S!=='undefined' && S && Array.isArray(S.deletedTaskTombstones)) return S.deletedTaskTombstones;
-    }catch(e){}
-    return [];
-  }
-  function isSupabaseStateGet(url, opts){
-    let u='';
-    try{
-      u = (typeof url==='string')?url:(url && url.url)?url.url:'';
-    }catch(e){return false;}
-    if(!u) return false;
-    if(!/supabase\.co\/rest\/v1\//.test(u)) return false;
-    // Match the table name used by v40 (app_state)
-    if(!/app_state/.test(u)) return false;
-    const method=(opts && opts.method)?String(opts.method).toUpperCase():'GET';
-    return method==='GET';
-  }
-  function filterRows(rows){
-    if(!Array.isArray(rows)) return rows;
-    const ts=getTombstones();
-    if(!ts.length) return rows;
-    // v70.5: ID-only matching. See purge() comment.
-    const ids=new Set(ts.map(t=>t && t.id ? String(t.id) : '').filter(Boolean));
-    return rows.map(row=>{
-      if(!row || !row.data) return row;
-      const data=row.data;
-      if(!Array.isArray(data.tasks)) return row;
-      const removedIds=new Set();
-      const filteredTasks=data.tasks.filter(task=>{
-        if(!task) return false;
-        const tid=String(task.id||'');
-        if(tid && ids.has(tid)){ removedIds.add(tid); return false; }
-        return true;
-      });
-      const filteredSessions=Array.isArray(data.sessions)
-        ? data.sessions.filter(s=>!s || !removedIds.has(String(s.taskId||'')))
-        : data.sessions;
-      let runningTaskId=data.runningTaskId;
-      if(runningTaskId && removedIds.has(String(runningTaskId))) runningTaskId=null;
-      return Object.assign({}, row, {
-        data: Object.assign({}, data, {
-          tasks: filteredTasks,
-          sessions: filteredSessions,
-          runningTaskId: runningTaskId
-        })
-      });
-    });
-  }
-
-  window.fetch=function(url, opts){
-    if(!isSupabaseStateGet(url, opts)){
-      return origFetch.apply(this, arguments);
-    }
-    return origFetch.apply(this, arguments).then(res=>{
-      if(!res || !res.ok) return res;
-      return res.clone().json().then(rows=>{
-        const filtered=filterRows(rows);
-        const headers=new Headers(res.headers);
-        return new Response(JSON.stringify(filtered), {
-          status: res.status,
-          statusText: res.statusText,
-          headers: headers
-        });
-      }).catch(()=>res);
-    });
-  };
-  window.__v703FetchWrapped=true;
-})();
-</script>
-
-<script id="v704-capture-intercept-script">
-/* ===== v70.4: capture-phase intercept for delete/undo =====
-   v70.2 wrapped window.sasshyDeleteTaskById, but the v66 UI calls the LOCAL
-   closure version of deleteTaskById, bypassing the wrap. So tombstones were
-   never recorded, and the v70.3 fetch filter had nothing to filter.
-
-   Fix: listen at the document at the capture phase, BEFORE v66's bubble
-   listeners fire. Record a tombstone for any task about to be deleted, and
-   clear the tombstone for any task about to be (or just) restored. */
-(function(){
-  function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
-  function sourceOf(t){
-    if(!t) return '';
-    return clean(t.v57SourceKey||t.v57SourceText||t.v66SourceKey||t.v56SourceId||t.sourceId||'');
-  }
-  function ensureTombstones(){
-    if(typeof S==='undefined' || !S) return null;
-    if(!Array.isArray(S.deletedTaskTombstones)) S.deletedTaskTombstones=[];
-    return S.deletedTaskTombstones;
-  }
-  function originalSave(){
-    const sv=window.__v40OriginalSave||window.save;
-    try{ if(typeof sv==='function') sv(); }catch(e){}
-  }
-  function recordTombstoneForTask(t){
-    const ts=ensureTombstones();
-    if(!ts || !t || !t.id) return false;
-    const id=String(t.id);
-    if(ts.some(x=>x && String(x.id)===id)) return false;
-    ts.push({
-      id:id,
-      title:String(t.title||''),
-      source:sourceOf(t),
-      deletedAt:Date.now()
-    });
-    while(ts.length>500) ts.shift();
-    originalSave();
-    return true;
-  }
-  function recordTombstoneForId(id){
-    if(!id || typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
-    const t=S.tasks.find(x=>x && x.id===id);
-    return t ? recordTombstoneForTask(t) : false;
-  }
-  function clearTombstoneForTask(t){
-    const ts=ensureTombstones();
-    if(!ts || !ts.length || !t) return false;
-    const idStr=String(t.id||'');
-    const src=sourceOf(t);
-    const before=ts.length;
-    S.deletedTaskTombstones=ts.filter(x=>{
-      if(!x) return false;
-      if(idStr && String(x.id)===idStr) return false;
-      if(src && x.source===src) return false;
-      return true;
-    });
-    const changed=S.deletedTaskTombstones.length!==before;
-    if(changed) originalSave();
-    return changed;
-  }
-  function clearTombstonesForRecentlyRestored(){
-    if(typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
-    if(!Array.isArray(S.deletedTaskTombstones) || !S.deletedTaskTombstones.length) return false;
-    const now=Date.now();
-    const restored=S.tasks.filter(t=>t && t.undoneAt && (now-t.undoneAt)<60000);
-    if(!restored.length) return false;
-    const ids=new Set(restored.map(t=>String(t.id||'')));
-    const srcs=new Set(restored.map(sourceOf).filter(Boolean));
-    const before=S.deletedTaskTombstones.length;
-    S.deletedTaskTombstones=S.deletedTaskTombstones.filter(x=>{
-      if(!x) return false;
-      if(ids.has(String(x.id))) return false;
-      if(x.source && srcs.has(x.source)) return false;
-      return true;
-    });
-    const changed=S.deletedTaskTombstones.length!==before;
-    if(changed) originalSave();
-    return changed;
-  }
-
-  // Capture-phase click on document - fires BEFORE v66/v65 bubble listeners
-  document.addEventListener('click', function(e){
-    // Delete buttons from v66 desk
-    const v66Del=e.target.closest?.('[data-v66="delete"]');
-    if(v66Del){
-      const id=v66Del.dataset?.id || v66Del.closest?.('[data-id]')?.dataset?.id;
-      if(id) recordTombstoneForId(id);
-      return;
-    }
-    // Timeline delete buttons added by v66
-    const tlDel=e.target.closest?.('.v66-tl-del');
-    if(tlDel){
-      const id=tlDel.dataset?.id || tlDel.closest?.('[data-id]')?.dataset?.id;
-      if(id) recordTombstoneForId(id);
-      return;
-    }
-    // Other delete selectors (legacy)
-    const otherDel=e.target.closest?.('[data-act="del"]')
-                || e.target.closest?.('[data-v45="delete"]')
-                || (e.target.id==='qtdDelBtn' ? e.target : null)
-                || (e.target.id==='qtdDeleteBtn' ? e.target : null);
-    if(otherDel){
-      const id=otherDel.dataset?.id
-            || otherDel.closest?.('[data-id]')?.dataset?.id
-            || (typeof currentDetailId!=='undefined' ? currentDetailId : null);
-      if(id) recordTombstoneForId(id);
-      return;
-    }
-    // Undo button - clear the tombstone for the task about to be restored
-    const undoBtn=e.target.closest?.('[data-v65-undo]');
-    if(undoBtn){
-      try{
-        if(typeof S!=='undefined' && S && Array.isArray(S.deletedTaskUndo) && S.deletedTaskUndo.length){
-          const top=S.deletedTaskUndo[S.deletedTaskUndo.length-1];
-          if(top && top.task) clearTombstoneForTask(top.task);
-        }
-      }catch(e){}
-    }
-  }, true);  // CAPTURE PHASE
-
-  // Cmd+Z / Ctrl+Z - runs after v65 restore, clears tombstone for the restored task
-  document.addEventListener('keydown', function(e){
-    if(!(e.metaKey||e.ctrlKey)) return;
-    if(String(e.key||'').toLowerCase()!=='z') return;
-    setTimeout(clearTombstonesForRecentlyRestored, 100);
-  }, true);
-
-  // Backup periodic check - in case anything else triggers a restore
-  setInterval(clearTombstonesForRecentlyRestored, 2000);
-})();
+<script id="v706-sync-simplify-note">
+/* v70.6: legacy tombstone/fetch-wrap sync patches removed; v40 sync now uses Last-Write-Wins. */
 </script>
 
 </body>
