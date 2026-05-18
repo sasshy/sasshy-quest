@@ -3693,7 +3693,8 @@ function handleSchedAction(id, act){
   else if(act==='del'){
     if(S.runningTaskId===id) stopTask(id);
     if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
-    S.tasks=S.tasks.filter(x=>x.id!==id);
+    const idx=S.tasks.findIndex(x=>x&&x.id===id);
+    if(idx>=0) S.tasks.splice(idx,1);
     save(); renderTasks(); renderTimeline();
   }
 }
@@ -3812,7 +3813,8 @@ document.getElementById('selDelBtn').onclick=()=>{
   selectedIds.forEach(id=>{
     if(S.runningTaskId===id) S.runningTaskId=null;
     if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(S.tasks.find(t=>t.id===id));
-    S.tasks=S.tasks.filter(t=>t.id!==id);
+    const idx=S.tasks.findIndex(t=>t&&t.id===id);
+    if(idx>=0) S.tasks.splice(idx,1);
   });
   setSelectMode(false);
   save(); renderTasks(); renderTimeline();
@@ -4304,7 +4306,8 @@ document.getElementById('qtdDelBtn').onclick=()=>{
   }
   if(S.runningTaskId===currentDetailId) stopTask(currentDetailId);
   if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(S.tasks.find(x=>x.id===currentDetailId));
-  S.tasks=S.tasks.filter(x=>x.id!==currentDetailId);
+  const idx=S.tasks.findIndex(x=>x&&x.id===currentDetailId);
+  if(idx>=0) S.tasks.splice(idx,1);
   save(); renderTasks(); renderTimeline();
   closeTaskDetail();
 };
@@ -4372,7 +4375,8 @@ if(poolBody){
     else if(act==='del'){
       if(S.runningTaskId===id) stopTask(id);
       if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
-      S.tasks=S.tasks.filter(x=>x.id!==id);
+      const idx=S.tasks.findIndex(x=>x&&x.id===id);
+      if(idx>=0) S.tasks.splice(idx,1);
       save(); renderPool(); renderTasks(); renderSchedule(); renderTimeline();
     }
     else if(act==='edit' || !act){
@@ -4541,7 +4545,8 @@ function handleMonsterClick(e){
     if(!t.done){gainExp(FLEE_EXP); addLog(`${esc(t.title)}から <span class="flee">にげた！</span> <span class="exp">+${FLEE_EXP}EXP</span>`);}
     if(S.runningTaskId===id) stopTask(id);
     if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
-    S.tasks=S.tasks.filter(x=>x.id!==id);
+    const idx=S.tasks.findIndex(x=>x&&x.id===id);
+    if(idx>=0) S.tasks.splice(idx,1);
     save(); renderTasks(); renderTimeline();
   }else if(act==='move'){t.lane=e.target.dataset.to; save(); renderTasks();}
   else if(act==='set-time'){e.stopPropagation(); promptTaskSchedule(id);}
@@ -6372,7 +6377,10 @@ body.v23-clean #v18BacklogList .v18-task .v18-na:empty{display:none;}
       list.parentNode.insertBefore(note,list);
     }
   }
-  cleanup();
+  /* v68: disabled. cleanup() silently deleted user tasks based on hardcoded
+     "vague" keywords and a fuzzy duplicate-title heuristic, which removed real
+     tasks the user added. Keep the relabel() side-effect, kill the deletion. */
+  // cleanup();
   setTimeout(()=>{try{renderTasks();renderSchedule();}catch(e){} relabel();},80);
   const mo=new MutationObserver(()=>{clearTimeout(window.__v23CleanTimer); window.__v23CleanTimer=setTimeout(relabel,60);});
   mo.observe(document.body,{childList:true,subtree:true});
@@ -8028,7 +8036,8 @@ body.v45-command-active #v34Panel > .v34-capture{display:none !important;}
           if(!confirm('このタスクを削除する？')) return;
           if(typeof window.sasshyRememberDeletedTask==='function') window.sasshyRememberDeletedTask(t);
           if(S.runningTaskId===id && typeof stopTask==='function') stopTask(id);
-          S.tasks=S.tasks.filter(x=>x.id!==id);
+          const idx=S.tasks.findIndex(x=>x&&x.id===id);
+          if(idx>=0) S.tasks.splice(idx,1);
         }else if(act==='detail' && typeof openTaskDetail==='function'){
           openTaskDetail(id); return;
         }
@@ -9107,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=66').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.1').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -10943,6 +10952,16 @@ body.v35-timeline-drag .sched-task.dragging.v35-short:hover{
   function sourceKeys(t){
     return [t?.v57SourceText,t?.v57SourceKey,t?.v56SourceId,t?.sourceId].map(v=>String(v==null?'':v).replace(/\s+/g,' ').trim()).filter(Boolean);
   }
+  function uniqueTaskId(base){
+    const stem=String(base||'task-restore').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40) || 'task-restore';
+    let id=stem+'-undo-'+Date.now().toString(36);
+    let i=0;
+    while(hasState() && S.tasks.some(x=>x&&x.id===id)){
+      i++;
+      id=stem+'-undo-'+Date.now().toString(36)+'-'+i;
+    }
+    return id;
+  }
   function ensureStack(){
     if(!hasState()) return [];
     S.deletedTaskUndo=Array.isArray(S.deletedTaskUndo)?S.deletedTaskUndo:[];
@@ -10982,8 +11001,8 @@ body.v35-timeline-drag .sched-task.dragging.v35-short:hover{
     const t=clone(item.task);
     if(!t) return;
     if(S.tasks.some(x=>x&&x.id===t.id)){
-      renderUndo();
-      return;
+      t.v67RestoredFromDuplicateId=t.id;
+      t.id=uniqueTaskId(t.id);
     }
     t.done=false;
     t.undoneAt=Date.now();
@@ -11378,6 +11397,33 @@ body.v66-simple-quest .sched-resize-handle{
       return !x.done && clean(x.title).toLowerCase()===title && taskDate(x)===date;
     }) || null;
   }
+  function makeUniqueId(seed){
+    const base=clean(seed).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,38) || 'task';
+    let id=base+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6);
+    while((S.tasks||[]).some(t=>t&&t.id===id)){
+      id=base+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+    }
+    return id;
+  }
+  function ensureUniqueTaskIds(){
+    if(!ok()) return false;
+    const seen=new Set();
+    let changed=false;
+    (S.tasks||[]).forEach((t,i)=>{
+      if(!t) return;
+      const id=clean(t.id);
+      if(!id || seen.has(id)){
+        t.v67DuplicateId=id || '';
+        t.id=makeUniqueId(id || ('task-'+i));
+        changed=true;
+      }
+      seen.add(t.id);
+    });
+    if(changed){
+      try{ if(typeof save==='function') save(); }catch(e){}
+    }
+    return changed;
+  }
   function normalizeTask(raw, opts){
     opts=opts||{};
     const now=Date.now();
@@ -11399,6 +11445,7 @@ body.v66-simple-quest .sched-resize-handle{
   }
   function addTaskSafe(raw, opts){
     if(!ok()) return {added:false, reason:'state'};
+    ensureUniqueTaskIds();
     opts=opts||{};
     const t=normalizeTask(raw, opts);
     if(!t) return {added:false, reason:'empty'};
@@ -11431,6 +11478,7 @@ body.v66-simple-quest .sched-resize-handle{
   }
   function deleteTaskById(id, opts){
     if(!ok() || !id || String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return false;
+    ensureUniqueTaskIds();
     const idx=S.tasks.findIndex(t=>t&&t.id===id);
     if(idx<0) return false;
     const t=S.tasks[idx];
@@ -11447,6 +11495,7 @@ body.v66-simple-quest .sched-resize-handle{
 
   function finishTaskSafe(id){
     if(!ok()) return;
+    ensureUniqueTaskIds();
     const t=S.tasks.find(x=>x&&x.id===id);
     if(!t || t.done) return;
     if(typeof askCompletionDate==='function' && !askCompletionDate(t)) return;
@@ -11463,6 +11512,7 @@ body.v66-simple-quest .sched-resize-handle{
   }
   function startOrPause(id){
     if(!ok()) return;
+    ensureUniqueTaskIds();
     if(S.runningTaskId===id){
       if(typeof window.sasshyForceStopTask==='function') window.sasshyForceStopTask(id);
       else { closeOpenSessions(id,false); refresh('中断'); }
@@ -11570,6 +11620,7 @@ body.v66-simple-quest .sched-resize-handle{
     const list=document.getElementById('v66TaskList');
     const count=document.getElementById('v66TaskCount');
     if(!list || !ok()) return;
+    ensureUniqueTaskIds();
     const today=dkey();
     const tasks=(S.tasks||[]).filter(t=>t && !t.done && !t.adhdHiddenGenerated);
     if(count) count.textContent=tasks.length+'件';
@@ -11770,6 +11821,7 @@ body.v66-simple-quest .sched-resize-handle{
   }
   function decorateSchedule(){
     if(!ok()) return;
+    ensureUniqueTaskIds();
     document.querySelectorAll('.sched-task[data-id]:not(.gcal)').forEach(el=>{
       const id=el.dataset.id;
       if(!id || id.startsWith('routine:') || el.querySelector('.v66-tl-del')) return;
@@ -11803,7 +11855,7 @@ body.v66-simple-quest .sched-resize-handle{
   document.addEventListener('mouseup',handleTimelineDeleteEvent,true);
   document.addEventListener('click',e=>{
     if(handleTimelineDeleteEvent(e)) return;
-    const btn=e.target.closest?.('[data-act="del"],[data-v45="delete"],#qtdDeleteBtn');
+    const btn=e.target.closest?.('[data-act="del"],[data-v45="delete"],#qtdDelBtn,#qtdDeleteBtn');
     if(!btn || e.target.closest?.('#v66QuestDesk')) return;
     const id=btn.dataset?.id || btn.closest?.('[data-id]')?.dataset?.id || (typeof currentDetailId!=='undefined'?currentDetailId:null);
     if(!id || String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return;
@@ -11811,7 +11863,7 @@ body.v66-simple-quest .sched-resize-handle{
     e.stopPropagation();
     e.stopImmediatePropagation();
     deleteTaskById(id);
-    try{ if(btn.id==='qtdDeleteBtn' && typeof closeTaskDetail==='function') closeTaskDetail(); }catch(err){}
+    try{ if((btn.id==='qtdDelBtn'||btn.id==='qtdDeleteBtn') && typeof closeTaskDetail==='function') closeTaskDetail(); }catch(err){}
   },true);
 
   const oldRenderTasks=window.renderTasks;
@@ -11835,6 +11887,2031 @@ body.v66-simple-quest .sched-resize-handle{
     window.renderSchedule=wrapped;
   }
   setTimeout(renderSimple,300);
+  setTimeout(ensureUniqueTaskIds,350);
+})();
+</script>
+
+<script id="v67-delete-undo-hardening-script">
+/* ===== v67: make delete undo authoritative even with duplicate IDs ===== */
+(function(){
+  function hasState(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function ensureUniqueTaskIds(){
+    if(!hasState()) return false;
+    const seen=new Set();
+    let changed=false;
+    (S.tasks||[]).forEach((t,i)=>{
+      if(!t) return;
+      const raw=String(t.id||'').trim();
+      if(!raw || seen.has(raw)){
+        t.v67DuplicateId=raw;
+        let id='task-v67-'+Date.now().toString(36)+'-'+i+'-'+Math.random().toString(36).slice(2,6);
+        while(S.tasks.some(x=>x&&x.id===id)){
+          id='task-v67-'+Date.now().toString(36)+'-'+i+'-'+Math.random().toString(36).slice(2,8);
+        }
+        t.id=id;
+        changed=true;
+      }
+      seen.add(t.id);
+    });
+    if(changed){
+      try{ if(typeof save==='function') save(); }catch(e){}
+    }
+    return changed;
+  }
+  function refresh(){
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+  }
+  function doUndo(){
+    ensureUniqueTaskIds();
+    if(typeof window.sasshyRestoreDeletedTask==='function'){
+      window.sasshyRestoreDeletedTask();
+      setTimeout(()=>{ensureUniqueTaskIds(); refresh();},0);
+      return true;
+    }
+    return false;
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest?.('[data-v65-undo]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    doUndo();
+  },true);
+  document.addEventListener('keydown',e=>{
+    if(e.defaultPrevented) return;
+    const tag=e.target&&e.target.tagName?e.target.tagName.toLowerCase():'';
+    if(e.target&&(e.target.isContentEditable||tag==='input'||tag==='textarea'||tag==='select')) return;
+    if((e.metaKey||e.ctrlKey) && String(e.key||'').toLowerCase()==='z'){
+      if(hasState() && Array.isArray(S.deletedTaskUndo) && S.deletedTaskUndo.length){
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        doUndo();
+      }
+    }
+  },true);
+  setTimeout(ensureUniqueTaskIds,500);
+})();
+</script>
+
+<style id="v68-quest-redesign-style">
+/* ===== v68: ADHD-focused QUEST redesign =====
+   Principles:
+   - One thing in focus at the top (HERO: 今やる1つ)
+   - Always-visible timeline (no folds for the main flow)
+   - Big touch targets (>=44px), one accent color per role
+   - Hide cruft from older versions (WIN CONDITION / WAR CHEST / PURPOSE CODE
+     / ADHD COMMAND / Voice Settings / sync panels stay hidden on QUEST)
+*/
+body.v68-quest #cdBox,
+body.v68-quest .quest-coach,
+body.v68-quest .quest-status-legend,
+body.v68-quest .warchest,
+body.v68-quest .purpose-code,
+body.v68-quest #p-quest > .q-add,
+body.v68-quest #p-quest > .pool-section.pool-main,
+body.v68-quest #v34Panel,
+body.v68-quest #v40SyncPanel,
+body.v68-quest #v45CommandBar,
+body.v68-quest #v48VoiceSettings,
+body.v68-quest #v56KintonePanel,
+body.v68-quest #v57OcrPanel{
+  display:none !important;
+}
+body.v68-quest #p-quest{
+  max-width:980px;
+  margin:0 auto;
+  padding-top:6px;
+}
+
+/* HERO: 今やる1つ */
+.v68-hero{
+  position:relative;
+  border:1.5px solid var(--border);
+  background:linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
+  border-radius:14px;
+  padding:16px 18px 14px;
+  margin:0 0 14px;
+  box-shadow:var(--shadow-xs);
+}
+.v68-hero.running{
+  border-color:var(--red);
+  background:linear-gradient(180deg, var(--red-glow) 0%, var(--surface) 100%);
+}
+.v68-hero.overdue{border-color:var(--orange);}
+.v68-hero-label{
+  font-size:11px;
+  font-weight:900;
+  color:var(--text3);
+  letter-spacing:0.08em;
+  margin-bottom:8px;
+  text-transform:uppercase;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v68-hero.running .v68-hero-label{color:var(--red);}
+.v68-hero.overdue .v68-hero-label{color:var(--orange);}
+.v68-hero-title{
+  font-size:21px;
+  font-weight:950;
+  color:var(--text);
+  line-height:1.3;
+  margin-bottom:10px;
+  cursor:pointer;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.v68-hero-title:hover{opacity:0.85;}
+.v68-hero-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:14px;
+  font-size:12px;
+  color:var(--text2);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  margin-bottom:12px;
+  font-weight:700;
+}
+.v68-hero-meta .v68-hero-elapsed{color:var(--red);font-weight:900;}
+.v68-hero-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.v68-hero-btn{
+  flex:1 1 110px;
+  min-height:48px;
+  border:1.5px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:11px;
+  padding:11px 16px;
+  font-family:inherit;
+  font-size:15px;
+  font-weight:900;
+  cursor:pointer;
+  white-space:nowrap;
+  transition:transform 0.06s ease;
+}
+.v68-hero-btn:active{transform:scale(0.97);}
+.v68-hero-btn.go{background:var(--text);color:var(--surface);border-color:var(--text);}
+.v68-hero-btn.good{border-color:var(--green);color:var(--green);background:var(--surface);}
+.v68-hero-btn.good:hover{background:var(--green);color:var(--surface);}
+.v68-hero-btn.warn{border-color:var(--red);color:var(--red);background:var(--surface);}
+.v68-hero-btn.warn:hover{background:var(--red);color:var(--surface);}
+.v68-hero-btn.ghost{flex:0 0 auto;font-size:13px;padding:11px 14px;}
+.v68-hero-empty{
+  color:var(--text3);
+  font-size:14px;
+  font-weight:700;
+  text-align:center;
+  padding:18px 6px;
+  line-height:1.5;
+}
+
+/* Cleanup the v66 list so groups read clearer */
+body.v68-quest .v66-task{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:10px;
+  padding:11px 12px;
+  margin-bottom:8px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+}
+body.v68-quest .v66-task.running{display:none;}
+body.v68-quest .v66-task.overdue{border-left:4px solid var(--orange);}
+body.v68-quest .v66-task-title{
+  font-size:14.5px;
+  font-weight:800;
+  color:var(--text);
+  line-height:1.35;
+  margin-bottom:4px;
+  overflow-wrap:anywhere;
+}
+body.v68-quest .v66-task-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  font-size:11px;
+  color:var(--text3);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+body.v68-quest .v66-task-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+body.v68-quest .v66-task-actions .v66-btn{
+  min-height:38px;
+  padding:7px 12px;
+  font-size:12px;
+  border-radius:8px;
+}
+body.v68-quest .v66-group{
+  font-size:11px;
+  font-weight:900;
+  color:var(--text3);
+  letter-spacing:0.08em;
+  margin:14px 0 6px;
+  text-transform:uppercase;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+body.v68-quest .v66-group:first-child{margin-top:0;}
+body.v68-quest .v66-empty{
+  color:var(--text3);
+  font-size:13px;
+  font-weight:700;
+  text-align:center;
+  padding:18px 6px;
+}
+body.v68-quest #v66QuestDesk{
+  border-radius:14px;
+  padding:14px 16px;
+}
+body.v68-quest #v66QuestDesk .v66-topline{margin-bottom:12px;}
+body.v68-quest #v66QuestDesk .v66-topline .v66-title{font-size:15px;}
+body.v68-quest #v66QuestDesk .v66-add input{font-size:15px;padding:12px 13px;min-height:44px;}
+body.v68-quest #v66QuestDesk .v66-add .v66-btn{min-height:44px;font-size:14px;padding:11px 16px;}
+body.v68-quest #v66QuestDesk .v66-list-head{margin-top:14px;}
+
+/* Timeline (schedBody) made primary and breathable */
+body.v68-quest #schedBody{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:14px;
+  padding:12px;
+  margin-top:4px;
+}
+body.v68-quest #schedHdrDay{
+  background:transparent;
+  padding:10px 4px 6px;
+  margin-bottom:6px;
+}
+body.v68-quest #schedHdrDay #schedTodayLabel{font-size:15px;font-weight:900;}
+
+/* Persistent Undo hint placed below the hero */
+body.v68-quest #v65UndoBar{
+  border-radius:11px;
+  padding:10px 12px;
+  font-size:12.5px;
+}
+
+/* Hide stale BASE clutter that depends on removed features */
+body.v68-quest #warChestCard,
+body.v68-quest #purposeCard{display:none !important;}
+
+/* Tighter battle log */
+body.v68-quest .battle-log-wrap{margin-top:16px;}
+
+@media (max-width:520px){
+  .v68-hero-title{font-size:19px;}
+  .v68-hero-btn{font-size:14px;padding:10px 12px;}
+}
+</style>
+
+<script id="v68-quest-redesign-script">
+/* ===== v68: HERO panel + safer surface for ADHD-friendly QUEST =====
+   Layers on top of v66/v67 - reuses sasshyAddTaskSafe / sasshyDeleteTaskById /
+   sasshyRestoreDeletedTask. v68 only owns the HERO ("今やる1つ") and visual
+   hierarchy. Add/delete/undo logic is untouched. */
+(function(){
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function dkey(){try{return todayKey();}catch(e){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}}
+  function escText(v){
+    const s=String(v==null?'':v);
+    return typeof esc==='function'?esc(s):s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function pad(n){return String(n).padStart(2,'0');}
+  function elapsed(taskId){
+    if(!ok()) return '00:00';
+    const s=(S.sessions||[]).find(s=>s&&s.taskId===taskId && !s.endedAt);
+    if(!s) return '00:00';
+    const totalSec=Math.max(0, Math.floor((Date.now()-(s.startedAt||Date.now()))/1000));
+    const h=Math.floor(totalSec/3600);
+    const m=Math.floor((totalSec%3600)/60);
+    const sec=totalSec%60;
+    return h>0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+  }
+  function findHero(){
+    if(!ok()) return null;
+    const today=dkey();
+    // 1. running task wins
+    if(S.runningTaskId){
+      const t=S.tasks.find(x=>x&&x.id===S.runningTaskId);
+      if(t && !t.done) return {task:t, running:true};
+    }
+    // 2. overdue scheduled, earliest time first
+    const overdue=(S.tasks||[]).filter(t=>t&&!t.done&&t.scheduledDate&&t.scheduledDate<today);
+    overdue.sort((a,b)=>String(a.scheduledDate).localeCompare(String(b.scheduledDate)) ||
+                       String(a.startTime||'99:99').localeCompare(String(b.startTime||'99:99')));
+    if(overdue[0]) return {task:overdue[0], overdue:true};
+    // 3. today's tasks, earliest startTime first, then by created
+    const todays=(S.tasks||[]).filter(t=>t&&!t.done&&t.scheduledDate===today);
+    todays.sort((a,b)=>{
+      const at=a.startTime||'99:99', bt=b.startTime||'99:99';
+      if(at!==bt) return at.localeCompare(bt);
+      return (a.created||0)-(b.created||0);
+    });
+    if(todays[0]) return {task:todays[0]};
+    // 4. backlog (no date)
+    const backlog=(S.tasks||[]).filter(t=>t&&!t.done&&!t.scheduledDate);
+    backlog.sort((a,b)=>(b.v45TouchedAt||b.created||0)-(a.v45TouchedAt||a.created||0));
+    if(backlog[0]) return {task:backlog[0], noDate:true};
+    return null;
+  }
+  function ensureHero(){
+    document.body.classList.add('v68-quest');
+    let hero=document.getElementById('v68Hero');
+    if(hero) return hero;
+    const host=document.querySelector('#p-quest');
+    if(!host) return null;
+    hero=document.createElement('div');
+    hero.id='v68Hero';
+    hero.className='v68-hero';
+    const badge=document.getElementById('runningBadge');
+    host.insertBefore(hero, badge ? badge.nextSibling : host.firstChild);
+    hero.addEventListener('click', e=>{
+      const btn=e.target.closest('[data-v68]');
+      if(!btn) return;
+      const act=btn.dataset.v68;
+      const id=hero.dataset.taskId;
+      if(!id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if(act==='start') heroStart(id);
+      else if(act==='done') heroDone(id);
+      else if(act==='detail') heroDetail(id);
+      else if(act==='schedule') heroSchedule(id);
+    });
+    return hero;
+  }
+  function refreshAll(reason){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(reason && typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    renderHero();
+  }
+  function heroStart(id){
+    if(!ok()) return;
+    if(S.runningTaskId===id){
+      // stop / pause
+      if(typeof window.sasshyForceStopTask==='function'){
+        window.sasshyForceStopTask(id);
+      }else{
+        (S.sessions||[]).forEach(s=>{ if(s&&s.taskId===id&&!s.endedAt){ s.endedAt=Date.now(); s.completed=false; }});
+        S.runningTaskId=null;
+      }
+    }else{
+      if(typeof startTask==='function'){
+        startTask(id);
+      }else{
+        const t=S.tasks.find(x=>x&&x.id===id);
+        if(t){ t.scheduledDate=t.scheduledDate||dkey(); t.startTime=t.startTime||hmNow(); S.runningTaskId=id; }
+      }
+    }
+    refreshAll('開始/中断');
+  }
+  function hmNow(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
+  function heroDone(id){
+    if(!ok()) return;
+    const t=S.tasks.find(x=>x&&x.id===id);
+    if(!t || t.done) return;
+    if(typeof askCompletionDate==='function' && !askCompletionDate(t)) return;
+    if(typeof finishTask==='function'){
+      finishTask(id);
+    }else{
+      t.done=true;
+      t.completedAt=Date.now();
+      (t.subs||[]).forEach(s=>s.done=true);
+      (S.sessions||[]).forEach(s=>{ if(s&&s.taskId===id&&!s.endedAt){ s.endedAt=Date.now(); s.completed=true; }});
+      if(S.runningTaskId===id) S.runningTaskId=null;
+    }
+    refreshAll('完了');
+  }
+  function heroDetail(id){
+    if(typeof openTaskDetail==='function') openTaskDetail(id);
+  }
+  function heroSchedule(id){
+    if(typeof openSetDateModal==='function') openSetDateModal(id);
+  }
+  function renderHero(){
+    const hero=ensureHero();
+    if(!hero) return;
+    const pick=findHero();
+    if(!pick){
+      hero.dataset.taskId='';
+      hero.classList.remove('running','overdue');
+      hero.innerHTML='<div class="v68-hero-label">今やること</div><div class="v68-hero-empty">いま手をつけるタスクはありません。<br>下の入力欄に1つだけ入れて始めよう。</div>';
+      return;
+    }
+    const t=pick.task;
+    hero.dataset.taskId=t.id;
+    hero.classList.toggle('running', !!pick.running);
+    hero.classList.toggle('overdue', !!pick.overdue);
+    const today=dkey();
+    const meta=[];
+    if(pick.running) meta.push('<span class="v68-hero-elapsed">経過 '+escText(elapsed(t.id))+'</span>');
+    if(t.scheduledDate){
+      const dl = t.scheduledDate===today ? '今日' :
+                 (t.scheduledDate<today ? '期限超過 '+t.scheduledDate.slice(5).replace('-','/') :
+                                          t.scheduledDate.slice(5).replace('-','/'));
+      meta.push('<span>'+escText(dl)+'</span>');
+    }else{
+      meta.push('<span>日付なし</span>');
+    }
+    if(t.startTime) meta.push('<span>'+escText(t.startTime)+'</span>');
+    meta.push('<span>予定 '+(t.planMin||15)+'分</span>');
+    if(t.nextAction) meta.push('<span>→ '+escText(String(t.nextAction).slice(0,40))+'</span>');
+    const label = pick.running ? '実行中' :
+                  pick.overdue ? '期限超過のタスク' :
+                  pick.noDate  ? '日付未定のタスク' : '次にやる';
+    hero.innerHTML = `
+      <div class="v68-hero-label">${escText(label)}</div>
+      <div class="v68-hero-title" data-v68="detail">${escText(t.title||'無題')}</div>
+      <div class="v68-hero-meta">${meta.join('')}</div>
+      <div class="v68-hero-actions">
+        <button class="v68-hero-btn ${pick.running?'warn':'go'}" data-v68="start" type="button">${pick.running?'■ 中断':'▶ 開始'}</button>
+        <button class="v68-hero-btn good" data-v68="done" type="button">✓ 完了</button>
+        <button class="v68-hero-btn ghost" data-v68="schedule" type="button">時刻</button>
+        <button class="v68-hero-btn ghost" data-v68="detail" type="button">詳細</button>
+      </div>`;
+  }
+  // tick elapsed every second while running
+  let tickTimer=null;
+  function startTick(){
+    if(tickTimer) return;
+    tickTimer=setInterval(()=>{
+      if(!ok() || !S.runningTaskId) return;
+      const hero=document.getElementById('v68Hero');
+      if(!hero) return;
+      const span=hero.querySelector('.v68-hero-elapsed');
+      if(span) span.textContent='経過 '+elapsed(S.runningTaskId);
+    },1000);
+  }
+  // hook the master render so hero stays in sync with everything
+  const oldRT=window.renderTasks;
+  if(typeof oldRT==='function' && !oldRT.__v68Wrapped){
+    const w=function(){ const r=oldRT.apply(this,arguments); setTimeout(renderHero,0); return r; };
+    w.__v68Wrapped=true; window.renderTasks=w;
+  }
+  const oldRS=window.renderSchedule;
+  if(typeof oldRS==='function' && !oldRS.__v68Wrapped){
+    const w=function(){ const r=oldRS.apply(this,arguments); setTimeout(renderHero,0); return r; };
+    w.__v68Wrapped=true; window.renderSchedule=w;
+  }
+  setTimeout(()=>{ ensureHero(); renderHero(); startTick(); }, 350);
+  // also re-render when tab becomes visible (timers continue, badges may be stale)
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) renderHero(); });
+})();
+</script>
+
+<style id="v69-bgm-bind-style">
+/* v69: background sound bound to running task state.
+   Audio = "task is in progress" signal. Stops when work stops. */
+.v69-bgm-fab{
+  position:fixed;
+  right:16px;
+  bottom:max(16px, env(safe-area-inset-bottom, 16px));
+  z-index:9000;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  border:1.5px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  font-size:22px;
+  font-family:inherit;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow:var(--shadow-md, 0 4px 12px rgba(0,0,0,0.15));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:transform 0.08s;
+}
+.v69-bgm-fab:active{transform:scale(0.93);}
+.v69-bgm-fab.playing{
+  border-color:var(--green);
+  color:var(--green);
+}
+.v69-bgm-fab.playing::before{
+  content:'';
+  position:absolute;
+  inset:-3px;
+  border-radius:50%;
+  border:2px solid var(--green);
+  opacity:0.6;
+  animation:v69pulse 1.5s ease-out infinite;
+  pointer-events:none;
+}
+.v69-bgm-fab.disabled{opacity:0.45;}
+@keyframes v69pulse{
+  0%{transform:scale(1);opacity:0.55;}
+  100%{transform:scale(1.55);opacity:0;}
+}
+.v69-bgm-panel{
+  position:fixed;
+  right:16px;
+  bottom:calc(78px + env(safe-area-inset-bottom, 0px));
+  width:300px;
+  max-width:calc(100vw - 32px);
+  background:var(--surface);
+  border:1.5px solid var(--border);
+  border-radius:14px;
+  box-shadow:var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.2));
+  padding:14px;
+  z-index:9001;
+  display:none;
+}
+.v69-bgm-panel.open{display:block;}
+.v69-bgm-head{
+  font-size:13px;
+  font-weight:950;
+  color:var(--text);
+  margin-bottom:4px;
+}
+.v69-bgm-sub{
+  font-size:11px;
+  color:var(--text3);
+  margin-bottom:12px;
+  line-height:1.5;
+}
+.v69-bgm-row{margin-bottom:10px;}
+.v69-bgm-label{
+  font-size:11px;
+  color:var(--text3);
+  font-weight:800;
+  margin-bottom:5px;
+  display:block;
+  letter-spacing:0.04em;
+}
+.v69-bgm-toggle{display:flex;gap:5px;}
+.v69-bgm-toggle button{
+  flex:1;
+  padding:9px 4px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-weight:800;
+  font-size:12px;
+  cursor:pointer;
+  min-height:38px;
+}
+.v69-bgm-toggle button.active{
+  background:var(--text);
+  color:var(--surface);
+  border-color:var(--text);
+}
+.v69-bgm-input{
+  width:100%;
+  padding:9px 10px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-size:12px;
+  outline:none;
+  box-sizing:border-box;
+}
+.v69-bgm-input[type="file"]{padding:6px;font-size:11px;}
+.v69-bgm-vol{width:100%;accent-color:var(--text);}
+.v69-bgm-actions{display:flex;gap:6px;margin-top:6px;}
+.v69-bgm-actions button{
+  flex:1;
+  padding:10px 6px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-weight:900;
+  font-size:12px;
+  cursor:pointer;
+  min-height:38px;
+}
+.v69-bgm-status{
+  font-size:11px;
+  color:var(--text3);
+  text-align:center;
+  margin-top:8px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  min-height:14px;
+}
+</style>
+
+<script id="v69-bgm-bind-script">
+/* ===== v69: BGM bound to running task =====
+   Sound starts when a task starts, stops when work stops. The audio
+   itself becomes the "I'm working" signal. Bonds the existing music
+   habit to the task state without asking the user to change behavior. */
+(function(){
+  const SK='v69_bgm_settings';
+  function loadSettings(){
+    try{return JSON.parse(localStorage.getItem(SK)||'{}');}catch(e){return {};}
+  }
+  function saveSettings(){
+    try{localStorage.setItem(SK,JSON.stringify(settings));}catch(e){}
+  }
+  const settings=Object.assign({
+    enabled:true,
+    mode:'brown',
+    url:'',
+    volume:0.35
+  }, loadSettings());
+
+  let audioCtx=null, masterGain=null;
+  let brownBuffer=null, brownSource=null;
+  let audioEl=null, blobUrl=null;
+  let playing=false, unlocked=false;
+
+  function ensureCtx(){
+    if(audioCtx) return audioCtx;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return null;
+    try{
+      audioCtx=new AC();
+      masterGain=audioCtx.createGain();
+      masterGain.gain.value=settings.volume;
+      masterGain.connect(audioCtx.destination);
+    }catch(e){audioCtx=null;}
+    return audioCtx;
+  }
+  function genBrown(){
+    const c=ensureCtx(); if(!c) return null;
+    const sec=12, len=c.sampleRate*sec;
+    const buf=c.createBuffer(1,len,c.sampleRate);
+    const d=buf.getChannelData(0);
+    let last=0;
+    for(let i=0;i<len;i++){
+      const w=Math.random()*2-1;
+      d[i]=(last+0.02*w)/1.02;
+      last=d[i];
+      d[i]*=3.5;
+    }
+    return buf;
+  }
+  function startBrown(){
+    const c=ensureCtx(); if(!c) return false;
+    if(!brownBuffer) brownBuffer=genBrown();
+    if(!brownBuffer) return false;
+    stopBrown();
+    brownSource=c.createBufferSource();
+    brownSource.buffer=brownBuffer;
+    brownSource.loop=true;
+    brownSource.connect(masterGain);
+    try{brownSource.start();}catch(e){return false;}
+    return true;
+  }
+  function stopBrown(){
+    if(brownSource){
+      try{brownSource.stop();}catch(e){}
+      try{brownSource.disconnect();}catch(e){}
+      brownSource=null;
+    }
+  }
+  function ensureEl(){
+    if(!audioEl){
+      audioEl=new Audio();
+      audioEl.loop=true;
+      audioEl.preload='auto';
+    }
+    audioEl.volume=settings.volume;
+    const target=settings.mode==='file'?(blobUrl||''):(settings.url||'');
+    if(audioEl.src!==target){
+      try{audioEl.src=target;}catch(e){}
+    }
+    return audioEl;
+  }
+  function play(){
+    if(!settings.enabled) return;
+    const c=ensureCtx();
+    if(c && c.state==='suspended'){ try{c.resume();}catch(e){} }
+    if(playing) return;
+    playing=true;
+    setStatus('再生中');
+    if(settings.mode==='url' || settings.mode==='file'){
+      stopBrown();
+      const a=ensureEl();
+      if(!a.src){
+        playing=false;
+        setStatus(settings.mode==='url'?'URL未設定':'ファイル未選択');
+        updateFab();
+        return;
+      }
+      a.play().catch(e=>{
+        playing=false;
+        setStatus('再生失敗: '+((e&&e.message)?e.message:'unknown'));
+        updateFab();
+      });
+    }else{
+      if(audioEl){ try{audioEl.pause();}catch(e){} }
+      if(!startBrown()){
+        playing=false;
+        setStatus('音声生成失敗');
+      }
+    }
+    updateFab();
+  }
+  function pause(){
+    if(!playing){updateFab();return;}
+    playing=false;
+    stopBrown();
+    if(audioEl){ try{audioEl.pause();}catch(e){} }
+    setStatus('停止');
+    updateFab();
+  }
+  function setVolume(v){
+    const vv=Math.max(0,Math.min(1,Number(v)||0));
+    settings.volume=vv;
+    if(masterGain) masterGain.gain.value=vv;
+    if(audioEl) audioEl.volume=vv;
+    saveSettings();
+  }
+
+  // poll running state
+  let lastRunning=null;
+  function poll(){
+    try{
+      const cur=(typeof S!=='undefined' && S && S.runningTaskId)?S.runningTaskId:null;
+      if(cur && !lastRunning) play();
+      else if(!cur && lastRunning) pause();
+      lastRunning=cur;
+    }catch(e){}
+  }
+  setInterval(poll, 400);
+
+  // UI
+  function buildUI(){
+    if(document.getElementById('v69BgmFab')) return;
+    const fab=document.createElement('button');
+    fab.id='v69BgmFab';
+    fab.className='v69-bgm-fab';
+    fab.type='button';
+    fab.title='作業中BGM';
+    fab.textContent='♪';
+    document.body.appendChild(fab);
+
+    const panel=document.createElement('div');
+    panel.id='v69BgmPanel';
+    panel.className='v69-bgm-panel';
+    panel.innerHTML=`
+      <div class="v69-bgm-head">作業中BGM</div>
+      <div class="v69-bgm-sub">タスク開始で鳴って、止めると消える。<br>「作業中」を音で体に覚えさせる仕掛け。</div>
+      <div class="v69-bgm-row">
+        <span class="v69-bgm-label">機能</span>
+        <div class="v69-bgm-toggle" data-v69-toggle="enabled">
+          <button data-val="true" type="button">ON</button>
+          <button data-val="false" type="button">OFF</button>
+        </div>
+      </div>
+      <div class="v69-bgm-row">
+        <span class="v69-bgm-label">音源</span>
+        <div class="v69-bgm-toggle" data-v69-toggle="mode">
+          <button data-val="brown" type="button">ノイズ</button>
+          <button data-val="url" type="button">URL</button>
+          <button data-val="file" type="button">ファイル</button>
+        </div>
+      </div>
+      <div class="v69-bgm-row" id="v69BgmUrlRow" style="display:none;">
+        <span class="v69-bgm-label">音声URL (mp3 / ogg / m4a 直URL)</span>
+        <input class="v69-bgm-input" id="v69BgmUrl" type="text" placeholder="https://...">
+      </div>
+      <div class="v69-bgm-row" id="v69BgmFileRow" style="display:none;">
+        <span class="v69-bgm-label">音声ファイル (この画面の間だけ有効)</span>
+        <input class="v69-bgm-input" id="v69BgmFile" type="file" accept="audio/*">
+        <div class="v69-bgm-status" id="v69BgmFileName"></div>
+      </div>
+      <div class="v69-bgm-row">
+        <span class="v69-bgm-label">音量</span>
+        <input class="v69-bgm-vol" id="v69BgmVol" type="range" min="0" max="100">
+      </div>
+      <div class="v69-bgm-actions">
+        <button id="v69BgmTest" type="button">▶ テスト再生</button>
+        <button id="v69BgmStop" type="button">■ 停止</button>
+      </div>
+      <div class="v69-bgm-status" id="v69BgmStatus">待機</div>
+    `;
+    document.body.appendChild(panel);
+
+    fab.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      if(!unlocked){
+        unlocked=true;
+        const c=ensureCtx();
+        if(c && c.state==='suspended') c.resume();
+      }
+      const wasOpen=panel.classList.contains('open');
+      panel.classList.toggle('open');
+      if(!wasOpen) syncUI();
+    });
+
+    document.addEventListener('click',(e)=>{
+      if(!panel.classList.contains('open')) return;
+      if(e.target.closest('#v69BgmPanel')) return;
+      if(e.target.closest('#v69BgmFab')) return;
+      panel.classList.remove('open');
+    });
+
+    panel.addEventListener('click',(e)=>{
+      const btn=e.target.closest('[data-v69-toggle] button[data-val]');
+      if(btn){
+        const group=btn.closest('[data-v69-toggle]');
+        const key=group.dataset.v69Toggle;
+        let val=btn.dataset.val;
+        if(val==='true') val=true;
+        else if(val==='false') val=false;
+        const prev=settings[key];
+        settings[key]=val;
+        saveSettings();
+        syncUI();
+        if(key==='enabled'){
+          if(!val){ pause(); }
+          else if(typeof S!=='undefined' && S && S.runningTaskId && !playing){
+            play();
+          }
+        }
+        if(key==='mode' && playing && prev!==val){
+          playing=false;
+          play();
+        }
+        return;
+      }
+      if(e.target.id==='v69BgmTest'){
+        if(!unlocked){
+          unlocked=true;
+          const c=ensureCtx();
+          if(c && c.state==='suspended') c.resume();
+        }
+        play();
+      }else if(e.target.id==='v69BgmStop'){
+        pause();
+      }
+    });
+
+    panel.querySelector('#v69BgmUrl').addEventListener('input',(e)=>{
+      settings.url=e.target.value.trim();
+      saveSettings();
+      if(playing && settings.mode==='url'){
+        if(audioEl){
+          try{audioEl.src=settings.url; audioEl.play().catch(()=>{});}catch(e){}
+        }
+      }
+    });
+
+    panel.querySelector('#v69BgmFile').addEventListener('change',(e)=>{
+      const f=e.target.files && e.target.files[0];
+      if(!f) return;
+      if(blobUrl){ try{URL.revokeObjectURL(blobUrl);}catch(_){ } }
+      blobUrl=URL.createObjectURL(f);
+      const fn=document.getElementById('v69BgmFileName');
+      if(fn) fn.textContent=f.name;
+      if(audioEl){ try{audioEl.src=blobUrl;}catch(_){} }
+      if(playing && settings.mode==='file'){
+        ensureEl();
+        audioEl.play().catch(()=>{});
+      }
+    });
+
+    panel.querySelector('#v69BgmVol').addEventListener('input',(e)=>{
+      setVolume(Number(e.target.value)/100);
+    });
+  }
+
+  function syncUI(){
+    const panel=document.getElementById('v69BgmPanel');
+    if(!panel) return;
+    panel.querySelectorAll('[data-v69-toggle]').forEach(g=>{
+      const key=g.dataset.v69Toggle;
+      g.querySelectorAll('button').forEach(b=>{
+        let val=b.dataset.val;
+        if(val==='true') val=true;
+        else if(val==='false') val=false;
+        b.classList.toggle('active', settings[key]===val);
+      });
+    });
+    panel.querySelector('#v69BgmUrl').value=settings.url||'';
+    panel.querySelector('#v69BgmVol').value=Math.round(settings.volume*100);
+    panel.querySelector('#v69BgmUrlRow').style.display=settings.mode==='url'?'':'none';
+    panel.querySelector('#v69BgmFileRow').style.display=settings.mode==='file'?'':'none';
+    const fab=document.getElementById('v69BgmFab');
+    if(fab) fab.classList.toggle('disabled', !settings.enabled);
+  }
+  function setStatus(t){
+    const el=document.getElementById('v69BgmStatus');
+    if(el) el.textContent=t;
+  }
+  function updateFab(){
+    const fab=document.getElementById('v69BgmFab');
+    if(!fab) return;
+    fab.classList.toggle('playing', playing);
+    fab.classList.toggle('disabled', !settings.enabled);
+  }
+
+  // unlock audio context on first user gesture
+  document.addEventListener('click',()=>{
+    if(unlocked) return;
+    unlocked=true;
+    const c=ensureCtx();
+    if(c && c.state==='suspended') c.resume();
+  },{once:true, capture:true});
+
+  setTimeout(()=>{
+    buildUI();
+    syncUI();
+    updateFab();
+    poll();
+  }, 600);
+})();
+</script>
+
+<style id="v70-task-mode-style">
+/* v70: TASK MODE - full-screen focus surface with voice countdown */
+
+/* ① 30秒タスク化: input in quick-add row */
+body.v68-quest #v66QuestDesk .v70-add-step{
+  margin-top:8px;
+}
+body.v68-quest #v66QuestDesk .v70-add-step input{
+  width:100%;
+  padding:10px 11px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-size:13px;
+  outline:none;
+  box-sizing:border-box;
+}
+body.v68-quest #v66QuestDesk .v70-add-step input:focus{
+  border-color:var(--text);
+  background:var(--surface);
+}
+
+/* ③ TASK MODE overlay */
+.v70-mode{
+  position:fixed;
+  inset:0;
+  z-index:9500;
+  display:none;
+  flex-direction:column;
+  background:var(--surface);
+  color:var(--text);
+  padding:24px 20px;
+  padding-top:max(28px, env(safe-area-inset-top, 28px));
+  padding-bottom:max(20px, env(safe-area-inset-bottom, 20px));
+  overflow:hidden;
+  transition:background 0.6s ease;
+}
+.v70-mode.open{display:flex;}
+.v70-mode[data-color="green"]{background:var(--surface);}
+.v70-mode[data-color="yellow"]{background:linear-gradient(180deg, #fff7d9, var(--surface) 50%);}
+.v70-mode[data-color="orange"]{background:linear-gradient(180deg, #ffe7c8, var(--surface) 55%);}
+.v70-mode[data-color="red"]{background:linear-gradient(180deg, #ffd1d1, var(--surface) 50%);}
+.v70-mode[data-color="deep"]{background:linear-gradient(180deg, #ffb8b8, var(--surface) 50%);}
+.v70-mode[data-color="long"]{background:linear-gradient(180deg, #e8d4d4, var(--surface) 50%);}
+
+.v70-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:8px;
+}
+.v70-title-wrap{flex:1;min-width:0;}
+.v70-title{
+  font-size:22px;
+  font-weight:950;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.v70-firststep{
+  margin-top:10px;
+  padding:10px 12px;
+  border-left:3px solid var(--text);
+  background:var(--surface2);
+  border-radius:0 8px 8px 0;
+  font-size:14px;
+  font-weight:700;
+  color:var(--text);
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.v70-firststep::before{
+  content:'最初の30秒で';
+  display:block;
+  color:var(--text3);
+  font-weight:900;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-bottom:3px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v70-meta-right{
+  text-align:right;
+  font-size:11px;
+  font-weight:900;
+  color:var(--text3);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  white-space:nowrap;
+  line-height:1.55;
+}
+.v70-extensions{
+  color:var(--orange, #c87a00);
+  font-size:12px;
+  margin-top:2px;
+}
+
+.v70-clock-wrap{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:10px 0;
+}
+.v70-clock{
+  font-size:min(26vw, 170px);
+  font-weight:950;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  letter-spacing:-0.025em;
+  line-height:1;
+  color:var(--text);
+  transition:color 0.5s ease;
+  font-variant-numeric:tabular-nums;
+}
+.v70-mode[data-color="green"] .v70-clock{color:#1e6e2a;}
+.v70-mode[data-color="yellow"] .v70-clock{color:#8a6d00;}
+.v70-mode[data-color="orange"] .v70-clock{color:#b8670a;}
+.v70-mode[data-color="red"] .v70-clock{color:#b81b1b;}
+.v70-mode[data-color="deep"] .v70-clock{color:#8a1010;}
+.v70-mode[data-color="long"] .v70-clock{color:#6b3030;}
+
+.v70-clock-sub{
+  margin-top:16px;
+  font-size:12px;
+  color:var(--text3);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-weight:700;
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+
+.v70-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:auto;
+}
+.v70-actions .v70-btn{
+  padding:14px 8px;
+  border:1.5px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:12px;
+  font-family:inherit;
+  font-weight:900;
+  font-size:15px;
+  cursor:pointer;
+  min-height:54px;
+  transition:transform 0.08s;
+}
+.v70-actions .v70-btn:active{transform:scale(0.97);}
+.v70-btn.good{border-color:#1e6e2a;color:#1e6e2a;}
+.v70-btn.good:hover{background:#1e6e2a;color:#fff;}
+.v70-btn.warn{border-color:#b81b1b;color:#b81b1b;}
+.v70-btn.warn:hover{background:#b81b1b;color:#fff;}
+.v70-btn.ext{font-size:13px;background:var(--surface2);font-weight:800;}
+.v70-btn.ext:hover{background:var(--surface3);}
+
+.v70-settings-btn{
+  position:absolute;
+  top:max(12px, env(safe-area-inset-top, 12px));
+  right:14px;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text2);
+  font-size:17px;
+  font-family:inherit;
+  cursor:pointer;
+  z-index:9510;
+}
+.v70-settings-panel{
+  position:fixed;
+  top:60px;
+  right:14px;
+  width:280px;
+  max-width:calc(100vw - 28px);
+  background:var(--surface);
+  border:1.5px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.25);
+  padding:14px;
+  z-index:9550;
+  display:none;
+}
+.v70-settings-panel.open{display:block;}
+.v70-set-row{margin-bottom:10px;}
+.v70-set-label{
+  font-size:11px;
+  color:var(--text3);
+  font-weight:800;
+  margin-bottom:5px;
+  display:block;
+  letter-spacing:0.04em;
+}
+.v70-set-input{
+  width:100%;
+  padding:8px 10px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-size:12px;
+  outline:none;
+  box-sizing:border-box;
+}
+.v70-set-toggle{display:flex;gap:5px;}
+.v70-set-toggle button{
+  flex:1;
+  padding:8px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-weight:800;
+  font-size:12px;
+  cursor:pointer;
+}
+.v70-set-toggle button.active{
+  background:var(--text);
+  color:var(--surface);
+  border-color:var(--text);
+}
+.v70-set-vol{width:100%;accent-color:var(--text);}
+
+/* completion summary toast */
+.v70-summary{
+  position:fixed;
+  inset:0;
+  z-index:9700;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,0.45);
+  padding:20px;
+}
+.v70-summary.open{display:flex;}
+.v70-summary-card{
+  background:var(--surface);
+  border:1.5px solid #1e6e2a;
+  border-radius:16px;
+  padding:24px 26px;
+  text-align:center;
+  max-width:380px;
+  width:100%;
+  box-shadow:0 12px 40px rgba(0,0,0,0.3);
+}
+.v70-summary-emoji{font-size:36px;margin-bottom:6px;}
+.v70-summary-title{
+  font-size:17px;
+  font-weight:950;
+  color:var(--text);
+  margin-bottom:12px;
+  overflow-wrap:anywhere;
+}
+.v70-summary-stats{
+  font-size:13.5px;
+  color:var(--text2);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  line-height:1.7;
+}
+.v70-summary-close{
+  margin-top:14px;
+  padding:10px 22px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:10px;
+  font-family:inherit;
+  font-weight:900;
+  font-size:13px;
+  cursor:pointer;
+}
+
+@media (max-width:520px){
+  .v70-clock{font-size:30vw;}
+  .v70-title{font-size:19px;}
+  .v70-firststep{font-size:13px;}
+}
+</style>
+
+<script id="v70-task-mode-script">
+/* ===== v70: TASK MODE - full-screen focus + voice countdown =====
+   When a task starts, a full-screen surface takes over with:
+   - Task title
+   - "Next 30 seconds" (the existing nextAction field, re-purposed)
+   - Big MM:SS countdown
+   - Voice announcements every minute (+ last 10 sec each second)
+   - Overrun mode that counts up after 0:00 with sparser announcements
+   - +5/+15 min extension buttons
+   - On completion: small summary with predicted vs actual time. */
+(function(){
+  const SK='v70_taskmode_settings';
+  function loadSettings(){
+    try{return JSON.parse(localStorage.getItem(SK)||'{}');}catch(e){return {};}
+  }
+  function saveSettings(){
+    try{localStorage.setItem(SK,JSON.stringify(settings));}catch(e){}
+  }
+  const settings=Object.assign({
+    voiceEnabled:true,
+    voiceName:'',
+    rate:0.95,
+    volume:0.7,
+    autoOpen:true
+  }, loadSettings());
+
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function escText(v){
+    const s=String(v==null?'':v);
+    return typeof esc==='function'?esc(s):s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---- voices ----
+  let voicesCache=[];
+  function refreshVoices(){
+    if(!('speechSynthesis' in window)) return [];
+    try{
+      voicesCache=speechSynthesis.getVoices().filter(v=>v && v.lang && v.lang.toLowerCase().startsWith('ja'));
+    }catch(e){voicesCache=[];}
+    return voicesCache;
+  }
+  if('speechSynthesis' in window){
+    refreshVoices();
+    try{ speechSynthesis.addEventListener('voiceschanged', refreshVoices); }catch(e){}
+  }
+  function pickVoice(){
+    if(!('speechSynthesis' in window)) return null;
+    const list=voicesCache.length?voicesCache:refreshVoices();
+    if(!list.length) return null;
+    if(settings.voiceName){
+      const found=list.find(v=>v.name===settings.voiceName);
+      if(found) return found;
+    }
+    // prefer male japanese voices (heuristic)
+    const malePref=['Otoya','Ichiro','Hattori','Takumi','Daniel','Eddy','Reed'];
+    for(const name of malePref){
+      const m=list.find(v=>v.name && v.name.indexOf(name)>=0);
+      if(m) return m;
+    }
+    // fallback: first ja voice
+    return list[0];
+  }
+  function speak(text){
+    if(!settings.voiceEnabled) return;
+    if(!('speechSynthesis' in window)) return;
+    if(!text) return;
+    try{
+      speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='ja-JP';
+      u.rate=Math.max(0.5,Math.min(2,settings.rate||0.95));
+      u.volume=Math.max(0,Math.min(1,settings.volume||0.7));
+      const v=pickVoice();
+      if(v) u.voice=v;
+      speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  // ---- formatters ----
+  function pad(n){return String(n).padStart(2,'0');}
+  function fmtClock(sec){
+    sec=Math.max(0, Math.floor(sec));
+    const h=Math.floor(sec/3600);
+    const m=Math.floor((sec%3600)/60);
+    const s=sec%60;
+    return h>0?`${h}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`;
+  }
+  function fmtOverrun(sec){
+    sec=Math.max(0, Math.floor(sec));
+    const h=Math.floor(sec/3600);
+    const m=Math.floor((sec%3600)/60);
+    const s=sec%60;
+    return h>0?`+${h}:${pad(m)}:${pad(s)}`:`+${pad(m)}:${pad(s)}`;
+  }
+  function fmtJpDuration(sec){
+    const mins=Math.max(0, Math.round(sec/60));
+    if(mins<60) return mins+'分';
+    const hours=Math.floor(mins/60);
+    const rem=mins-hours*60;
+    if(rem===0) return hours+'時間';
+    if(rem===30) return hours+'時間半';
+    return hours+'時間'+rem+'分';
+  }
+  function fmtJpOverrun(sec){
+    const mins=Math.round(sec/60);
+    if(mins<60) return '超過'+mins+'分';
+    return fmtJpDuration(sec)+'超過';
+  }
+
+  // ---- announcement decisions ----
+  function pickCountdownAnnouncement(prevRemSec, curRemSec){
+    if(curRemSec<=0 && prevRemSec>0) return {key:'end', text:'時間です'};
+    const curFloor=Math.floor(Math.max(0,curRemSec));
+    const prevFloor=Math.floor(Math.max(0,prevRemSec));
+    // last 10 seconds: count each
+    if(curFloor>0 && curFloor<11 && curFloor<prevFloor){
+      return {key:'c:'+curFloor, text:String(curFloor)};
+    }
+    // 30 sec mark
+    if(prevRemSec>30 && curRemSec<=30 && curRemSec>10){
+      return {key:'s30', text:'残り30秒'};
+    }
+    // minute boundaries: announce when remaining first dips into N minutes
+    const curMin=Math.ceil(curRemSec/60);
+    const prevMin=Math.ceil(prevRemSec/60);
+    if(curMin<prevMin && curRemSec>30 && curMin>=1){
+      return {key:'m:'+curMin, text:'残り'+curMin+'分'};
+    }
+    return null;
+  }
+  const OVERRUN_BREAKPOINTS=[60,120,180,300,420,600,780,900,1200,1500,1800,2400,3000,3600,4500,5400,6300,7200];
+  function pickOverrunAnnouncement(prevElapsedSec, curElapsedSec){
+    for(const s of OVERRUN_BREAKPOINTS){
+      if(prevElapsedSec<s && curElapsedSec>=s) return {key:'o:'+s, text:fmtJpOverrun(s)};
+    }
+    if(curElapsedSec>7200){
+      const idx=Math.floor((curElapsedSec-7200)/1800);
+      const candidate=7200+(idx+1)*1800;
+      if(prevElapsedSec<candidate && curElapsedSec>=candidate){
+        return {key:'o:'+candidate, text:fmtJpOverrun(candidate)};
+      }
+    }
+    return null;
+  }
+
+  // ---- state ----
+  const state={
+    active:false,
+    taskId:null,
+    task:null,
+    phase:null, // 'countdown' | 'overrun'
+    phaseStartedAt:0,
+    currentTargetSec:0,
+    totalCountdownSec:0,
+    totalOverrunSec:0,
+    extensions:0,
+    sessionStartedAt:0,
+    prevPhaseElapsedSec:0,
+    lastAnnouncementKey:null,
+    tickHandle:null
+  };
+
+  function colorForState(){
+    if(state.phase==='countdown') return 'green';
+    if(state.phase==='overrun'){
+      const e=(Date.now()-state.phaseStartedAt)/1000;
+      if(e<60) return 'yellow';
+      if(e<300) return 'orange';
+      if(e<900) return 'red';
+      if(e<3600) return 'deep';
+      return 'long';
+    }
+    return 'green';
+  }
+
+  function buildEl(){
+    if(document.getElementById('v70Mode')) return;
+    const mode=document.createElement('div');
+    mode.id='v70Mode';
+    mode.className='v70-mode';
+    mode.dataset.color='green';
+    mode.innerHTML=`
+      <button class="v70-settings-btn" id="v70SetBtn" type="button" title="音声設定">⚙</button>
+      <div class="v70-top">
+        <div class="v70-title-wrap">
+          <div class="v70-title" id="v70Title">タスク</div>
+          <div class="v70-firststep" id="v70FirstStep" style="display:none;"></div>
+        </div>
+        <div class="v70-meta-right">
+          <div id="v70TaskClock">経過 0:00</div>
+          <div class="v70-extensions" id="v70Ext" style="display:none;">延長 0回</div>
+        </div>
+      </div>
+      <div class="v70-clock-wrap">
+        <div class="v70-clock" id="v70Clock">--:--</div>
+        <div class="v70-clock-sub" id="v70Sub"></div>
+      </div>
+      <div class="v70-actions">
+        <button class="v70-btn good" data-v70-act="done" type="button">✓ 完了</button>
+        <button class="v70-btn warn" data-v70-act="stop" type="button">■ 中断</button>
+        <button class="v70-btn ext" data-v70-act="ext5" type="button">+5分追加目標</button>
+        <button class="v70-btn ext" data-v70-act="ext15" type="button">+15分追加目標</button>
+      </div>
+    `;
+    document.body.appendChild(mode);
+
+    const setPanel=document.createElement('div');
+    setPanel.id='v70SetPanel';
+    setPanel.className='v70-settings-panel';
+    setPanel.innerHTML=`
+      <div class="v70-set-row">
+        <span class="v70-set-label">音声カウントダウン</span>
+        <div class="v70-set-toggle" data-v70-set="voiceEnabled">
+          <button data-val="true" type="button">ON</button>
+          <button data-val="false" type="button">OFF</button>
+        </div>
+      </div>
+      <div class="v70-set-row">
+        <span class="v70-set-label">声</span>
+        <select class="v70-set-input" id="v70SetVoice"></select>
+      </div>
+      <div class="v70-set-row">
+        <span class="v70-set-label">音量</span>
+        <input class="v70-set-vol" id="v70SetVol" type="range" min="0" max="100">
+      </div>
+      <div class="v70-set-row">
+        <span class="v70-set-label">速度 (70-130%)</span>
+        <input class="v70-set-vol" id="v70SetRate" type="range" min="70" max="130">
+      </div>
+      <div class="v70-set-row">
+        <button class="v70-set-input" id="v70SetTest" type="button" style="cursor:pointer;font-weight:900;">▶ テスト発声</button>
+      </div>
+    `;
+    document.body.appendChild(setPanel);
+
+    const summary=document.createElement('div');
+    summary.id='v70Summary';
+    summary.className='v70-summary';
+    summary.innerHTML=`
+      <div class="v70-summary-card">
+        <div class="v70-summary-emoji" id="v70SumEmoji">✓</div>
+        <div class="v70-summary-title" id="v70SumTitle">完了</div>
+        <div class="v70-summary-stats" id="v70SumStats"></div>
+        <button class="v70-summary-close" id="v70SumClose" type="button">閉じる</button>
+      </div>
+    `;
+    document.body.appendChild(summary);
+
+    mode.addEventListener('click', e=>{
+      const btn=e.target.closest('[data-v70-act]');
+      if(btn){
+        e.preventDefault();
+        e.stopPropagation();
+        const act=btn.dataset.v70Act;
+        if(act==='done') doDone();
+        else if(act==='stop') doStop();
+        else if(act==='ext5') doExtend(5);
+        else if(act==='ext15') doExtend(15);
+        return;
+      }
+      if(e.target.id==='v70SetBtn'){
+        e.preventDefault();
+        const wasOpen=setPanel.classList.contains('open');
+        setPanel.classList.toggle('open');
+        if(!wasOpen) syncSetUI();
+      }
+    });
+
+    setPanel.addEventListener('click', e=>{
+      const btn=e.target.closest('[data-v70-set] button[data-val]');
+      if(btn){
+        const group=btn.closest('[data-v70-set]');
+        const key=group.dataset.v70Set;
+        let val=btn.dataset.val;
+        if(val==='true') val=true; else if(val==='false') val=false;
+        settings[key]=val;
+        saveSettings();
+        syncSetUI();
+        return;
+      }
+      if(e.target.id==='v70SetTest'){
+        speak('音声テストです。聞こえますか。');
+      }
+    });
+
+    setPanel.querySelector('#v70SetVoice').addEventListener('change', e=>{
+      settings.voiceName=e.target.value;
+      saveSettings();
+    });
+    setPanel.querySelector('#v70SetVol').addEventListener('input', e=>{
+      settings.volume=Math.max(0,Math.min(1,Number(e.target.value)/100));
+      saveSettings();
+    });
+    setPanel.querySelector('#v70SetRate').addEventListener('input', e=>{
+      settings.rate=Math.max(0.7,Math.min(1.3,Number(e.target.value)/100));
+      saveSettings();
+    });
+
+    document.getElementById('v70SumClose').addEventListener('click', ()=>{
+      const s=document.getElementById('v70Summary');
+      if(s) s.classList.remove('open');
+    });
+
+    // ESC = stop
+    document.addEventListener('keydown', e=>{
+      if(!state.active) return;
+      if(e.key==='Escape'){
+        e.preventDefault();
+        doStop();
+      }
+    });
+  }
+
+  function syncSetUI(){
+    const panel=document.getElementById('v70SetPanel');
+    if(!panel) return;
+    panel.querySelectorAll('[data-v70-set]').forEach(g=>{
+      const key=g.dataset.v70Set;
+      g.querySelectorAll('button').forEach(b=>{
+        let val=b.dataset.val;
+        if(val==='true') val=true; else if(val==='false') val=false;
+        b.classList.toggle('active', settings[key]===val);
+      });
+    });
+    const vSel=panel.querySelector('#v70SetVoice');
+    if(vSel){
+      const list=voicesCache.length?voicesCache:refreshVoices();
+      vSel.innerHTML='';
+      const oAuto=document.createElement('option');
+      oAuto.value=''; oAuto.textContent='自動 (男性優先)';
+      vSel.appendChild(oAuto);
+      list.forEach(v=>{
+        const o=document.createElement('option');
+        o.value=v.name;
+        o.textContent=v.name+' ('+v.lang+')';
+        vSel.appendChild(o);
+      });
+      vSel.value=settings.voiceName||'';
+    }
+    panel.querySelector('#v70SetVol').value=Math.round((settings.volume||0)*100);
+    panel.querySelector('#v70SetRate').value=Math.round((settings.rate||0.95)*100);
+  }
+
+  function show(){
+    const mode=document.getElementById('v70Mode');
+    if(mode) mode.classList.add('open');
+  }
+  function hide(){
+    const mode=document.getElementById('v70Mode');
+    if(mode) mode.classList.remove('open');
+    const panel=document.getElementById('v70SetPanel');
+    if(panel) panel.classList.remove('open');
+  }
+
+  function updateTitleArea(){
+    const t=state.task;
+    if(!t) return;
+    const titleEl=document.getElementById('v70Title');
+    if(titleEl) titleEl.textContent=t.title||'無題';
+    const fsEl=document.getElementById('v70FirstStep');
+    if(fsEl){
+      const fs=String(t.nextAction||'').trim();
+      // hide if empty or generic default
+      if(fs && fs!=='開始する' && fs!=='開始'){
+        fsEl.textContent=fs;
+        fsEl.style.display='';
+      } else {
+        fsEl.style.display='none';
+      }
+    }
+    const extEl=document.getElementById('v70Ext');
+    if(extEl){
+      if(state.extensions>0){
+        extEl.textContent='延長 '+state.extensions+'回';
+        extEl.style.display='';
+      } else {
+        extEl.style.display='none';
+      }
+    }
+  }
+
+  function enter(taskId){
+    if(state.active) return;
+    if(!ok()) return;
+    const t=S.tasks.find(x=>x&&x.id===taskId);
+    if(!t) return;
+    const session=(S.sessions||[]).find(s=>s&&s.taskId===taskId && !s.endedAt);
+    const startedAt=session?(session.startedAt||Date.now()):Date.now();
+    state.active=true;
+    state.taskId=taskId;
+    state.task=t;
+    state.sessionStartedAt=startedAt;
+    state.currentTargetSec=Math.max(60, Math.min(36000, (Number(t.planMin)||15)*60));
+    state.totalCountdownSec=state.currentTargetSec;
+    state.totalOverrunSec=0;
+    state.extensions=0;
+    state.lastAnnouncementKey=null;
+
+    const elapsed=(Date.now()-startedAt)/1000;
+    if(elapsed>=state.currentTargetSec){
+      // resume in overrun
+      state.phase='overrun';
+      state.phaseStartedAt=startedAt+state.currentTargetSec*1000;
+      state.prevPhaseElapsedSec=elapsed-state.currentTargetSec;
+      state.lastAnnouncementKey='resume:over';
+    } else {
+      state.phase='countdown';
+      state.phaseStartedAt=startedAt;
+      state.prevPhaseElapsedSec=elapsed;
+      state.lastAnnouncementKey='resume:cd';
+    }
+    updateTitleArea();
+    show();
+    // First-entry voice (skip if resuming a long-running session)
+    if(elapsed<3){
+      const dur=fmtJpDuration(state.currentTargetSec);
+      const title=t.title||'タスク';
+      speak(title+'。'+dur+'はじめます。');
+    }
+    if(state.tickHandle) clearInterval(state.tickHandle);
+    state.tickHandle=setInterval(tick, 250);
+    tick();
+  }
+
+  function leave(){
+    if(!state.active) return;
+    state.active=false;
+    if(state.tickHandle){ clearInterval(state.tickHandle); state.tickHandle=null; }
+    hide();
+    try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+  }
+
+  function tick(){
+    if(!state.active) return;
+    const now=Date.now();
+    const phaseElapsedSec=(now-state.phaseStartedAt)/1000;
+    const totalTaskSec=(now-state.sessionStartedAt)/1000;
+    const clockEl=document.getElementById('v70Clock');
+    const subEl=document.getElementById('v70Sub');
+    const taskClockEl=document.getElementById('v70TaskClock');
+    const mode=document.getElementById('v70Mode');
+
+    if(state.phase==='countdown'){
+      const remSec=state.currentTargetSec-phaseElapsedSec;
+      if(remSec<=0){
+        // transition: countdown -> overrun
+        speak('時間です');
+        state.totalCountdownSec=state.totalCountdownSec; // keep as is, already includes this segment
+        state.phase='overrun';
+        state.phaseStartedAt=state.phaseStartedAt+state.currentTargetSec*1000;
+        state.prevPhaseElapsedSec=0;
+        state.lastAnnouncementKey=null;
+        if(clockEl) clockEl.textContent='+00:00';
+        if(mode) mode.dataset.color='yellow';
+        return;
+      }
+      if(clockEl) clockEl.textContent=fmtClock(remSec);
+      if(mode) mode.dataset.color='green';
+      const prevRem=state.currentTargetSec-state.prevPhaseElapsedSec;
+      const ann=pickCountdownAnnouncement(prevRem, remSec);
+      if(ann && ann.key!==state.lastAnnouncementKey){
+        state.lastAnnouncementKey=ann.key;
+        speak(ann.text);
+      }
+    } else if(state.phase==='overrun'){
+      if(clockEl) clockEl.textContent=fmtOverrun(phaseElapsedSec);
+      if(mode) mode.dataset.color=colorForState();
+      const ann=pickOverrunAnnouncement(state.prevPhaseElapsedSec, phaseElapsedSec);
+      if(ann && ann.key!==state.lastAnnouncementKey){
+        state.lastAnnouncementKey=ann.key;
+        speak(ann.text);
+      }
+    }
+    state.prevPhaseElapsedSec=phaseElapsedSec;
+
+    if(subEl){
+      const parts=[];
+      parts.push('予定 '+fmtJpDuration(state.totalCountdownSec));
+      if(state.extensions>0) parts.push('延長 '+state.extensions+'回');
+      parts.push('経過 '+fmtJpDuration(totalTaskSec));
+      subEl.innerHTML=parts.map(p=>'<span>'+escText(p)+'</span>').join('');
+    }
+    if(taskClockEl) taskClockEl.textContent='経過 '+fmtClock(totalTaskSec);
+    const extEl=document.getElementById('v70Ext');
+    if(extEl){
+      if(state.extensions>0){
+        extEl.textContent='延長 '+state.extensions+'回';
+        extEl.style.display='';
+      }
+    }
+  }
+
+  function doExtend(min){
+    if(!state.active) return;
+    const addSec=min*60;
+    const now=Date.now();
+    if(state.phase==='overrun'){
+      const overrunElapsed=(now-state.phaseStartedAt)/1000;
+      state.totalOverrunSec+=overrunElapsed;
+      state.phase='countdown';
+      state.phaseStartedAt=now;
+      state.currentTargetSec=addSec;
+      state.totalCountdownSec+=addSec;
+      state.extensions+=1;
+      state.lastAnnouncementKey=null;
+      state.prevPhaseElapsedSec=0;
+      const mode=document.getElementById('v70Mode');
+      if(mode) mode.dataset.color='green';
+      speak(min+'分追加します');
+    } else if(state.phase==='countdown'){
+      state.currentTargetSec+=addSec;
+      state.totalCountdownSec+=addSec;
+      state.extensions+=1;
+      state.lastAnnouncementKey=null;
+      speak(min+'分追加します');
+    }
+    updateTitleArea();
+    tick();
+  }
+
+  function captureStats(completed){
+    if(!state.task) return null;
+    const now=Date.now();
+    const totalSec=Math.floor((now-state.sessionStartedAt)/1000);
+    const totalOverrunSec=Math.floor(state.totalOverrunSec + (state.phase==='overrun'?(now-state.phaseStartedAt)/1000:0));
+    state.task.v70Stats={
+      lastTotalSec:totalSec,
+      lastOverrunSec:totalOverrunSec,
+      lastExtensions:state.extensions,
+      lastPlanMin:state.task.planMin||15,
+      completed:!!completed,
+      finishedAt:now
+    };
+    try{ if(typeof save==='function') save(); }catch(e){}
+    return {totalSec, totalOverrunSec, extensions:state.extensions, completed, title:state.task.title||'', planMin:state.task.planMin||15};
+  }
+
+  function showSummary(stats){
+    if(!stats) return;
+    const sum=document.getElementById('v70Summary');
+    const t=document.getElementById('v70SumTitle');
+    const s=document.getElementById('v70SumStats');
+    const em=document.getElementById('v70SumEmoji');
+    if(!sum||!t||!s) return;
+    t.textContent=stats.title||'無題';
+    em.textContent=stats.completed?'✓':'■';
+    const total=fmtJpDuration(stats.totalSec);
+    const lines=[];
+    lines.push('予定 '+stats.planMin+'分 → 実時間 '+total);
+    if(stats.totalOverrunSec>0){
+      lines.push('超過 '+fmtJpDuration(stats.totalOverrunSec));
+    } else if(stats.completed){
+      lines.push('時間内に完了');
+    }
+    if(stats.extensions>0) lines.push('延長 '+stats.extensions+'回');
+    if(!stats.completed) lines.push('(中断)');
+    s.innerHTML=lines.join('<br>');
+    sum.classList.add('open');
+    setTimeout(()=>{ sum.classList.remove('open'); }, 6000);
+  }
+
+  function doDone(){
+    if(!state.active) return;
+    const id=state.taskId;
+    const stats=captureStats(true);
+    leave();
+    try{
+      if(ok()){
+        const t=S.tasks.find(x=>x&&x.id===id);
+        if(t && !t.done){
+          if(typeof askCompletionDate==='function' && !askCompletionDate(t)){ /* allow */ }
+          if(typeof finishTask==='function') finishTask(id);
+        }
+      }
+    }catch(e){}
+    if(stats) setTimeout(()=>showSummary(stats), 80);
+  }
+  function doStop(){
+    if(!state.active) return;
+    const id=state.taskId;
+    const stats=captureStats(false);
+    leave();
+    try{
+      if(typeof window.sasshyForceStopTask==='function'){
+        window.sasshyForceStopTask(id);
+      } else if(ok()){
+        (S.sessions||[]).forEach(s=>{ if(s&&s.taskId===id&&!s.endedAt){ s.endedAt=Date.now(); s.completed=false; }});
+        if(S.runningTaskId===id) S.runningTaskId=null;
+        try{ if(typeof save==='function') save(); }catch(_){}
+        try{ if(typeof renderTasks==='function') renderTasks(); }catch(_){}
+      }
+    }catch(e){}
+    if(stats) setTimeout(()=>showSummary(stats), 80);
+  }
+
+  // ---- ① 30秒タスク化 input wiring ----
+  function injectFirstStepInput(){
+    const desk=document.getElementById('v66QuestDesk');
+    if(!desk){ setTimeout(injectFirstStepInput, 250); return; }
+    if(document.getElementById('v70FirstStepInput')) return;
+    const addRow=desk.querySelector('.v66-add');
+    if(!addRow){ setTimeout(injectFirstStepInput, 250); return; }
+    const stepRow=document.createElement('div');
+    stepRow.className='v70-add-step';
+    stepRow.innerHTML='<input id="v70FirstStepInput" type="text" placeholder="最初の30秒で何する？ 例: Outlookを開く（省略可）">';
+    addRow.parentNode.insertBefore(stepRow, addRow.nextSibling);
+    const inp=stepRow.querySelector('input');
+    inp.addEventListener('keydown', e=>{
+      if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){
+        e.preventDefault();
+        const addBtn=desk.querySelector('[data-v66="add"]');
+        if(addBtn) addBtn.click();
+      }
+    });
+  }
+  // wrap sasshyAddTaskSafe to pick up firstStep input
+  function wrapAddTaskSafe(){
+    if(window.sasshyAddTaskSafe && !window.sasshyAddTaskSafe.__v70Wrapped){
+      const orig=window.sasshyAddTaskSafe;
+      const wrapped=function(raw, opts){
+        if(raw && typeof raw==='object'){
+          const inp=document.getElementById('v70FirstStepInput');
+          if(inp){
+            const fs=String(inp.value||'').trim();
+            if(fs){
+              raw.nextAction=fs;
+            }
+          }
+        }
+        const r=orig.call(this, raw, opts);
+        if(r && r.added){
+          const inp=document.getElementById('v70FirstStepInput');
+          if(inp) inp.value='';
+        }
+        return r;
+      };
+      wrapped.__v70Wrapped=true;
+      window.sasshyAddTaskSafe=wrapped;
+      return true;
+    }
+    return false;
+  }
+
+  // ---- poll runningTaskId to enter/exit ----
+  let lastRunning=null;
+  function poll(){
+    try{
+      const cur=(typeof S!=='undefined' && S && S.runningTaskId)?S.runningTaskId:null;
+      if(cur && !lastRunning){
+        if(settings.autoOpen) enter(cur);
+      } else if(!cur && lastRunning){
+        if(state.active) leave();
+      } else if(cur && lastRunning && cur!==lastRunning){
+        if(state.active) leave();
+        if(settings.autoOpen) enter(cur);
+      }
+      lastRunning=cur;
+    }catch(e){}
+  }
+  setInterval(poll, 250);
+
+  // unlock speech on first user gesture
+  document.addEventListener('click', ()=>{
+    if(!('speechSynthesis' in window)) return;
+    try{
+      const u=new SpeechSynthesisUtterance(' ');
+      u.volume=0.01;
+      u.rate=2;
+      speechSynthesis.speak(u);
+    }catch(e){}
+  }, { once:true, capture:true });
+
+  setTimeout(()=>{
+    buildEl();
+    injectFirstStepInput();
+    if(!wrapAddTaskSafe()){
+      let tries=0;
+      const iv=setInterval(()=>{
+        tries++;
+        if(wrapAddTaskSafe() || tries>20) clearInterval(iv);
+      }, 200);
+    }
+    syncSetUI();
+    poll();
+  }, 700);
+})();
+</script>
+
+<style id="v701-supabase-entry-style">
+/* v70.1: restore Cloud Sync as an on-demand settings sheet without changing v40 sync logic */
+.v701-sync-toggle{
+  position:fixed;
+  left:14px;
+  bottom:14px;
+  z-index:920;
+  min-width:52px;
+  min-height:52px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--text);
+  color:var(--surface);
+  box-shadow:var(--shadow-md);
+  font-family:inherit;
+  font-size:13px;
+  font-weight:950;
+  cursor:pointer;
+}
+.v701-sync-toggle:active{transform:scale(0.96);}
+body.v701-sync-open #v40SyncPanel{
+  display:block !important;
+  position:fixed;
+  left:12px;
+  right:12px;
+  bottom:76px;
+  max-width:560px;
+  margin:0 auto !important;
+  z-index:930;
+  max-height:min(72vh, 560px);
+  overflow:auto;
+  border-radius:14px;
+  box-shadow:var(--shadow-lg);
+}
+body.v701-sync-open::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:910;
+  background:rgba(0,0,0,0.22);
+}
+body.v701-sync-open #v40SyncPanel,
+body.v701-sync-open .v701-sync-toggle{
+  z-index:940;
+}
+@media(max-width:700px){
+  .v701-sync-toggle{
+    left:12px;
+    bottom:12px;
+    min-width:50px;
+    min-height:50px;
+  }
+  body.v701-sync-open #v40SyncPanel{
+    left:10px;
+    right:10px;
+    bottom:70px;
+    max-height:74vh;
+  }
+}
+</style>
+<script id="v701-supabase-entry-script">
+(function(){
+  function ensureButton(){
+    if(document.getElementById('v701SyncToggle')) return;
+    const btn=document.createElement('button');
+    btn.id='v701SyncToggle';
+    btn.className='v701-sync-toggle';
+    btn.type='button';
+    btn.title='PC・iPhone同期';
+    btn.textContent='同期';
+    document.body.appendChild(btn);
+  }
+  function openSync(){
+    document.body.classList.add('v701-sync-open');
+    const panel=document.getElementById('v40SyncPanel');
+    if(panel) panel.open=true;
+  }
+  function closeSync(){
+    document.body.classList.remove('v701-sync-open');
+  }
+  document.addEventListener('click',e=>{
+    if(e.target.closest('#v701SyncToggle')){
+      e.preventDefault();
+      if(document.body.classList.contains('v701-sync-open')) closeSync();
+      else openSync();
+      return;
+    }
+    if(document.body.classList.contains('v701-sync-open') && !e.target.closest('#v40SyncPanel')){
+      closeSync();
+    }
+  },true);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape' && document.body.classList.contains('v701-sync-open')){
+      closeSync();
+    }
+  },true);
+  setTimeout(ensureButton,900);
 })();
 </script>
 

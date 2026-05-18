@@ -10,9 +10,9 @@ Static GitHub Pages build.
 4. Set source to `Deploy from a branch`, branch `main`, folder `/root`.
 5. Open the generated `https://...github.io/.../` URL on your phone.
 
-## Optional PC / iPhone Sync With Supabase
+## Optional Mac / iPhone Sync With Supabase
 
-The app has a small built-in Supabase sync panel: `Cloud Sync / PC・iPhone同期`.
+The app has a built-in Supabase sync panel. In the current UI, open it from the sync/settings button and use `Cloud Sync / PC・iPhone同期`.
 
 1. Create a Supabase project.
 2. Open `SQL Editor` and run:
@@ -48,7 +48,7 @@ with check (true);
 
 3. In Supabase, open `Project Settings` -> `API`.
 4. Copy `Project URL` and the `anon public` key.
-5. Open the app on PC, expand `Cloud Sync / PC・iPhone同期`, enter:
+5. Open the app on Mac, open `Cloud Sync / PC・iPhone同期`, enter:
    - Supabase URL
    - anon key
    - a long private sync key of your choice
