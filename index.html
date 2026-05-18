@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.4').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.5').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -13972,14 +13972,15 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
     const ts=ensureTombstones();
     if(!ts || !ts.length) return false;
     if(typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
-    const ids=new Set(ts.map(t=>t&&t.id).filter(Boolean));
-    const sources=new Set(ts.map(t=>t&&t.source).filter(Boolean));
+    // v70.5: ID-only matching. Source-based matching wrongly purged fresh OCR
+    // re-imports (which get a NEW id but the same source text as a prior
+    // deleted task). The existing v40 deletedTaskSources mechanism already
+    // handles source-based filtering correctly; we don't need to duplicate it.
+    const ids=new Set(ts.map(t=>t&&t.id).filter(Boolean).map(String));
     const before=S.tasks.length;
     S.tasks=S.tasks.filter(t=>{
       if(!t) return false;
       if(ids.has(String(t.id))) return false;
-      const src=sourceOf(t);
-      if(src && sources.has(src)) return false;
       return true;
     });
     const removed=before-S.tasks.length;
@@ -14140,8 +14141,8 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
     if(!Array.isArray(rows)) return rows;
     const ts=getTombstones();
     if(!ts.length) return rows;
+    // v70.5: ID-only matching. See purge() comment.
     const ids=new Set(ts.map(t=>t && t.id ? String(t.id) : '').filter(Boolean));
-    const sources=new Set(ts.map(t=>t && t.source ? t.source : '').filter(Boolean));
     return rows.map(row=>{
       if(!row || !row.data) return row;
       const data=row.data;
@@ -14151,8 +14152,6 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
         if(!task) return false;
         const tid=String(task.id||'');
         if(tid && ids.has(tid)){ removedIds.add(tid); return false; }
-        const src=sourceOf(task);
-        if(src && sources.has(src)){ if(tid) removedIds.add(tid); return false; }
         return true;
       });
       const filteredSessions=Array.isArray(data.sessions)
