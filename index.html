@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.2').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.3').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -14067,7 +14067,18 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
     return true;
   }
 
-  setInterval(purge, 1200);
+  // After purging, also re-render and trigger sync so the cloud agrees.
+  function purgeAndRender(){
+    const removed=purge();
+    if(removed){
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+      try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    }
+    return removed;
+  }
+
+  setInterval(purgeAndRender, 1200);
 
   function tryWrap(){
     let done=true;
@@ -14083,8 +14094,100 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
         if(tryWrap() || ++tries>40) clearInterval(iv);
       },200);
     }
-    purge();
+    purgeAndRender();
   }, 800);
+})();
+</script>
+
+<script id="v703-sync-response-filter-script">
+/* ===== v70.3: filter Supabase responses by tombstones =====
+   Root cause of "deleted tasks come back": mergeRemoteWithLocal in the v40
+   sync layer starts from the remote payload and only ADDS local tasks. If a
+   task is in remote but not in local (because the user deleted it), the
+   merge keeps it. To fix this without modifying v40's merge, we wrap
+   window.fetch and, for Supabase app_state reads, filter the tombstoned
+   tasks out of the response BEFORE it reaches v40. The merge now sees a
+   clean remote and the next push uploads the clean state to the cloud. */
+(function(){
+  if(window.__v703FetchWrapped) return;
+  const origFetch=window.fetch;
+  if(typeof origFetch!=='function') return;
+
+  function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
+  function sourceOf(t){
+    if(!t) return '';
+    return clean(t.v57SourceKey||t.v57SourceText||t.v66SourceKey||t.v56SourceId||t.sourceId||'');
+  }
+  function getTombstones(){
+    try{
+      if(typeof S!=='undefined' && S && Array.isArray(S.deletedTaskTombstones)) return S.deletedTaskTombstones;
+    }catch(e){}
+    return [];
+  }
+  function isSupabaseStateGet(url, opts){
+    let u='';
+    try{
+      u = (typeof url==='string')?url:(url && url.url)?url.url:'';
+    }catch(e){return false;}
+    if(!u) return false;
+    if(!/supabase\.co\/rest\/v1\//.test(u)) return false;
+    // Match the table name used by v40 (app_state)
+    if(!/app_state/.test(u)) return false;
+    const method=(opts && opts.method)?String(opts.method).toUpperCase():'GET';
+    return method==='GET';
+  }
+  function filterRows(rows){
+    if(!Array.isArray(rows)) return rows;
+    const ts=getTombstones();
+    if(!ts.length) return rows;
+    const ids=new Set(ts.map(t=>t && t.id ? String(t.id) : '').filter(Boolean));
+    const sources=new Set(ts.map(t=>t && t.source ? t.source : '').filter(Boolean));
+    return rows.map(row=>{
+      if(!row || !row.data) return row;
+      const data=row.data;
+      if(!Array.isArray(data.tasks)) return row;
+      const removedIds=new Set();
+      const filteredTasks=data.tasks.filter(task=>{
+        if(!task) return false;
+        const tid=String(task.id||'');
+        if(tid && ids.has(tid)){ removedIds.add(tid); return false; }
+        const src=sourceOf(task);
+        if(src && sources.has(src)){ if(tid) removedIds.add(tid); return false; }
+        return true;
+      });
+      const filteredSessions=Array.isArray(data.sessions)
+        ? data.sessions.filter(s=>!s || !removedIds.has(String(s.taskId||'')))
+        : data.sessions;
+      let runningTaskId=data.runningTaskId;
+      if(runningTaskId && removedIds.has(String(runningTaskId))) runningTaskId=null;
+      return Object.assign({}, row, {
+        data: Object.assign({}, data, {
+          tasks: filteredTasks,
+          sessions: filteredSessions,
+          runningTaskId: runningTaskId
+        })
+      });
+    });
+  }
+
+  window.fetch=function(url, opts){
+    if(!isSupabaseStateGet(url, opts)){
+      return origFetch.apply(this, arguments);
+    }
+    return origFetch.apply(this, arguments).then(res=>{
+      if(!res || !res.ok) return res;
+      return res.clone().json().then(rows=>{
+        const filtered=filterRows(rows);
+        const headers=new Headers(res.headers);
+        return new Response(JSON.stringify(filtered), {
+          status: res.status,
+          statusText: res.statusText,
+          headers: headers
+        });
+      }).catch(()=>res);
+    });
+  };
+  window.__v703FetchWrapped=true;
 })();
 </script>
 
