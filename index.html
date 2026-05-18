@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.3').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.4').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -14188,6 +14188,138 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
     });
   };
   window.__v703FetchWrapped=true;
+})();
+</script>
+
+<script id="v704-capture-intercept-script">
+/* ===== v70.4: capture-phase intercept for delete/undo =====
+   v70.2 wrapped window.sasshyDeleteTaskById, but the v66 UI calls the LOCAL
+   closure version of deleteTaskById, bypassing the wrap. So tombstones were
+   never recorded, and the v70.3 fetch filter had nothing to filter.
+
+   Fix: listen at the document at the capture phase, BEFORE v66's bubble
+   listeners fire. Record a tombstone for any task about to be deleted, and
+   clear the tombstone for any task about to be (or just) restored. */
+(function(){
+  function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
+  function sourceOf(t){
+    if(!t) return '';
+    return clean(t.v57SourceKey||t.v57SourceText||t.v66SourceKey||t.v56SourceId||t.sourceId||'');
+  }
+  function ensureTombstones(){
+    if(typeof S==='undefined' || !S) return null;
+    if(!Array.isArray(S.deletedTaskTombstones)) S.deletedTaskTombstones=[];
+    return S.deletedTaskTombstones;
+  }
+  function originalSave(){
+    const sv=window.__v40OriginalSave||window.save;
+    try{ if(typeof sv==='function') sv(); }catch(e){}
+  }
+  function recordTombstoneForTask(t){
+    const ts=ensureTombstones();
+    if(!ts || !t || !t.id) return false;
+    const id=String(t.id);
+    if(ts.some(x=>x && String(x.id)===id)) return false;
+    ts.push({
+      id:id,
+      title:String(t.title||''),
+      source:sourceOf(t),
+      deletedAt:Date.now()
+    });
+    while(ts.length>500) ts.shift();
+    originalSave();
+    return true;
+  }
+  function recordTombstoneForId(id){
+    if(!id || typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
+    const t=S.tasks.find(x=>x && x.id===id);
+    return t ? recordTombstoneForTask(t) : false;
+  }
+  function clearTombstoneForTask(t){
+    const ts=ensureTombstones();
+    if(!ts || !ts.length || !t) return false;
+    const idStr=String(t.id||'');
+    const src=sourceOf(t);
+    const before=ts.length;
+    S.deletedTaskTombstones=ts.filter(x=>{
+      if(!x) return false;
+      if(idStr && String(x.id)===idStr) return false;
+      if(src && x.source===src) return false;
+      return true;
+    });
+    const changed=S.deletedTaskTombstones.length!==before;
+    if(changed) originalSave();
+    return changed;
+  }
+  function clearTombstonesForRecentlyRestored(){
+    if(typeof S==='undefined' || !S || !Array.isArray(S.tasks)) return false;
+    if(!Array.isArray(S.deletedTaskTombstones) || !S.deletedTaskTombstones.length) return false;
+    const now=Date.now();
+    const restored=S.tasks.filter(t=>t && t.undoneAt && (now-t.undoneAt)<60000);
+    if(!restored.length) return false;
+    const ids=new Set(restored.map(t=>String(t.id||'')));
+    const srcs=new Set(restored.map(sourceOf).filter(Boolean));
+    const before=S.deletedTaskTombstones.length;
+    S.deletedTaskTombstones=S.deletedTaskTombstones.filter(x=>{
+      if(!x) return false;
+      if(ids.has(String(x.id))) return false;
+      if(x.source && srcs.has(x.source)) return false;
+      return true;
+    });
+    const changed=S.deletedTaskTombstones.length!==before;
+    if(changed) originalSave();
+    return changed;
+  }
+
+  // Capture-phase click on document - fires BEFORE v66/v65 bubble listeners
+  document.addEventListener('click', function(e){
+    // Delete buttons from v66 desk
+    const v66Del=e.target.closest?.('[data-v66="delete"]');
+    if(v66Del){
+      const id=v66Del.dataset?.id || v66Del.closest?.('[data-id]')?.dataset?.id;
+      if(id) recordTombstoneForId(id);
+      return;
+    }
+    // Timeline delete buttons added by v66
+    const tlDel=e.target.closest?.('.v66-tl-del');
+    if(tlDel){
+      const id=tlDel.dataset?.id || tlDel.closest?.('[data-id]')?.dataset?.id;
+      if(id) recordTombstoneForId(id);
+      return;
+    }
+    // Other delete selectors (legacy)
+    const otherDel=e.target.closest?.('[data-act="del"]')
+                || e.target.closest?.('[data-v45="delete"]')
+                || (e.target.id==='qtdDelBtn' ? e.target : null)
+                || (e.target.id==='qtdDeleteBtn' ? e.target : null);
+    if(otherDel){
+      const id=otherDel.dataset?.id
+            || otherDel.closest?.('[data-id]')?.dataset?.id
+            || (typeof currentDetailId!=='undefined' ? currentDetailId : null);
+      if(id) recordTombstoneForId(id);
+      return;
+    }
+    // Undo button - clear the tombstone for the task about to be restored
+    const undoBtn=e.target.closest?.('[data-v65-undo]');
+    if(undoBtn){
+      try{
+        if(typeof S!=='undefined' && S && Array.isArray(S.deletedTaskUndo) && S.deletedTaskUndo.length){
+          const top=S.deletedTaskUndo[S.deletedTaskUndo.length-1];
+          if(top && top.task) clearTombstoneForTask(top.task);
+        }
+      }catch(e){}
+    }
+  }, true);  // CAPTURE PHASE
+
+  // Cmd+Z / Ctrl+Z - runs after v65 restore, clears tombstone for the restored task
+  document.addEventListener('keydown', function(e){
+    if(!(e.metaKey||e.ctrlKey)) return;
+    if(String(e.key||'').toLowerCase()!=='z') return;
+    setTimeout(clearTombstonesForRecentlyRestored, 100);
+  }, true);
+
+  // Backup periodic check - in case anything else triggers a restore
+  setInterval(clearTombstonesForRecentlyRestored, 2000);
 })();
 </script>
 
