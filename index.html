@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.10').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.12').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9325,7 +9325,32 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       return {enabled:false,url:'',anonKey:'',syncKey:'',localUpdatedAt:0,remoteUpdatedAt:0,dirty:false,lastSyncAt:0};
     }
   }
+  function cleanApiKey(v){
+    let s=String(v==null?'':v)
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim();
+    s=s.replace(/^['"`]|['"`]$/g,'').trim();
+    s=s.replace(/^(?:apikey|api\s*key|anon\s*key|authorization)\s*[:=]\s*/i,'').trim();
+    s=s.replace(/^bearer\s+/i,'').trim();
+    s=s.replace(/^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*/i,'').trim();
+    s=s.replace(/^SUPABASE_(?:ANON|PUBLISHABLE)_KEY\s*=\s*/i,'').trim();
+    s=s.replace(/^['"`]|['"`]$/g,'').trim();
+    s=s.replace(/\s+/g,'');
+    return s;
+  }
+  function cleanSupabaseUrl(v){
+    let s=String(v==null?'':v)
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .trim();
+    s=s.replace(/^SUPABASE_URL\s*=\s*/i,'').trim().replace(/^['"`]|['"`]$/g,'').trim();
+    s=s.replace(/\/rest\/v1\/?$/,'').replace(/\/+$/,'');
+    return s;
+  }
   function saveCfg(cfg){
+    cfg.url=cleanSupabaseUrl(cfg.url);
+    cfg.anonKey=cleanApiKey(cfg.anonKey);
     localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
     renderPanel();
   }
@@ -9333,13 +9358,13 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     return !!(cfg.url && cfg.anonKey && cfg.syncKey);
   }
   function apiBase(cfg){
-    return String(cfg.url||'').replace(/\/+$/,'')+'/rest/v1/'+TABLE;
+    return cleanSupabaseUrl(cfg.url)+'/rest/v1/'+TABLE;
   }
   function looksLikeJwt(key){
     return String(key||'').split('.').length===3;
   }
   function keyProblem(cfg){
-    const key=String(cfg?.anonKey||'').trim();
+    const key=cleanApiKey(cfg?.anonKey);
     if(/^sb_secret_/i.test(key)) return 'secret key はブラウザで使えません。publishable key を入れてください';
     if(!key) return 'API key が未入力';
     return '';
@@ -9361,7 +9386,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     return new Error(prefix+' '+res.status+(msg?' '+msg:''));
   }
   function headers(cfg, extra){
-    const key=String(cfg.anonKey||'').trim();
+    const key=cleanApiKey(cfg.anonKey);
     const h={
       apikey:key,
       'Content-Type':'application/json'
@@ -9598,8 +9623,8 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
       const act=btn.dataset.v40Sync;
       if(act==='save'){
         const cfg=loadCfg();
-        cfg.url=document.getElementById('v40SyncUrl')?.value.trim()||'';
-        cfg.anonKey=document.getElementById('v40SyncAnon')?.value.trim()||'';
+        cfg.url=cleanSupabaseUrl(document.getElementById('v40SyncUrl')?.value||'');
+        cfg.anonKey=cleanApiKey(document.getElementById('v40SyncAnon')?.value||'');
         cfg.syncKey=document.getElementById('v40SyncKey')?.value.trim()||'';
         saveCfg(cfg);
         setStatus(valid(cfg)?'設定保存済み':'設定未完了');
@@ -14180,6 +14205,539 @@ body.v68-quest #p-quest > #v66QuestDesk{order:20;}
     window.renderTasks=wrapped;
   }
   setTimeout(()=>{ repairFreshImportDates(); renderRail(); },900);
+})();
+</script>
+
+<style id="v7012-state-authority-style">
+/* v70.12: single-action completion, hero quick edit, and visible undo/redo */
+.v7012-history-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:11px;
+  padding:8px 10px;
+  margin:0 0 10px;
+  box-shadow:var(--shadow-xs);
+}
+body.v68-quest #v7012HistoryBar{order:12;}
+.v7012-history-label{
+  min-width:0;
+  color:var(--text3);
+  font-size:11px;
+  font-weight:800;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.v7012-history-actions{
+  display:flex;
+  gap:6px;
+  flex:0 0 auto;
+}
+.v7012-history-actions button,
+.v7012-hero-tools button{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  min-height:34px;
+  padding:6px 10px;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:950;
+  cursor:pointer;
+}
+.v7012-history-actions button:disabled{
+  opacity:.4;
+  cursor:default;
+}
+.v7012-hero-tools{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr)) auto auto;
+  gap:7px;
+  align-items:end;
+  border-top:1px dashed var(--border);
+  margin-top:12px;
+  padding-top:10px;
+}
+.v7012-hero-field{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.v7012-hero-field label{
+  color:var(--text3);
+  font-size:10px;
+  font-weight:900;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v7012-hero-field input{
+  width:100%;
+  min-width:0;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:8px;
+  min-height:34px;
+  padding:6px 8px;
+  font-family:inherit;
+  font-size:13px;
+  font-weight:800;
+}
+.v7012-hero-tools .primary{
+  background:var(--text);
+  border-color:var(--text);
+  color:var(--surface);
+}
+@media(max-width:760px){
+  .v7012-hero-tools{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .v7012-hero-tools button{
+    min-height:38px;
+  }
+}
+</style>
+<script id="v7012-state-authority-script">
+(function(){
+  const VERSION='v70.12';
+  const LOCK_KEY='sasshy_v7012_completion_locks';
+  const MAX_HISTORY=40;
+  const undoStack=[];
+  const redoStack=[];
+  let restoring=false;
+  let lastDetailId=null;
+
+  function hasState(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function dkey(){try{return todayKey();}catch(e){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}}
+  function hmNow(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+  function clone(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return null;}}
+  function escText(v){
+    const s=String(v==null?'':v);
+    return typeof esc==='function'?esc(s):s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function loadLocks(){
+    try{
+      const raw=JSON.parse(localStorage.getItem(LOCK_KEY)||'{}');
+      return raw && typeof raw==='object' ? raw : {};
+    }catch(e){return {};}
+  }
+  function saveLocks(locks){
+    try{localStorage.setItem(LOCK_KEY, JSON.stringify(locks||{}));}catch(e){}
+  }
+  function addLock(t){
+    if(!t || !t.id) return;
+    const locks=loadLocks();
+    locks[t.id]={id:t.id,title:t.title||'',doneAt:Number(t.completedAt||t.doneAt||Date.now())||Date.now()};
+    saveLocks(locks);
+  }
+  function removeLock(id){
+    if(!id) return;
+    const locks=loadLocks();
+    if(locks[id]){
+      delete locks[id];
+      saveLocks(locks);
+    }
+  }
+  function makeSnapshot(label){
+    if(!hasState()) return null;
+    return {label:label||'操作', at:Date.now(), state:clone(S), locks:loadLocks()};
+  }
+  function snapshotText(snap){
+    if(!snap) return '';
+    const d=new Date(snap.at||Date.now());
+    return snap.label+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  function sameState(a,b){
+    try{return JSON.stringify(a&&a.state)===JSON.stringify(b&&b.state);}catch(e){return false;}
+  }
+  function pushHistory(label){
+    if(restoring || !hasState()) return;
+    const snap=makeSnapshot(label);
+    if(!snap) return;
+    const last=undoStack[undoStack.length-1];
+    if(last && sameState(last,snap)) return;
+    undoStack.push(snap);
+    if(undoStack.length>MAX_HISTORY) undoStack.shift();
+    redoStack.length=0;
+    renderHistoryBar();
+  }
+  function syncLocksAfterRestore(){
+    if(!hasState()) return;
+    const locks=loadLocks();
+    let changed=false;
+    (S.tasks||[]).forEach(t=>{
+      if(!t || !t.id) return;
+      if(!t.done && locks[t.id]){
+        delete locks[t.id];
+        changed=true;
+      }
+    });
+    if(changed) saveLocks(locks);
+  }
+  function restoreSnapshot(snap, direction){
+    if(!snap || !snap.state || !hasState()) return;
+    restoring=true;
+    try{
+      Object.keys(S).forEach(k=>delete S[k]);
+      Object.assign(S, clone(snap.state)||{});
+      saveLocks(clone(snap.locks)||{});
+      syncLocksAfterRestore();
+      try{ if(typeof save==='function') save(); }catch(e){}
+      refreshAll(direction||'復元');
+    }finally{
+      restoring=false;
+      renderHistoryBar();
+    }
+  }
+  function undo(){
+    if(!undoStack.length) return;
+    const current=makeSnapshot('やり直し用');
+    const prev=undoStack.pop();
+    if(current) redoStack.push(current);
+    restoreSnapshot(prev,'戻る');
+  }
+  function redo(){
+    if(!redoStack.length) return;
+    const current=makeSnapshot('戻る用');
+    const next=redoStack.pop();
+    if(current) undoStack.push(current);
+    restoreSnapshot(next,'進む');
+  }
+  function ensureHistoryBar(){
+    let bar=document.getElementById('v7012HistoryBar');
+    if(bar) return bar;
+    const host=document.querySelector('#p-quest');
+    if(!host) return null;
+    bar=document.createElement('div');
+    bar.id='v7012HistoryBar';
+    bar.className='v7012-history-bar';
+    bar.innerHTML=
+      '<div class="v7012-history-label" id="v7012HistoryLabel">戻る/進む</div>'+
+      '<div class="v7012-history-actions">'+
+        '<button type="button" data-v7012-history="undo">戻る</button>'+
+        '<button type="button" data-v7012-history="redo">進む</button>'+
+      '</div>';
+    const undoBar=document.getElementById('v65UndoBar');
+    const hero=document.getElementById('v68Hero');
+    if(undoBar && undoBar.parentNode) undoBar.parentNode.insertBefore(bar, undoBar.nextSibling);
+    else if(hero && hero.parentNode) hero.parentNode.insertBefore(bar, hero.nextSibling);
+    else host.insertBefore(bar, host.firstChild);
+    bar.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-v7012-history]');
+      if(!btn) return;
+      e.preventDefault();
+      if(btn.dataset.v7012History==='undo') undo();
+      if(btn.dataset.v7012History==='redo') redo();
+    });
+    return bar;
+  }
+  function renderHistoryBar(){
+    const bar=ensureHistoryBar();
+    if(!bar) return;
+    const label=bar.querySelector('#v7012HistoryLabel');
+    const undoBtn=bar.querySelector('[data-v7012-history="undo"]');
+    const redoBtn=bar.querySelector('[data-v7012-history="redo"]');
+    if(label) label.textContent=undoStack.length ? '戻せる: '+snapshotText(undoStack[undoStack.length-1]) : '戻る/進む';
+    if(undoBtn) undoBtn.disabled=!undoStack.length;
+    if(redoBtn) redoBtn.disabled=!redoStack.length;
+  }
+  function closeOpenSessions(id, completed){
+    const now=Date.now();
+    S.sessions=Array.isArray(S.sessions)?S.sessions:[];
+    S.sessions.forEach(s=>{
+      if(s && s.taskId===id && !s.endedAt){
+        s.endedAt=now;
+        s.completed=!!completed;
+      }
+    });
+    if(S.runningTaskId===id) S.runningTaskId=null;
+    try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+  }
+  function ensureCompletedSession(t){
+    if(!t || !t.id) return;
+    try{
+      if(typeof finishTask==='function') finishTask(t.id);
+    }catch(e){}
+    closeOpenSessions(t.id,true);
+    const hasCompleted=(S.sessions||[]).some(s=>s && s.taskId===t.id && s.completed);
+    if(!hasCompleted){
+      const now=Date.now();
+      const planMs=(Number(t.planMin||15)||15)*60000;
+      S.sessions.push({
+        id:'sess-v7012-'+now.toString(36)+'-'+Math.random().toString(36).slice(2,6),
+        taskId:t.id,
+        title:t.title||'',
+        rank:t.rank||'zako',
+        startedAt:now-planMs,
+        endedAt:now,
+        completed:true,
+        date:t.scheduledDate||dkey()
+      });
+    }
+  }
+  function completeTask(id, opts){
+    opts=opts||{};
+    if(!hasState() || !id) return false;
+    const t=S.tasks.find(x=>x&&x.id===id);
+    if(!t) return false;
+    if(t.done){
+      t.completedAt=t.completedAt||t.doneAt||Date.now();
+      t.doneAt=t.doneAt||t.completedAt;
+      addLock(t);
+      closeOpenSessions(id,true);
+      refreshAll(opts.reason||'完了済み確認');
+      return true;
+    }
+    if(!opts.skipHistory) pushHistory(opts.label||'完了前');
+    if(!t.scheduledDate) t.scheduledDate=dkey();
+    t.completedAt=Date.now();
+    t.doneAt=t.completedAt;
+    t.done=true;
+    t.adhdReview='';
+    t.adhdHiddenGenerated=false;
+    if(Array.isArray(t.subs)) t.subs.forEach(s=>{ if(s) s.done=true; });
+    ensureCompletedSession(t);
+    addLock(t);
+    const exp=(typeof RANK_EXP!=='undefined' && RANK_EXP[t.rank||'zako']) ? RANK_EXP[t.rank||'zako'] : 10;
+    if(typeof S.totalKills==='number') S.totalKills++;
+    try{ if(typeof gainExp==='function') gainExp(exp); }catch(e){}
+    try{ if(typeof addLog==='function') addLog('✓ <span class="defeat">'+escText(t.title||'タスク')+'</span> 完了'); }catch(e){}
+    refreshAll(opts.reason||'タスク完了');
+    return true;
+  }
+  window.sasshyCompleteTaskNow=completeTask;
+  function refreshAll(reason){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(reason && typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+    setTimeout(()=>{ renderHistoryBar(); renderHeroTools(); },0);
+  }
+  function enforceCompletionLocks(){
+    if(restoring || !hasState()) return false;
+    const locks=loadLocks();
+    let changed=false;
+    Object.keys(locks).forEach(id=>{
+      const lock=locks[id];
+      const t=S.tasks.find(x=>x&&x.id===id);
+      if(!t) return;
+      const undoneAt=Number(t.undoneAt||0);
+      const lockAt=Number(lock&&lock.doneAt||0);
+      if(undoneAt && undoneAt>=lockAt){
+        delete locks[id];
+        changed=true;
+        return;
+      }
+      if(!t.done){
+        t.done=true;
+        t.completedAt=t.completedAt||lockAt||Date.now();
+        t.doneAt=t.doneAt||t.completedAt;
+        if(Array.isArray(t.subs)) t.subs.forEach(s=>{ if(s) s.done=true; });
+        closeOpenSessions(id,true);
+        changed=true;
+      }
+    });
+    if(changed){
+      saveLocks(locks);
+      try{ if(typeof save==='function') save(); }catch(e){}
+      setTimeout(()=>refreshAll(VERSION+' 完了ロック補正'),0);
+    }
+    return changed;
+  }
+  function findDoneIdFromClick(e){
+    const target=e.target;
+    if(!target || !target.closest) return '';
+    const heroBtn=target.closest('[data-v68="done"]');
+    if(heroBtn) return document.getElementById('v68Hero')?.dataset?.taskId || '';
+    const v66=target.closest('[data-v66="done"]');
+    if(v66) return v66.closest('[data-id]')?.dataset?.id || v66.dataset.id || '';
+    const runningDone=target.closest('#rbDoneBtn');
+    if(runningDone) return (hasState() && S.runningTaskId) ? S.runningTaskId : '';
+    const detailDone=target.closest('#qtdDoneBtn');
+    if(detailDone) return lastDetailId || '';
+    const actDone=target.closest('[data-act="done"]');
+    if(actDone) return actDone.closest('[data-id]')?.dataset?.id || actDone.dataset.id || '';
+    const v18=target.closest('[data-v18="done"]');
+    if(v18) return v18.dataset.id || v18.closest('[data-id]')?.dataset?.id || '';
+    const v34=target.closest('[data-v34="done"]');
+    if(v34) return v34.dataset.id || v34.closest('[data-id]')?.dataset?.id || '';
+    const v45=target.closest('[data-v45="done"]');
+    if(v45) return v45.dataset.id || v45.closest('[data-id]')?.dataset?.id || '';
+    return '';
+  }
+  function isMutatingClick(e){
+    const t=e.target;
+    if(!t || !t.closest) return false;
+    return !!(
+      t.closest('[data-v66="delete"],[data-v66="schedule"],[data-v66="start"]') ||
+      t.closest('[data-v68="start"],[data-v68="schedule"]') ||
+      t.closest('[data-v70-act="stop"],[data-v70-act="ext5"],[data-v70-act="ext15"]') ||
+      t.closest('#qtdSaveBtn,#qtdPoolBtn,#qtdDelBtn,#qtdStartBtn,#sdmSave,#selDoneBtn,#selDelBtn,#selDateBtn') ||
+      t.closest('[data-act="del"],[data-act="undone"],[data-act="stop"],[data-act="start"],[data-act="set-time"]') ||
+      t.closest('[data-sched-undone],.tl-undone,[data-v65-undo]')
+    );
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-v70-act="done"]');
+    if(!btn || !hasState() || !S.runningTaskId) return;
+    const id=S.runningTaskId;
+    if(String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return;
+    pushHistory('完了前');
+    setTimeout(()=>{
+      completeTask(id,{label:'完了前', reason:'TASK MODE完了', skipHistory:true});
+    },120);
+  },true);
+  document.addEventListener('click',e=>{
+    const id=findDoneIdFromClick(e);
+    if(!id || String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    completeTask(id,{label:'完了前', reason:'タスク完了'});
+    try{ if(typeof closeTaskDetail==='function') closeTaskDetail(); }catch(_){}
+  },true);
+  document.addEventListener('click',e=>{
+    if(isMutatingClick(e)) pushHistory('操作前');
+  },true);
+
+  function renderHeroTools(){
+    if(!hasState()) return;
+    const hero=document.getElementById('v68Hero');
+    if(!hero) return;
+    const id=hero.dataset.taskId || '';
+    let tools=document.getElementById('v7012HeroTools');
+    if(!id){
+      if(tools) tools.remove();
+      return;
+    }
+    const t=S.tasks.find(x=>x&&x.id===id);
+    if(!t || t.done){
+      if(tools) tools.remove();
+      return;
+    }
+    if(tools && tools.contains(document.activeElement)) return;
+    if(!tools){
+      tools=document.createElement('div');
+      tools.id='v7012HeroTools';
+      tools.className='v7012-hero-tools';
+    }
+    tools.dataset.taskId=id;
+    tools.innerHTML=
+      '<div class="v7012-hero-field"><label>予定分</label><input id="v7012HeroMin" type="number" min="1" max="999" value="'+escText(t.planMin||15)+'"></div>'+
+      '<div class="v7012-hero-field"><label>日付</label><input id="v7012HeroDate" type="date" value="'+escText(t.scheduledDate||'')+'"></div>'+
+      '<div class="v7012-hero-field"><label>開始</label><input id="v7012HeroTime" type="time" value="'+escText(t.startTime||'')+'"></div>'+
+      '<div class="v7012-hero-field"><label>次の一手</label><input id="v7012HeroNext" type="text" value="'+escText(t.nextAction||'')+'" placeholder="最初にやること"></div>'+
+      '<button class="primary" type="button" data-v7012-hero="save">保存</button>'+
+      '<button type="button" data-v7012-hero="detail">詳細</button>';
+    hero.appendChild(tools);
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-v7012-hero]');
+    if(!btn) return;
+    const tools=document.getElementById('v7012HeroTools');
+    const id=tools?.dataset?.taskId || document.getElementById('v68Hero')?.dataset?.taskId || '';
+    const t=hasState() ? S.tasks.find(x=>x&&x.id===id) : null;
+    if(!t) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(btn.dataset.v7012Hero==='detail'){
+      if(typeof openTaskDetail==='function') openTaskDetail(id);
+      return;
+    }
+    if(btn.dataset.v7012Hero==='save'){
+      pushHistory('HERO編集前');
+      const min=Number(document.getElementById('v7012HeroMin')?.value||0);
+      const date=document.getElementById('v7012HeroDate')?.value||'';
+      const time=document.getElementById('v7012HeroTime')?.value||'';
+      const next=document.getElementById('v7012HeroNext')?.value.trim()||'';
+      if(min>0) t.planMin=Math.max(1, Math.min(999, min));
+      if(date) t.scheduledDate=date; else delete t.scheduledDate;
+      if(time) t.startTime=time; else delete t.startTime;
+      if(t.startTime && !t.scheduledDate) t.scheduledDate=dkey();
+      t.nextAction=next;
+      t.v45TouchedAt=Date.now();
+      refreshAll('HERO編集');
+    }
+  },true);
+  document.addEventListener('keydown',e=>{
+    if(e.defaultPrevented) return;
+    const tag=e.target&&e.target.tagName?e.target.tagName.toLowerCase():'';
+    if(e.target&&(e.target.isContentEditable||tag==='input'||tag==='textarea'||tag==='select')) return;
+    if(!(e.metaKey||e.ctrlKey)) return;
+    const key=String(e.key||'').toLowerCase();
+    if(key==='z' && e.shiftKey){
+      if(redoStack.length){ e.preventDefault(); e.stopPropagation(); redo(); }
+    }else if(key==='z'){
+      if(undoStack.length){ e.preventDefault(); e.stopPropagation(); undo(); }
+    }else if(key==='y'){
+      if(redoStack.length){ e.preventDefault(); e.stopPropagation(); redo(); }
+    }
+  },true);
+
+  function wrapOpenTaskDetail(){
+    if(typeof window.openTaskDetail!=='function' || window.openTaskDetail.__v7012Wrapped) return false;
+    const orig=window.openTaskDetail;
+    const w=function(id){
+      lastDetailId=id;
+      return orig.apply(this, arguments);
+    };
+    w.__v7012Wrapped=true;
+    window.openTaskDetail=w;
+    return true;
+  }
+  function wrapMarkTaskUndone(){
+    if(typeof window.markTaskUndone!=='function' || window.markTaskUndone.__v7012Wrapped) return false;
+    const orig=window.markTaskUndone;
+    const w=function(id){
+      pushHistory('未完了に戻す前');
+      const r=orig.apply(this, arguments);
+      if(r){
+        removeLock(id);
+        refreshAll('未完了');
+      }
+      return r;
+    };
+    w.__v7012Wrapped=true;
+    window.markTaskUndone=w;
+    return true;
+  }
+  const oldRenderTasks=window.renderTasks;
+  if(typeof oldRenderTasks==='function' && !oldRenderTasks.__v7012StateAuthority){
+    const wrapped=function(){
+      const r=oldRenderTasks.apply(this, arguments);
+      setTimeout(()=>{ enforceCompletionLocks(); renderHeroTools(); renderHistoryBar(); },0);
+      return r;
+    };
+    wrapped.__v7012StateAuthority=true;
+    window.renderTasks=wrapped;
+  }
+  const oldRenderSchedule=window.renderSchedule;
+  if(typeof oldRenderSchedule==='function' && !oldRenderSchedule.__v7012StateAuthority){
+    const wrapped=function(){
+      const r=oldRenderSchedule.apply(this, arguments);
+      setTimeout(()=>{ renderHeroTools(); renderHistoryBar(); },0);
+      return r;
+    };
+    wrapped.__v7012StateAuthority=true;
+    window.renderSchedule=wrapped;
+  }
+  setTimeout(()=>{
+    wrapOpenTaskDetail();
+    wrapMarkTaskUndone();
+    renderHistoryBar();
+    renderHeroTools();
+    enforceCompletionLocks();
+  },900);
+  setInterval(enforceCompletionLocks,2500);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ enforceCompletionLocks(); renderHeroTools(); renderHistoryBar(); } });
 })();
 </script>
 
