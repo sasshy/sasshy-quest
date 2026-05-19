@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.1').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -16214,6 +16214,233 @@ body.v68-quest #v7012HistoryBar{order:12;}
       const iv=setInterval(()=>{ if(ensureUI() || ++tries>40) clearInterval(iv); }, 250);
     }
   }, 1800);
+})();
+</script>
+
+<script id="v71-resume-task-script">
+/* ===== v71.1: resume support =====
+   When user 中断 (interrupts) a task and later starts it again, the timer
+   should continue from where it stopped, not reset to planMin.
+
+   Implementation:
+   - On 中断 (sasshyForceStopTask wrap): accumulate the just-ended session's
+     real duration into task.v71PausedElapsedSec.
+   - On 再開 (startTask wrap, if task.v71PausedElapsedSec > 0): back-date the
+     newly created open session's startedAt by that many seconds, and store
+     the real time in session.v71OriginalStartedAt for accurate duration
+     tracking on the next pause.
+   - On 完了 (finishTask wrap): clear task.v71PausedElapsedSec.
+   - HERO / v66 list / TASK MODE: relabel 開始 → 再開, show paused-elapsed badge.
+*/
+(function(){
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function pausedElapsedSec(task){
+    return Math.max(0, Math.floor(Number(task && task.v71PausedElapsedSec) || 0));
+  }
+  function hasIncompleteClosedSession(task){
+    if(!task || task.done) return false;
+    if(!ok() || !Array.isArray(S.sessions)) return false;
+    return S.sessions.some(s=>s && s.taskId===task.id && s.endedAt && !s.completed);
+  }
+  function isPaused(task){
+    if(!task || task.done) return false;
+    if(typeof S!=='undefined' && S && S.runningTaskId === task.id) return false;
+    return pausedElapsedSec(task) > 0 || hasIncompleteClosedSession(task);
+  }
+  window.sasshyIsPaused = isPaused;
+  window.sasshyPausedElapsedSec = pausedElapsedSec;
+
+  function wrapStart(){
+    const orig = window.startTask;
+    if(typeof orig !== 'function') return false;
+    if(orig.__v71ResumeWrapped) return true;
+    const wrapped = function(id){
+      const r = orig.apply(this, arguments);
+      try {
+        if(ok() && id){
+          const task = S.tasks.find(t=>t && t.id===id);
+          const paused = pausedElapsedSec(task);
+          if(task && paused > 0){
+            const session = (S.sessions||[]).find(s=>s && s.taskId===id && !s.endedAt);
+            if(session && !session.v71OriginalStartedAt){
+              session.v71OriginalStartedAt = Number(session.startedAt) || Date.now();
+              session.startedAt = session.v71OriginalStartedAt - paused * 1000;
+            }
+          }
+        }
+      } catch(e){}
+      return r;
+    };
+    wrapped.__v71ResumeWrapped = true;
+    window.startTask = wrapped;
+    return true;
+  }
+
+  function wrapForceStop(){
+    const orig = window.sasshyForceStopTask;
+    if(typeof orig !== 'function') return false;
+    if(orig.__v71ResumeWrapped) return true;
+    const wrapped = function(id){
+      try {
+        if(ok() && id){
+          const session = (S.sessions||[]).find(s=>s && s.taskId===id && !s.endedAt);
+          if(session){
+            const realStart = Number(session.v71OriginalStartedAt) || Number(session.startedAt) || Date.now();
+            const sessionDurMs = Math.max(0, Date.now() - realStart);
+            const task = S.tasks.find(t=>t && t.id===id);
+            if(task){
+              const prev = pausedElapsedSec(task);
+              task.v71PausedElapsedSec = prev + Math.floor(sessionDurMs / 1000);
+            }
+          }
+        }
+      } catch(e){}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__v71ResumeWrapped = true;
+    window.sasshyForceStopTask = wrapped;
+    return true;
+  }
+
+  function wrapFinish(){
+    const orig = window.finishTask;
+    if(typeof orig !== 'function') return false;
+    if(orig.__v71ResumeWrapped) return true;
+    const wrapped = function(id){
+      const r = orig.apply(this, arguments);
+      try {
+        if(ok() && id){
+          const task = S.tasks.find(t=>t && t.id===id);
+          if(task) task.v71PausedElapsedSec = 0;
+        }
+      } catch(e){}
+      return r;
+    };
+    wrapped.__v71ResumeWrapped = true;
+    window.finishTask = wrapped;
+    return true;
+  }
+
+  function wrapCompleteTaskNow(){
+    const orig = window.sasshyCompleteTaskNow;
+    if(typeof orig !== 'function') return false;
+    if(orig.__v71ResumeWrapped) return true;
+    const wrapped = function(id){
+      const r = orig.apply(this, arguments);
+      try {
+        if(ok() && id){
+          const task = S.tasks.find(t=>t && t.id===id);
+          if(task) task.v71PausedElapsedSec = 0;
+        }
+      } catch(e){}
+      return r;
+    };
+    wrapped.__v71ResumeWrapped = true;
+    window.sasshyCompleteTaskNow = wrapped;
+    return true;
+  }
+
+  // === Post-render UI enhancement ===
+  function enhanceHero(){
+    const hero = document.getElementById('v68Hero');
+    if(!hero || !ok()) return;
+    const taskId = hero.dataset.taskId;
+    if(!taskId) return;
+    const task = S.tasks.find(t=>t && t.id===taskId);
+    if(!task) return;
+    if(!isPaused(task)) return;
+
+    const startBtn = hero.querySelector('[data-v68="start"]');
+    if(startBtn){
+      const txt = startBtn.textContent || '';
+      if(/開始/.test(txt) && !/再開/.test(txt)){
+        startBtn.textContent = '▶ 再開';
+      }
+    }
+    const label = hero.querySelector('.v68-hero-label');
+    if(label && label.dataset.v71PausedTag !== '1'){
+      label.dataset.v71PausedTag = '1';
+      label.textContent = '中断中 → 再開できます';
+    }
+    const meta = hero.querySelector('.v68-hero-meta');
+    if(meta && !meta.querySelector('.v71-paused-elapsed')){
+      const sec = pausedElapsedSec(task);
+      if(sec > 0){
+        const span = document.createElement('span');
+        span.className = 'v71-paused-elapsed';
+        span.style.cssText = 'color:#c87a00;font-weight:900;';
+        const min = Math.floor(sec / 60);
+        span.textContent = `中断中 ${min}分経過`;
+        meta.appendChild(span);
+      }
+    }
+  }
+
+  function enhanceV66List(){
+    if(!ok()) return;
+    document.querySelectorAll('#v66QuestDesk .v66-task[data-id]').forEach(el => {
+      const id = el.dataset.id;
+      const task = S.tasks.find(t=>t && t.id===id);
+      if(!task) return;
+      if(!isPaused(task)) return;
+      const startBtn = el.querySelector('[data-v66="start"]');
+      if(startBtn){
+        const txt = startBtn.textContent || '';
+        if(/開始/.test(txt) && !/再開/.test(txt)){
+          startBtn.textContent = '再開';
+        }
+      }
+      const titleEl = el.querySelector('.v66-task-title');
+      if(titleEl && !titleEl.querySelector('.v71-paused-badge')){
+        const badge = document.createElement('span');
+        badge.className = 'v71-paused-badge';
+        badge.style.cssText = 'margin-left:8px;font-size:10px;color:#c87a00;font-weight:900;padding:2px 6px;border:1px solid #c87a00;border-radius:4px;vertical-align:middle;display:inline-block;';
+        const sec = pausedElapsedSec(task);
+        const min = Math.floor(sec / 60);
+        badge.textContent = `⏸ 中断中 ${min}分`;
+        titleEl.appendChild(badge);
+      }
+    });
+  }
+
+  function enhanceAll(){
+    enhanceHero();
+    enhanceV66List();
+  }
+
+  // Hook renderTasks for immediate enhancement after each render
+  function wrapRender(){
+    const orig = window.renderTasks;
+    if(typeof orig !== 'function') return false;
+    if(orig.__v71ResumeEnhance) return true;
+    const w = function(){
+      const r = orig.apply(this, arguments);
+      setTimeout(enhanceAll, 30);
+      return r;
+    };
+    w.__v71ResumeEnhance = true;
+    window.renderTasks = w;
+    return true;
+  }
+
+  setInterval(enhanceAll, 800);
+
+  setTimeout(() => {
+    const tryAll = ()=>{
+      let done = true;
+      if(!wrapStart()) done = false;
+      if(!wrapForceStop()) done = false;
+      if(!wrapFinish()) done = false;
+      if(!wrapCompleteTaskNow()) done = false;
+      if(!wrapRender()) done = false;
+      return done;
+    };
+    if(!tryAll()){
+      let tries = 0;
+      const iv = setInterval(()=>{ if(tryAll() || ++tries>40) clearInterval(iv); }, 200);
+    }
+    enhanceAll();
+  }, 1200);
 })();
 </script>
 
