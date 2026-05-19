@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=70.13').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=70.15').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -14741,224 +14741,183 @@ body.v68-quest #v7012HistoryBar{order:12;}
 })();
 </script>
 
-<script id="v7013-ocr-order-client-title-script">
-/* v70.13: OCR import titles use only order content and client name. */
+<script id="v7015-ocr-shipping-title-script">
+/* v70.15: OCR titles keep "出荷準備：" and preserve all order snippets before the client name. */
 (function(){
-  const VERSION='v70.13';
-  const PREF_RE=/(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県|東京\s*都|群馬\s*県|滋賀\s*県|福岡\s*県|京都\s*府|大阪\s*府|兵庫\s*県)/;
-  const LEGAL_RE=/(株式会社|有限会社|合同会社|㈱)/;
+  const VERSION='v70.15';
+  const LEGAL=/(株式会社|有限会社|合同会社|㈱)/;
+  const PREF=/^(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県|東京|群馬|滋賀|福岡|京都|大阪|兵庫|千葉|埼玉|神奈川|愛知)$/;
+  const STOP=/^(都|道|府|県|市|区|町|村|丁目|番地|号|FER|FBR|I|l|」|『s|s|→|!|定価|仕切|前金|現場|検索|ページ|レコード)$/i;
+  const ORDER_WORD=/^(各|ポンプ|ホース|ノズル|セット|保守|管理|本体|部材|口金|継手)$/;
 
   function clone(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return v;}}
   function clean(v){return String(v==null?'':v).replace(/[　\t]+/g,' ').replace(/\s+/g,' ').trim();}
-  function compactJaSpaces(s){
-    s=clean(s);
-    for(let i=0;i<3;i++){
-      s=s.replace(/([ぁ-んァ-ヶ一-龠])\s+([ぁ-んァ-ヶ一-龠])/g,'$1$2');
-    }
-    return s
-      .replace(/([0-9０-９]+)\s*(本|個|台|枚|式|点|セット|m|M)(?=\s|$|[、,。])/g,'$1$2')
-      .replace(/([0-9０-９]+)\s*点\s*セット/g,'$1点セット')
-      .replace(/([0-9０-９]+)(本|個|台|枚|式|点)\s*セット/g,'$1$2セット')
-      .replace(/各\s+([0-9０-９]+)/g,'各$1')
-      .replace(/([A-Z0-9])\s*\*\s*([A-Z0-9])/gi,'$1*$2')
-      .replace(/([A-Z]{1,5})\s*-\s*([A-Z0-9])/gi,'$1-$2')
-      .replace(/\s+/g,' ')
-      .trim();
-  }
   function normalize(v){
-    return clean(v)
+    let s=clean(v)
       .replace(/^出荷準備\s*[:：]\s*/,'')
+      .replace(/社内\s*出荷/g,'社内出荷')
       .replace(/株\s*式\s*会\s*社/g,'株式会社')
       .replace(/有限\s*会\s*社/g,'有限会社')
       .replace(/合同\s*会\s*社/g,'合同会社')
-      .replace(/((?:[0-9０-９]+)\s*(?:本|個|台|枚|式|点|セット|m|M))\s*(株式会社|有限会社|合同会社|㈱)/g,'$1 $2')
-      .replace(/(株式会社|有限会社|合同会社|㈱)\s+/g,'$1 ')
-      .replace(/[＿_]+/g,' ')
+      .replace(/[_＿]+/g,' ')
       .replace(/[“”"']/g,'')
+      .replace(/([0-9０-９]+)\s*(本|個|台|枚|式|点|セット|m|M)(?=株式会社|有限会社|合同会社|㈱)/g,'$1$2 ')
+      .replace(/(株式会社|有限会社|合同会社|㈱)(?=[^\s])/g,'$1 ')
       .replace(/\s+/g,' ')
       .trim();
-  }
-  function stripRecordNoise(v){
-    let s=normalize(v)
-      .replace(/^\d{1,6}\s+/,'')
+    s=s.replace(/^\d{1,6}\s+/,'')
       .replace(/\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g,' ')
       .replace(/\b\d{1,2}:\d{2}\b/g,' ')
       .replace(/^(社内出荷|出荷|納品|発注依頼|確認)\s*/,'')
       .replace(/^[:：|｜/／\-\s]+/,' ')
       .replace(/\s+/g,' ')
       .trim();
-    const pref=s.search(PREF_RE);
-    if(pref>0) s=s.slice(0,pref).trim();
-    return s
-      .replace(/\s*(FER|FBR|I|l|『s|」|!|→).*$/i,'')
+    return s;
+  }
+  function compactOrder(s){
+    s=normalize(s)
+      .replace(/\s*(FER|FBR|」|『s|→|!).*$/i,'')
       .replace(/[、。,:：;；|｜/／\s]+$/,'')
       .trim();
+    for(let i=0;i<2;i++){
+      s=s.replace(/([ぁ-んァ-ヶ一-龠])\s+([ぁ-んァ-ヶ一-龠])/g,'$1$2');
+    }
+    return s
+      .replace(/([0-9０-９]+)\s*(本|個|台|枚|式|点|セット|m|M)(?=\s|$|[、,。])/g,'$1$2')
+      .replace(/([0-9０-９]+)\s*点\s*セット/g,'$1点セット')
+      .replace(/各\s+([0-9０-９]+)/g,'各$1')
+      .replace(/([A-Z0-9])\s*\*\s*([A-Z0-9])/gi,'$1*$2')
+      .replace(/([A-Z]{1,6})\s*-\s*([A-Z0-9])/gi,'$1-$2')
+      .replace(/\s+/g,' ')
+      .trim();
   }
-  function isProductish(tok){
+  function compactClient(s){
+    return normalize(s)
+      .replace(/㈱/g,'株式会社')
+      .replace(/\s*(株式会社|有限会社|合同会社)\s*/g,'$1')
+      .replace(/\s+/g,'')
+      .replace(/[、。,:：;；|｜/／]+$/,'')
+      .trim();
+  }
+  function productish(tok){
     tok=clean(tok);
     return !!tok && (
       /[A-Z]{1,8}[0-9][A-Z0-9*#%./-]*/i.test(tok) ||
       /[0-9０-９]+(?:本|個|台|枚|式|点|セット|m|M|号|分|%)/.test(tok) ||
       /[*#φΦ%]/.test(tok) ||
-      /^(各|ポンプ|ホース|ノズル|セット|保守|管理|本体|部材|口金|継手)$/.test(tok)
+      ORDER_WORD.test(tok)
     );
   }
-  function isCompanyToken(tok){
+  function clientTok(tok){
     tok=clean(tok);
-    if(!tok || PREF_RE.test(tok)) return false;
-    if(isProductish(tok)) return false;
-    if(/^(社内出荷|出荷|納品|発注|確認|定価|仕切|前金|現場|市川市|丁目|番地|号|FER|FBR)$/i.test(tok)) return false;
+    if(!tok || STOP.test(tok) || PREF.test(tok) || productish(tok)) return false;
     if(/^[A-Z0-9*#%./-]+$/i.test(tok)) return false;
     return /[ぁ-んァ-ヶ一-龠]/.test(tok);
   }
-  function cleanCompany(v){
-    let s=compactJaSpaces(stripRecordNoise(v))
-      .replace(/㈱/g,'株式会社')
-      .replace(/\s*(株式会社|有限会社|合同会社)\s*/g,'$1')
-      .replace(/\s+/g,'')
-      .replace(/^(販売|販)\s*/,'')
-      .trim();
-    return s.slice(0,70);
-  }
-  function cleanOrder(v){
-    let s=compactJaSpaces(stripRecordNoise(v))
-      .replace(/^(社内出荷|出荷|納品|発注依頼|確認)\s*/,'')
-      .replace(/\s*(株式会社|有限会社|合同会社|㈱).*/,'')
-      .replace(/\s*(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県).*$/,'')
-      .replace(/\s+/g,' ')
-      .trim();
-    if(s.length>120) s=s.slice(0,120).replace(/[、,/\s]+$/,'')+'…';
-    return s;
-  }
-  function parseSegment(segment){
-    const s=stripRecordNoise(segment);
-    if(!s) return null;
+  function splitClient(segment){
+    const s=normalize(segment);
     const tokens=s.split(/\s+/).filter(Boolean);
-    const idx=tokens.findIndex(tok=>LEGAL_RE.test(tok));
-    if(idx<0){
-      const order=cleanOrder(s);
-      return order?{order, company:'', score:scoreOrder(order)}:null;
-    }
-    let start=idx;
-    const legalTok=tokens[idx];
+    let legalIdx=tokens.findIndex(t=>LEGAL.test(t));
+    if(legalIdx<0) return {orders:[compactOrder(s)], client:''};
+    let start=legalIdx;
+    const legalTok=tokens[legalIdx];
     const standalone=/^(株式会社|有限会社|合同会社|㈱)$/.test(legalTok);
-    if(!standalone && /(株式会社|有限会社|合同会社|㈱)$/.test(legalTok)){
-      while(start>0 && isCompanyToken(tokens[start-1])) start--;
+    if(!standalone){
+      while(start>0 && clientTok(tokens[start-1])) start--;
     }
-    let end=idx+1;
-    while(end<tokens.length && isCompanyToken(tokens[end])) end++;
-    const company=cleanCompany(tokens.slice(start,end).join(' '));
-    const before=cleanOrder(tokens.slice(0,start).join(' '));
-    const after=cleanOrder(tokens.slice(end).join(' '));
-    const order=scoreOrder(after)>scoreOrder(before)+8 ? after : before;
-    if(!company && !order) return null;
-    return {order, company, score:scoreOrder(order)+scoreCompany(company)};
+    let end=legalIdx+1;
+    while(end<tokens.length && clientTok(tokens[end])) end++;
+    const before=compactOrder(tokens.slice(0,start).join(' '));
+    const client=compactClient(tokens.slice(start,end).join(' '));
+    return {orders:before?[before]:[], client};
   }
-  function scoreOrder(s){
-    s=clean(s);
-    if(!s) return 0;
-    let score=Math.min(40,s.length);
-    if(/[A-Z]{1,8}[0-9]/i.test(s)) score+=24;
-    if(/[0-9０-９]+(?:本|個|台|枚|式|点|セット|m|M|%)/.test(s)) score+=18;
-    if(/[*#φΦ%-]/.test(s)) score+=8;
-    if(LEGAL_RE.test(s) || PREF_RE.test(s)) score-=35;
-    return score;
+  function usefulOrder(s){
+    s=compactOrder(s);
+    if(!s || s.length<2) return false;
+    if(LEGAL.test(s) || PREF.test(s)) return false;
+    return /[A-Z]{1,8}[0-9]|[0-9０-９]+(?:本|個|台|枚|式|点|セット|m|M|%)|ポンプ|ホース|ノズル|保守|管理/i.test(s);
   }
-  function scoreCompany(s){
-    s=clean(s);
-    if(!s) return 0;
-    let score=Math.min(30,s.length);
-    if(LEGAL_RE.test(s)) score+=30;
-    if(/(支店|営業所|センター|商店|具店|店)$/.test(s)) score+=6;
-    if(PREF_RE.test(s)) score-=25;
-    return score;
-  }
-  function best(list, scorer){
-    let winner=null;
-    (list||[]).forEach(item=>{
-      const score=scorer(item);
-      if(!winner || score>winner.score) winner={item, score};
+  function addOrder(list, value){
+    const v=compactOrder(value);
+    if(!usefulOrder(v)) return;
+    const key=v.replace(/\s+/g,'').toLowerCase();
+    const idx=list.findIndex(x=>{
+      const k=x.replace(/\s+/g,'').toLowerCase();
+      return k===key || k.includes(key) || key.includes(k);
     });
-    return winner&&winner.item;
-  }
-  function extract(raw){
-    const source=clean(raw&&(
-      raw.v57SourceText || raw.v57SourceKey || raw.v66SourceKey || raw.sourceId || raw.title || ''
-    ));
-    const fallbackOrder=cleanOrder(raw&&raw.v57Product);
-    const fallbackCompany=cleanCompany(raw&&raw.v57Company);
-    const base=stripRecordNoise(source);
-    const parts=base.split(/\s*[\/／|｜]\s*/).map(stripRecordNoise).filter(Boolean);
-    const parsed=(parts.length?parts:[base]).map(parseSegment).filter(Boolean);
-    const productOnly=parsed.filter(p=>p.order && !p.company);
-    const withCompany=parsed.filter(p=>p.company);
-    const withBoth=parsed.filter(p=>p.company && p.order);
-    let order='', company='';
-    if(withCompany.length && productOnly.length){
-      company=best(withCompany, p=>scoreCompany(p.company))?.company || '';
-      order=best(productOnly, p=>scoreOrder(p.order))?.order || '';
-    }else if(withBoth.length){
-      const picked=best(withBoth, p=>p.score);
-      order=picked?.order || '';
-      company=picked?.company || '';
-    }else if(withCompany.length){
-      const picked=best(withCompany, p=>p.score);
-      order=picked?.order || '';
-      company=picked?.company || '';
-    }else if(productOnly.length){
-      order=best(productOnly, p=>scoreOrder(p.order))?.order || '';
+    if(idx>=0){
+      if(key.length>list[idx].replace(/\s+/g,'').length) list[idx]=v;
+    }else{
+      list.push(v);
     }
-    order=cleanOrder(order || fallbackOrder);
-    company=cleanCompany(company || fallbackCompany);
-    return {order, company};
   }
-  function taskTitle(parts){
+  function sourceOf(t){
+    return clean(t && (t.v57SourceText || t.v57SourceKey || t.v66SourceKey || t.sourceId || t.title || ''));
+  }
+  function extract(t){
+    const source=sourceOf(t);
+    const parts=normalize(source).split(/\s*[\/／|｜]\s*/).map(clean).filter(Boolean);
+    const orders=[];
+    const clients=[];
+    (parts.length?parts:[source]).forEach(part=>{
+      const r=splitClient(part);
+      (r.orders||[]).forEach(o=>addOrder(orders,o));
+      if(r.client) clients.push(r.client);
+    });
+    if(!orders.length && t && t.v57Product) addOrder(orders,t.v57Product);
+    if(!clients.length && t && t.v57Company) clients.push(compactClient(t.v57Company));
+    const client=clients.sort((a,b)=>b.length-a.length)[0] || '';
+    return {order:orders.join('、'), client};
+  }
+  function titleFrom(parts){
     const order=clean(parts&&parts.order);
-    const company=clean(parts&&parts.company);
-    if(order && company) return order+' / '+company;
-    return order || company || '';
+    const client=clean(parts&&parts.client);
+    if(order && client) return '出荷準備：'+order+' / '+client;
+    if(order) return '出荷準備：'+order;
+    if(client) return '出荷準備：'+client;
+    return '';
   }
   function trimTask(raw){
     const t=clone(raw);
-    if(!t || t.v7013Cleaned) return t;
+    if(!t || t.v7015Cleaned) return t;
     const parts=extract(t);
-    const title=taskTitle(parts);
+    const title=titleFrom(parts);
     if(!title) return t;
     t.title=title;
     t.v57Product=parts.order || t.v57Product || '';
-    t.v57Company=parts.company || t.v57Company || '';
-    t.v7013Order=parts.order || '';
-    t.v7013Client=parts.company || '';
-    t.v7013Cleaned=true;
-    t.v7013Version=VERSION;
+    t.v57Company=parts.client || t.v57Company || '';
+    t.v7015Order=parts.order || '';
+    t.v7015Client=parts.client || '';
+    t.v7015Cleaned=true;
+    t.v7015Version=VERSION;
     if(!t.nextAction || t.nextAction==='現物・品番・数量を照合する') t.nextAction='注文内容と取引先を確認する';
     return t;
   }
   function wrapPreview(){
     const orig=window.sasshyV57PreviewTasksFromText;
-    if(typeof orig!=='function' || orig.__v7013Wrapped) return false;
+    if(typeof orig!=='function' || orig.__v7015Wrapped) return false;
     const wrapped=function(text){
       const tasks=orig.apply(this, arguments) || [];
       return tasks.map(trimTask);
     };
-    wrapped.__v7013Wrapped=true;
+    wrapped.__v7015Wrapped=true;
     window.sasshyV57PreviewTasksFromText=wrapped;
     return true;
   }
   function wrapImport(){
     const orig=window.sasshyV57ImportTasks;
-    if(typeof orig!=='function' || orig.__v7013Wrapped) return false;
+    if(typeof orig!=='function' || orig.__v7015Wrapped) return false;
     const wrapped=function(tasks, opts){
       return orig.call(this, (tasks||[]).map(trimTask), opts);
     };
-    wrapped.__v7013Wrapped=true;
+    wrapped.__v7015Wrapped=true;
     window.sasshyV57ImportTasks=wrapped;
     return true;
   }
-  window.sasshyV7013ExtractOrderClient=function(text){
-    return extract({v57SourceText:text||''});
+  window.sasshyV7015ShippingTitle=function(text){
+    return titleFrom(extract({v57SourceText:text||''}));
   };
-  window.sasshyV7013CleanOcrTask=trimTask;
+  window.sasshyV7015CleanOcrTask=trimTask;
   setTimeout(()=>{wrapPreview(); wrapImport();},50);
   setTimeout(()=>{wrapPreview(); wrapImport();},900);
 })();
