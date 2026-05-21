@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.4').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.5').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17505,6 +17505,584 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     ensureFab();
     ensureSyncPanelTools();
   },5*60*1000);
+})();
+</script>
+
+<style id="v715-memo-reminder-style">
+.v715-memo-reminder-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px;
+  margin-top:9px;
+  padding:8px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface2);
+}
+.v715-memo-reminder-row.due{
+  border-color:rgba(220,38,38,.35);
+  background:rgba(220,38,38,.06);
+}
+.v715-memo-reminder-row.done{
+  opacity:.68;
+}
+.v715-memo-reminder-row input[type="datetime-local"],
+.v715-memo-view-select{
+  min-height:34px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:var(--surface);
+  color:var(--text);
+  padding:6px 8px;
+  font-family:inherit;
+  font-size:12px;
+}
+.v715-memo-reminder-row input[type="datetime-local"]{
+  flex:1 1 178px;
+  min-width:0;
+}
+.v715-reminder-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:3px 7px;
+  font-size:10.5px;
+  font-weight:950;
+  color:var(--text2);
+  background:var(--surface);
+}
+.v715-reminder-badge.due{
+  color:var(--red);
+  border-color:rgba(220,38,38,.35);
+  background:rgba(220,38,38,.08);
+}
+.v715-reminder-badge.done{
+  color:var(--green);
+  border-color:rgba(16,166,116,.35);
+  background:rgba(16,166,116,.08);
+}
+.v715-reminder-note{
+  flex:1 1 100%;
+  font-size:11px;
+  color:var(--text2);
+  line-height:1.45;
+}
+.v715-memo-reminder-row button,
+.v715-memo-quick button{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:9px;
+  padding:7px 9px;
+  font-family:inherit;
+  font-size:11.5px;
+  font-weight:900;
+  cursor:pointer;
+}
+.v715-memo-reminder-row button.good{color:var(--green);border-color:rgba(16,166,116,.4);}
+.v715-memo-reminder-row button.warn{color:var(--orange);border-color:rgba(217,119,6,.4);}
+.v715-memo-reminder-row button.danger{color:var(--red);border-color:rgba(220,38,38,.35);}
+.v715-memo-reminder-row button.primary,
+.v715-memo-quick button.primary{
+  background:var(--text);
+  color:var(--surface);
+}
+.v715-memo-quick{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  margin-top:8px;
+}
+.v715-add-reminder{
+  flex:1 1 190px;
+}
+.v715-overdue-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:10px 0 8px;
+  color:var(--red);
+  font-size:12px;
+  font-weight:950;
+}
+.v715-overdue-head span:last-child{
+  color:var(--text3);
+  font-size:11px;
+  font-weight:800;
+}
+.v715-view-chip{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:5px 8px;
+  color:var(--text2);
+  background:var(--surface2);
+  font-size:11px;
+  font-weight:900;
+}
+@media(max-width:520px){
+  .v715-memo-reminder-row{gap:6px;padding:7px;}
+  .v715-memo-reminder-row button{font-size:11px;padding:6px 8px;}
+  .v715-memo-view-select{flex:1 1 100%;}
+}
+</style>
+<script id="v715-memo-reminder-script">
+/* ===== v71.5: memo reminders, notifications, and past/overdue views ===== */
+(function(){
+  if(window.__v715MemoReminder) return;
+  window.__v715MemoReminder=true;
+
+  const SETTINGS_KEY='v715_memo_reminder_settings';
+  const VIEW_KEY='v715_memo_view';
+  const CHECK_MS=30000;
+
+  function ok(){
+    return typeof S!=='undefined' && S && Array.isArray(S.tasks);
+  }
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeRegex(s){
+    return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  }
+  function originalSave(){
+    const sv=window.__v40OriginalSave||window.save;
+    try{ if(typeof sv==='function') sv(); }catch(e){}
+  }
+  function toastMsg(msg){
+    if(typeof toast==='function'){
+      try{ toast(msg); return; }catch(e){}
+    }
+    let el=document.getElementById('v714Toast');
+    if(!el){
+      el=document.createElement('div');
+      el.id='v714Toast';
+      el.className='v714-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent=msg;
+    el.classList.add('show');
+    clearTimeout(el._v715t);
+    el._v715t=setTimeout(()=>el.classList.remove('show'),3000);
+  }
+  function loadSettings(){
+    try{return Object.assign({enabled:true},JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}'));}catch(e){return {enabled:true};}
+  }
+  function saveSettings(settings){
+    try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch(e){}
+  }
+  const settings=loadSettings();
+  function canNotify(){
+    return ('Notification' in window) && Notification.permission==='granted';
+  }
+  function requestNotify(){
+    if(!('Notification' in window)) return Promise.resolve('denied');
+    if(Notification.permission==='granted') return Promise.resolve('granted');
+    if(Notification.permission==='denied') return Promise.resolve('denied');
+    return Notification.requestPermission();
+  }
+  function showNotification(memo){
+    const title=memo.title||'メモのリマインダー';
+    const body=(memo.body||memo.url||'').slice(0,160);
+    if(settings.enabled && canNotify()){
+      try{
+        new Notification('⏰ '+title,{body:body,tag:'memo-reminder-'+memo.id,icon:'./icon.svg'});
+        return true;
+      }catch(e){}
+    }
+    toastMsg('⏰ メモ: '+title);
+    return false;
+  }
+  function ensureMemoState(){
+    if(!ok()) return false;
+    if(!Array.isArray(S.memos)) S.memos=[];
+    S.memos.forEach(m=>{
+      if(!m) return;
+      if(m.remindAt && typeof m.remindAt==='string') m.remindAt=Date.parse(m.remindAt)||0;
+      if(m.reminderAt && !m.remindAt) m.remindAt=Number(m.reminderAt)||0;
+      if(m.remindAt && !Number.isFinite(Number(m.remindAt))) delete m.remindAt;
+      if(typeof m.reminderDone!=='boolean') m.reminderDone=false;
+    });
+    return true;
+  }
+  function toLocalInput(ms){
+    if(!ms) return '';
+    const d=new Date(Number(ms));
+    if(!Number.isFinite(d.getTime())) return '';
+    const pad=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  function fromLocalInput(v){
+    const t=Date.parse(v||'');
+    return Number.isFinite(t) ? t : 0;
+  }
+  function fmtDateTime(ms){
+    if(!ms) return '';
+    const d=new Date(Number(ms));
+    if(!Number.isFinite(d.getTime())) return '';
+    return d.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  }
+  function dueState(memo, now){
+    const at=Number(memo.remindAt||0);
+    if(!at) return 'none';
+    if(memo.reminderDone) return 'done';
+    return at<=now ? 'due' : 'upcoming';
+  }
+  function reminderBadge(memo, now){
+    const st=dueState(memo, now);
+    if(st==='none') return '';
+    if(st==='done') return '<span class="v715-reminder-badge done">⏰ 完了</span>';
+    if(st==='due') return '<span class="v715-reminder-badge due">⏰ 期限切れ '+escapeHtml(fmtDateTime(memo.remindAt))+'</span>';
+    return '<span class="v715-reminder-badge">⏰ '+escapeHtml(fmtDateTime(memo.remindAt))+'</span>';
+  }
+  function highlight(text, search){
+    if(!search) return escapeHtml(text);
+    try{
+      const re=new RegExp('('+escapeRegex(search)+')','gi');
+      return escapeHtml(text).replace(re,'<mark>$1</mark>');
+    }catch(e){
+      return escapeHtml(text);
+    }
+  }
+  function currentView(){
+    return localStorage.getItem(VIEW_KEY)||'all';
+  }
+  function setView(v){
+    localStorage.setItem(VIEW_KEY,v||'all');
+    syncViewSelect();
+    rerender();
+  }
+  function syncViewSelect(){
+    const sel=document.getElementById('v715MemoView');
+    if(sel) sel.value=currentView();
+  }
+  function privateNames(){
+    return new Set((S.memoCategories||[]).filter(c=>c&&c.private).map(c=>c.name));
+  }
+  function memoHay(m){
+    return ((m.title||'')+' '+(m.body||'')+' '+(m.url||'')+' '+(m.imageUrl||'')).toLowerCase();
+  }
+  function visibleMemos(){
+    if(!ensureMemoState()) return [];
+    const search=(document.getElementById('v71MemoSearch')?.value||'').toLowerCase().trim();
+    const filter=document.getElementById('v71MemoFilter')?.value||'';
+    const showArchive=document.getElementById('v71MemoShowArchive')?.classList.contains('active');
+    const priv=privateNames();
+    const view=currentView();
+    const now=Date.now();
+    return (S.memos||[]).filter(m=>{
+      if(!m) return false;
+      if(!!m.archived !== !!showArchive) return false;
+      if(!S.memoShowPrivate && priv.has(m.category)) return false;
+      if(filter && m.category!==filter) return false;
+      if(search && !memoHay(m).includes(search)) return false;
+      const st=dueState(m,now);
+      if(view==='due' && st!=='due') return false;
+      if(view==='upcoming' && st!=='upcoming') return false;
+      if(view==='reminderless' && Number(m.remindAt||0)) return false;
+      return true;
+    });
+  }
+  function sortMemos(memos){
+    const view=currentView();
+    const now=Date.now();
+    memos.sort((a,b)=>{
+      const as=dueState(a,now), bs=dueState(b,now);
+      if(as==='due' && bs!=='due') return -1;
+      if(bs==='due' && as!=='due') return 1;
+      if(view==='past'){
+        return (a.created||a.updatedAt||0)-(b.created||b.updatedAt||0);
+      }
+      if(as==='upcoming' && bs==='upcoming') return Number(a.remindAt||0)-Number(b.remindAt||0);
+      const ap=a.pinned?1:0, bp=b.pinned?1:0;
+      if(ap!==bp) return bp-ap;
+      return (b.updatedAt||b.created||0)-(a.updatedAt||a.created||0);
+    });
+    return memos;
+  }
+  function renderReminderControls(memo, now){
+    const st=dueState(memo,now);
+    const note=st==='due'
+      ? '期限が来ています。終わったら「完了」、あとでなら「1時間後」か「明日」。'
+      : st==='upcoming'
+        ? '指定時刻になったら、アプリ起動中/復帰時に通知します。'
+        : '必要なら日時を入れて「設定」。';
+    return '<div class="v715-memo-reminder-row '+(st==='due'?'due ':'')+(st==='done'?'done':'')+'">'+
+      '<input type="datetime-local" value="'+escapeHtml(toLocalInput(memo.remindAt))+'" data-v715-remind-input>'+
+      '<button type="button" class="primary" data-v715-memo="set-reminder">設定</button>'+
+      '<button type="button" data-v715-memo="remind-1h">1時間後</button>'+
+      '<button type="button" data-v715-memo="remind-tomorrow">明日9時</button>'+
+      (Number(memo.remindAt||0) ? '<button type="button" class="good" data-v715-memo="reminder-done">完了</button><button type="button" class="danger" data-v715-memo="clear-reminder">解除</button>' : '')+
+      '<div class="v715-reminder-note">'+escapeHtml(note)+'</div>'+
+    '</div>';
+  }
+  function renderMemoCard(m, search, now){
+    const cat=(S.memoCategories||[]).find(c=>c&&c.name===m.category);
+    const isPrivate=cat && cat.private;
+    const titleSrc=m.title||'';
+    const bodySrc=m.body||'';
+    const titleHtml=search?highlight(titleSrc,search):escapeHtml(titleSrc);
+    const bodyHtml=search?highlight(bodySrc,search):escapeHtml(bodySrc);
+    const taskedBadge=m.taskedAt ? '<span class="v71-memo-tasked-badge">タスク化済</span>' : '';
+    const remind=reminderBadge(m,now);
+    const urlBlock=m.url ? '<div class="v71-memo-item-attach">🔗 <a href="'+escapeHtml(m.url)+'" target="_blank" rel="noopener noreferrer">'+escapeHtml(m.url.length>80?m.url.slice(0,80)+'…':m.url)+'</a></div>' : '';
+    const imgBlock=m.imageUrl ? '<img class="v71-memo-item-img" src="'+escapeHtml(m.imageUrl)+'" alt="" loading="lazy">' : '';
+    const titleLine=titleSrc ? '<div class="v71-memo-item-title">'+(m.pinned?'<span class="v712-pin-badge">📌</span>':'')+titleHtml+'</div>' : (m.pinned?'<div class="v71-memo-item-title"><span class="v712-pin-badge">📌</span></div>':'');
+    return '<div class="v71-memo-item '+(m.archived?'archived ':'')+(m.pinned?'v712-pinned ':'')+(dueState(m,now)==='due'?'v715-due':'')+'" data-id="'+escapeHtml(m.id)+'">'+
+      '<div class="v71-memo-item-head">'+
+        '<span class="v71-memo-cat-chip '+(isPrivate?'private':'')+'">'+escapeHtml(m.category||'未整理')+'</span>'+taskedBadge+remind+
+        '<span class="v71-memo-item-time">'+escapeHtml(fmtDateTime(m.updatedAt||m.created))+'</span>'+
+      '</div>'+
+      titleLine+
+      '<div class="v71-memo-item-body">'+bodyHtml+'</div>'+
+      urlBlock+imgBlock+
+      renderReminderControls(m,now)+
+      '<div class="v71-memo-item-actions">'+
+        '<button data-v71-memo="'+(m.pinned?'unpin':'pin')+'" type="button">'+(m.pinned?'📌 解除':'📌 ピン')+'</button>'+
+        '<button data-v71-memo="copy" type="button">📋 コピー</button>'+
+        '<button data-v71-memo="edit" type="button">編集</button>'+
+        '<button data-v71-memo="task" type="button" class="good">タスク化</button>'+
+        '<button data-v71-memo="'+(m.archived?'unarchive':'archive')+'" type="button">'+(m.archived?'戻す':'アーカイブ')+'</button>'+
+        '<button data-v71-memo="delete" type="button" class="danger">削除</button>'+
+      '</div>'+
+    '</div>';
+  }
+  function rerender(){
+    if(!ensureMemoState()) return;
+    const list=document.getElementById('v71MemoList');
+    if(!list) return;
+    const search=(document.getElementById('v71MemoSearch')?.value||'').toLowerCase().trim();
+    const showArchive=document.getElementById('v71MemoShowArchive')?.classList.contains('active');
+    const now=Date.now();
+    const memos=sortMemos(visibleMemos());
+    if(!memos.length){
+      const view=currentView();
+      list.innerHTML='<div class="v71-memo-empty">'+(showArchive?'アーカイブはありません':(view==='due'?'期限切れはありません':view==='upcoming'?'予定されたメモはありません':'まだメモがありません'))+'</div>';
+      updateCountInfo();
+      return;
+    }
+    const dueCount=(S.memos||[]).filter(m=>m && !m.archived && dueState(m,now)==='due').length;
+    let html='';
+    if(dueCount){
+      html+='<div class="v715-overdue-head"><span>期限切れメモ '+dueCount+'件</span><span>完了か延期で片づけられます</span></div>';
+    }
+    const due=memos.filter(m=>dueState(m,now)==='due');
+    const rest=memos.filter(m=>dueState(m,now)!=='due');
+    if(due.length) html+=due.map(m=>renderMemoCard(m,search,now)).join('');
+    if(rest.length && due.length) html+='<div class="v712-memo-section-head">'+(currentView()==='past'?'過去順':'その他')+'</div>';
+    html+=rest.map(m=>renderMemoCard(m,search,now)).join('');
+    list.innerHTML=html;
+    updateCountInfo();
+  }
+  function updateCountInfo(){
+    const el=document.getElementById('v712CountInfo');
+    if(!el || !ok()) return;
+    const now=Date.now();
+    const total=(S.memos||[]).length;
+    const pinned=(S.memos||[]).filter(m=>m&&m.pinned).length;
+    const arch=(S.memos||[]).filter(m=>m&&m.archived).length;
+    const due=(S.memos||[]).filter(m=>m&&!m.archived&&dueState(m,now)==='due').length;
+    const upcoming=(S.memos||[]).filter(m=>m&&!m.archived&&dueState(m,now)==='upcoming').length;
+    el.textContent='合計'+total+' (⏰'+upcoming+' ⚠'+due+' 📌'+pinned+' 📁'+arch+')';
+  }
+  function ensureControls(){
+    const root=document.getElementById('v71MemoRoot');
+    if(!root) return false;
+    const addRows=root.querySelectorAll('.v71-memo-add-row');
+    if(addRows[1] && !document.getElementById('v715MemoRemindAt')){
+      const input=document.createElement('input');
+      input.id='v715MemoRemindAt';
+      input.className='v715-add-reminder';
+      input.type='datetime-local';
+      input.title='メモのリマインダー日時';
+      addRows[1].insertBefore(input, addRows[1].querySelector('#v71MemoAddBtn'));
+    }
+    const extras=document.getElementById('v712MemoExtras') || root.querySelector('.v71-memo-toolbar');
+    if(extras && !document.getElementById('v715MemoView')){
+      const sel=document.createElement('select');
+      sel.id='v715MemoView';
+      sel.className='v715-memo-view-select';
+      sel.innerHTML='<option value="all">表示: 全メモ</option><option value="due">表示: 期限切れ</option><option value="upcoming">表示: 予定あり</option><option value="reminderless">表示: リマインダーなし</option><option value="past">表示: 過去順</option>';
+      sel.addEventListener('change',()=>setView(sel.value));
+      extras.appendChild(sel);
+      const perm=document.createElement('button');
+      perm.id='v715MemoNotifyPermit';
+      perm.type='button';
+      perm.textContent='⏰ 通知許可';
+      perm.title='メモのリマインダー通知を許可';
+      perm.addEventListener('click',()=>{
+        requestNotify().then(p=>{
+          updatePermitButton();
+          if(p==='granted'){
+            toastMsg('メモ通知を許可しました');
+            showNotification({id:'test',title:'通知テスト',body:'メモのリマインダー通知が使えます'});
+          }else{
+            toastMsg('通知は未許可です');
+          }
+        });
+      });
+      extras.appendChild(perm);
+      syncViewSelect();
+      updatePermitButton();
+    }
+    return true;
+  }
+  function updatePermitButton(){
+    const btn=document.getElementById('v715MemoNotifyPermit');
+    if(!btn) return;
+    if(!('Notification' in window)){
+      btn.textContent='通知非対応';
+      btn.disabled=true;
+      return;
+    }
+    if(Notification.permission==='granted'){
+      btn.textContent='⏰ 通知OK';
+      btn.classList.add('primary');
+    }else if(Notification.permission==='denied'){
+      btn.textContent='通知ブロック中';
+      btn.disabled=true;
+    }else{
+      btn.textContent='⏰ 通知許可';
+      btn.disabled=false;
+      btn.classList.remove('primary');
+    }
+  }
+  function installAddHook(){
+    const addBtn=document.getElementById('v71MemoAddBtn');
+    if(!addBtn || addBtn.__v715Hooked) return false;
+    addBtn.addEventListener('click',()=>{
+      const remindInput=document.getElementById('v715MemoRemindAt');
+      const remindAt=fromLocalInput(remindInput&&remindInput.value);
+      const before=Date.now()-1000;
+      setTimeout(()=>{
+        if(remindAt && Array.isArray(S.memos)){
+          const memo=S.memos.find(m=>m && !m.remindAt && Number(m.created||0)>=before);
+          if(memo){
+            memo.remindAt=remindAt;
+            memo.reminderDone=false;
+            memo.reminderNotifiedAt=0;
+            memo.updatedAt=Date.now();
+            originalSave();
+          }
+        }
+        if(remindInput) remindInput.value='';
+        rerender();
+      },60);
+    },true);
+    addBtn.__v715Hooked=true;
+    return true;
+  }
+  function memoByElement(el){
+    const id=el.closest('[data-id]')?.dataset?.id;
+    if(!id || !Array.isArray(S.memos)) return null;
+    return S.memos.find(m=>m&&m.id===id) || null;
+  }
+  function setMemoReminder(memo, at){
+    if(!memo || !at) return;
+    memo.remindAt=at;
+    memo.reminderDone=false;
+    memo.reminderDoneAt=0;
+    memo.reminderNotifiedAt=0;
+    memo.updatedAt=Date.now();
+    originalSave();
+    rerender();
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-v715-memo]');
+    if(!btn || !ok()) return;
+    const memo=memoByElement(btn);
+    if(!memo) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const act=btn.dataset.v715Memo;
+    if(act==='set-reminder'){
+      const input=btn.closest('.v715-memo-reminder-row')?.querySelector('[data-v715-remind-input]');
+      const at=fromLocalInput(input&&input.value);
+      if(!at){ toastMsg('日時を入れてください'); return; }
+      setMemoReminder(memo,at);
+    }else if(act==='remind-1h'){
+      setMemoReminder(memo,Date.now()+60*60*1000);
+    }else if(act==='remind-tomorrow'){
+      const d=new Date();
+      d.setDate(d.getDate()+1);
+      d.setHours(9,0,0,0);
+      setMemoReminder(memo,d.getTime());
+    }else if(act==='reminder-done'){
+      memo.reminderDone=true;
+      memo.reminderDoneAt=Date.now();
+      memo.updatedAt=Date.now();
+      originalSave();
+      rerender();
+    }else if(act==='clear-reminder'){
+      delete memo.remindAt;
+      delete memo.reminderAt;
+      memo.reminderDone=false;
+      memo.reminderDoneAt=0;
+      memo.reminderNotifiedAt=0;
+      memo.updatedAt=Date.now();
+      originalSave();
+      rerender();
+    }
+  },true);
+  function checkDue(){
+    if(!ensureMemoState()) return;
+    const now=Date.now();
+    let changed=false;
+    (S.memos||[]).forEach(m=>{
+      if(!m || m.archived || m.reminderDone || !m.remindAt) return;
+      const at=Number(m.remindAt||0);
+      if(at>now) return;
+      if(Number(m.reminderNotifiedAt||0) && now-Number(m.reminderNotifiedAt)<24*60*60*1000) return;
+      showNotification(m);
+      m.reminderNotifiedAt=now;
+      changed=true;
+    });
+    if(changed){
+      originalSave();
+      rerender();
+    }
+  }
+  function installRenderOverride(){
+    const list=document.getElementById('v71MemoList');
+    if(!list) return false;
+    window.v712RerenderMemo=rerender;
+    rerender();
+    return true;
+  }
+  function start(){
+    ensureMemoState();
+    if(ensureControls()){
+      installAddHook();
+      installRenderOverride();
+      checkDue();
+      return true;
+    }
+    return false;
+  }
+  setTimeout(()=>{
+    if(!start()){
+      let tries=0;
+      const iv=setInterval(()=>{ if(start() || ++tries>80) clearInterval(iv); },250);
+    }
+  },2200);
+  setInterval(()=>{
+    ensureControls();
+    installAddHook();
+    installRenderOverride();
+    checkDue();
+    updatePermitButton();
+  },CHECK_MS);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible'){
+      checkDue();
+      rerender();
+    }
+  });
 })();
 </script>
 
