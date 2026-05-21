@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.1').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.2').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -16441,6 +16441,464 @@ body.v68-quest #v7012HistoryBar{order:12;}
     }
     enhanceAll();
   }, 1200);
+})();
+</script>
+
+<style id="v712-base-log-cleanup-style">
+/* v71.2: hide unused BASE/LOG sections to clarify what each tab is for */
+
+/* Hide LOG tab entirely from main nav */
+nav.main-tabs .tab[data-tab="log"]{display:none !important;}
+
+/* Hide unused BASE sections (kept in DOM for data safety, just not shown) */
+#p-routine,
+#p-meeting,
+#p-product,
+#p-manual,
+#p-gcal,
+#p-schedule{display:none !important;}
+
+/* Hide jump links in BASE intro to hidden sections */
+.base-jump a[href="#p-routine"],
+.base-jump a[href="#p-meeting"],
+.base-jump a[href="#p-product"],
+.base-jump a[href="#p-manual"],
+.base-jump a[href="#p-gcal"],
+.base-jump a[href="#p-schedule"]{display:none !important;}
+
+/* Simplify the BASE intro */
+.base-hero .base-kicker{font-size:10px !important;}
+.base-hero .base-title{font-size:16px !important;}
+.base-hero .base-desc{display:none !important;}
+
+/* Memo enhancements */
+.v712-memo-toolbar-extras{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-bottom:10px;
+}
+.v712-memo-toolbar-extras button{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:7px 11px;
+  font-family:inherit;
+  font-weight:800;
+  font-size:11.5px;
+  cursor:pointer;
+  min-height:34px;
+}
+.v712-memo-toolbar-extras label{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:7px 11px;
+  font-family:inherit;
+  font-weight:800;
+  font-size:11.5px;
+  cursor:pointer;
+  min-height:34px;
+}
+.v712-memo-toolbar-extras input[type="file"]{display:none;}
+
+.v71-memo-item.v712-pinned{
+  border-left:4px solid #c87a00;
+  background:linear-gradient(180deg, #fff7e6 0%, var(--surface) 35%);
+}
+.v71-memo-item .v712-pin-badge{
+  font-size:14px;
+  margin-right:4px;
+}
+.v712-memo-section-head{
+  font-size:10.5px;
+  font-weight:900;
+  color:var(--text3);
+  letter-spacing:0.08em;
+  margin:10px 0 6px;
+  text-transform:uppercase;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v712-memo-section-head:first-child{margin-top:0;}
+
+.v71-memo-item-body mark,
+.v71-memo-item-title mark{
+  background:#fff176;
+  color:#000;
+  padding:0 2px;
+  border-radius:2px;
+}
+.v712-toast{
+  position:fixed;
+  left:50%;
+  bottom:80px;
+  transform:translateX(-50%);
+  background:var(--text);
+  color:var(--surface);
+  border-radius:8px;
+  padding:9px 16px;
+  font-size:12.5px;
+  font-weight:800;
+  z-index:9900;
+  box-shadow:0 6px 20px rgba(0,0,0,0.3);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity 0.2s;
+}
+.v712-toast.show{opacity:1;}
+
+@media(max-width:520px){
+  .v712-memo-toolbar-extras button,
+  .v712-memo-toolbar-extras label{font-size:11px;padding:6px 9px;}
+}
+</style>
+
+<script id="v712-memo-improvements-script">
+/* ===== v71.2: memo enhancements =====
+   - Pin/unpin (pinned float to top)
+   - Copy to clipboard (text body + URL)
+   - Export JSON / Text
+   - Import JSON
+   - Search highlighting
+   - Reorganized list (pinned section, then regular) */
+(function(){
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeRegex(s){return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+  function fmtTime(ts){
+    const d=new Date(ts||Date.now());
+    return d.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  }
+  function originalSave(){
+    const sv=window.__v40OriginalSave||window.save;
+    try{ if(typeof sv==='function') sv(); }catch(e){}
+  }
+  function toast(msg){
+    let el=document.getElementById('v712Toast');
+    if(!el){
+      el=document.createElement('div');
+      el.id='v712Toast';
+      el.className='v712-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent=msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t=setTimeout(()=>el.classList.remove('show'), 2200);
+  }
+
+  // Wait for v71 memo UI to exist, then enhance it
+  function ensureExtras(){
+    const root=document.getElementById('v71MemoRoot');
+    if(!root) return false;
+    if(document.getElementById('v712MemoExtras')) return true;
+    const toolbar=root.querySelector('.v71-memo-toolbar');
+    if(!toolbar) return false;
+    const extras=document.createElement('div');
+    extras.id='v712MemoExtras';
+    extras.className='v712-memo-toolbar-extras';
+    extras.innerHTML=`
+      <button id="v712ExportJson" type="button" title="全メモをJSONで保存">💾 JSON</button>
+      <button id="v712ExportText" type="button" title="全メモをテキストで保存">📄 テキスト</button>
+      <label title="JSONからインポート">
+        📥 取込
+        <input id="v712ImportFile" type="file" accept="application/json,.json">
+      </label>
+      <button id="v712CountInfo" type="button" disabled style="opacity:0.7;">0件</button>
+    `;
+    toolbar.parentNode.insertBefore(extras, toolbar.nextSibling);
+    extras.querySelector('#v712ExportJson').onclick=exportJSON;
+    extras.querySelector('#v712ExportText').onclick=exportText;
+    extras.querySelector('#v712ImportFile').onchange=onImport;
+    updateCountInfo();
+    return true;
+  }
+
+  function updateCountInfo(){
+    const el=document.getElementById('v712CountInfo');
+    if(!el) return;
+    const total=(S.memos||[]).length;
+    const pinned=(S.memos||[]).filter(m=>m&&m.pinned).length;
+    const arch=(S.memos||[]).filter(m=>m&&m.archived).length;
+    el.textContent=`合計${total} (📌${pinned} 📁${arch})`;
+  }
+
+  function exportJSON(){
+    if(!ok()) return;
+    const data={
+      exportedAt:Date.now(),
+      version:'sasshy-quest-memo-v1',
+      memos:S.memos||[],
+      categories:S.memoCategories||[]
+    };
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`sasshy-memos-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    toast('JSONを保存しました');
+  }
+  function exportText(){
+    if(!ok()) return;
+    const lines=[];
+    (S.memos||[]).forEach(m=>{
+      if(!m) return;
+      lines.push('===========================================');
+      if(m.title) lines.push(`# ${m.title}`);
+      lines.push(`カテゴリ: ${m.category||'未整理'}`);
+      lines.push(`日時: ${new Date(m.created||Date.now()).toLocaleString('ja-JP')}`);
+      if(m.pinned) lines.push('📌 ピン留め');
+      if(m.taskedAt) lines.push('✓ タスク化済');
+      if(m.archived) lines.push('📁 アーカイブ');
+      lines.push('');
+      if(m.body) lines.push(m.body);
+      if(m.url) lines.push(`\nURL: ${m.url}`);
+      if(m.imageUrl) lines.push(`画像: ${m.imageUrl}`);
+      lines.push('');
+    });
+    if(!lines.length) lines.push('(メモなし)');
+    const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`sasshy-memos-${new Date().toISOString().slice(0,10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    toast('テキストを保存しました');
+  }
+  function onImport(e){
+    const file=e.target.files && e.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      try {
+        const data=JSON.parse(ev.target.result);
+        const memos=Array.isArray(data.memos) ? data.memos : (Array.isArray(data) ? data : []);
+        if(!memos.length){ toast('メモが見つかりません'); return; }
+        if(!confirm(`${memos.length}件のメモをインポートしますか？\n（既存メモは保持、重複IDはスキップ）`)){
+          e.target.value='';
+          return;
+        }
+        if(!Array.isArray(S.memos)) S.memos=[];
+        if(!Array.isArray(S.memoCategories)) S.memoCategories=[];
+        const existingIds=new Set(S.memos.map(m=>m && m.id).filter(Boolean));
+        let added=0;
+        memos.forEach(m=>{
+          if(!m) return;
+          if(m.id && existingIds.has(m.id)) return;
+          if(!m.id) m.id='memo-imp-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6);
+          S.memos.unshift(m);
+          added++;
+        });
+        if(Array.isArray(data.categories)){
+          const existingCats=new Set(S.memoCategories.map(c=>c && c.name).filter(Boolean));
+          data.categories.forEach(c=>{
+            if(c && c.name && !existingCats.has(c.name)) S.memoCategories.push(c);
+          });
+        }
+        originalSave();
+        if(typeof window.v712RerenderMemo === 'function') window.v712RerenderMemo();
+        toast(`${added}件をインポートしました`);
+      } catch(err){
+        toast('インポート失敗: '+(err.message||err));
+      }
+      e.target.value='';
+    };
+    reader.readAsText(file);
+  }
+
+  // === Override v71 renderMemoList for pinning + highlighting ===
+  let installed=false;
+  function installRenderOverride(){
+    if(installed) return true;
+    const list=document.getElementById('v71MemoList');
+    if(!list) return false;
+
+    function rerender(){
+      const search=(document.getElementById('v71MemoSearch')?.value||'').toLowerCase().trim();
+      const filter=document.getElementById('v71MemoFilter')?.value||'';
+      const showArchive=document.getElementById('v71MemoShowArchive')?.classList.contains('active');
+      if(!ok()) return;
+      const privateNames=new Set((S.memoCategories||[]).filter(c=>c.private).map(c=>c.name));
+
+      const memos=(S.memos||[]).filter(m=>{
+        if(!m) return false;
+        if(!!m.archived !== !!showArchive) return false;
+        if(!S.memoShowPrivate && privateNames.has(m.category)) return false;
+        if(filter && m.category !== filter) return false;
+        if(search){
+          const hay=((m.title||'')+' '+(m.body||'')+' '+(m.url||'')).toLowerCase();
+          if(!hay.includes(search)) return false;
+        }
+        return true;
+      });
+
+      if(!memos.length){
+        list.innerHTML='<div class="v71-memo-empty">'+(showArchive?'アーカイブはありません':'まだメモがありません')+'</div>';
+        updateCountInfo();
+        return;
+      }
+
+      // Sort: pinned first, then by updatedAt/created desc
+      memos.sort((a,b)=>{
+        const ap=a.pinned?1:0, bp=b.pinned?1:0;
+        if(ap!==bp) return bp-ap;
+        return (b.updatedAt||b.created||0) - (a.updatedAt||a.created||0);
+      });
+
+      const pinned=memos.filter(m=>m.pinned);
+      const regular=memos.filter(m=>!m.pinned);
+
+      function renderMemoCard(m){
+        const cat=(S.memoCategories||[]).find(c=>c.name===m.category);
+        const isPrivate=cat && cat.private;
+        const titleSrc=m.title||'';
+        const bodySrc=m.body||'';
+        const titleHtml=search?highlight(titleSrc,search):escapeHtml(titleSrc);
+        const bodyHtml=search?highlight(bodySrc,search):escapeHtml(bodySrc);
+        const taskedBadge = m.taskedAt ? `<span class="v71-memo-tasked-badge">タスク化済</span>` : '';
+        const urlBlock = m.url ? `<div class="v71-memo-item-attach">🔗 <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url.length>80?m.url.slice(0,80)+'…':m.url)}</a></div>` : '';
+        const imgBlock = m.imageUrl ? `<img class="v71-memo-item-img" src="${escapeHtml(m.imageUrl)}" alt="" loading="lazy">` : '';
+        const titleLine = titleSrc ? `<div class="v71-memo-item-title">${m.pinned?'<span class="v712-pin-badge">📌</span>':''}${titleHtml}</div>` : (m.pinned?'<div class="v71-memo-item-title"><span class="v712-pin-badge">📌</span></div>':'');
+        return `<div class="v71-memo-item ${m.archived?'archived':''} ${m.pinned?'v712-pinned':''}" data-id="${escapeHtml(m.id)}">
+          <div class="v71-memo-item-head">
+            <span class="v71-memo-cat-chip ${isPrivate?'private':''}">${escapeHtml(m.category||'未整理')}</span>${taskedBadge}
+            <span class="v71-memo-item-time">${fmtTime(m.updatedAt||m.created)}</span>
+          </div>
+          ${titleLine}
+          <div class="v71-memo-item-body">${bodyHtml}</div>
+          ${urlBlock}
+          ${imgBlock}
+          <div class="v71-memo-item-actions">
+            <button data-v71-memo="${m.pinned?'unpin':'pin'}" type="button">${m.pinned?'📌 解除':'📌 ピン'}</button>
+            <button data-v71-memo="copy" type="button">📋 コピー</button>
+            <button data-v71-memo="edit" type="button">編集</button>
+            <button data-v71-memo="task" type="button" class="good">タスク化</button>
+            <button data-v71-memo="${m.archived?'unarchive':'archive'}" type="button">${m.archived?'戻す':'アーカイブ'}</button>
+            <button data-v71-memo="delete" type="button" class="danger">削除</button>
+          </div>
+        </div>`;
+      }
+
+      let html='';
+      if(pinned.length){
+        html+='<div class="v712-memo-section-head">📌 ピン留め</div>';
+        html+=pinned.map(renderMemoCard).join('');
+      }
+      if(regular.length){
+        if(pinned.length) html+='<div class="v712-memo-section-head">その他</div>';
+        html+=regular.map(renderMemoCard).join('');
+      }
+      list.innerHTML=html;
+      updateCountInfo();
+    }
+
+    function highlight(text, search){
+      if(!search) return escapeHtml(text);
+      try {
+        const re=new RegExp('('+escapeRegex(search)+')','gi');
+        return escapeHtml(text).replace(re,'<mark>$1</mark>');
+      } catch(e){ return escapeHtml(text); }
+    }
+
+    window.v712RerenderMemo=rerender;
+
+    // Hook pin/copy actions
+    list.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-v71-memo]');
+      if(!btn) return;
+      const act=btn.dataset.v71Memo;
+      const id=btn.closest('[data-id]')?.dataset?.id;
+      if(!id) return;
+      if(act==='pin' || act==='unpin'){
+        e.stopImmediatePropagation();
+        const memo=(S.memos||[]).find(m=>m && m.id===id);
+        if(memo){
+          memo.pinned=(act==='pin');
+          memo.updatedAt=Date.now();
+          originalSave();
+          rerender();
+        }
+      } else if(act==='copy'){
+        e.stopImmediatePropagation();
+        const memo=(S.memos||[]).find(m=>m && m.id===id);
+        if(memo){
+          const parts=[];
+          if(memo.title) parts.push(memo.title);
+          if(memo.body) parts.push(memo.body);
+          if(memo.url) parts.push('URL: '+memo.url);
+          const text=parts.join('\n\n');
+          if(navigator.clipboard && navigator.clipboard.writeText){
+            navigator.clipboard.writeText(text).then(()=>toast('コピーしました')).catch(err=>toast('コピー失敗: '+err.message));
+          } else {
+            const ta=document.createElement('textarea');
+            ta.value=text;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); toast('コピーしました'); } catch(_){ toast('コピー失敗'); }
+            ta.remove();
+          }
+        }
+      }
+    }, true);
+
+    // Hook search/filter/archive/private inputs to call our rerender
+    const search=document.getElementById('v71MemoSearch');
+    const filter=document.getElementById('v71MemoFilter');
+    const archive=document.getElementById('v71MemoShowArchive');
+    const priv=document.getElementById('v71MemoShowPrivate');
+    if(search) search.addEventListener('input', rerender);
+    if(filter) filter.addEventListener('change', rerender);
+    if(archive) archive.addEventListener('click', ()=>setTimeout(rerender, 10));
+    if(priv) priv.addEventListener('click', ()=>setTimeout(rerender, 10));
+
+    // Also wrap addMemo and other v71 operations to call our rerender (after them)
+    const addBtn=document.getElementById('v71MemoAddBtn');
+    if(addBtn){
+      const origClick=addBtn.onclick;
+      addBtn.onclick=function(){
+        if(origClick) origClick.call(this);
+        setTimeout(rerender, 50);
+      };
+    }
+
+    // Initial render
+    rerender();
+    installed=true;
+    return true;
+  }
+
+  // Polling installer
+  setTimeout(()=>{
+    if(!ensureExtras()){
+      let tries=0;
+      const iv=setInterval(()=>{ if(ensureExtras() || ++tries>60) clearInterval(iv); }, 250);
+    }
+    if(!installRenderOverride()){
+      let tries=0;
+      const iv=setInterval(()=>{ if(installRenderOverride() || ++tries>60) clearInterval(iv); }, 250);
+    }
+  }, 1500);
+
+  // Re-render periodically to catch sync changes / v71 internal updates
+  setInterval(()=>{
+    if(typeof window.v712RerenderMemo === 'function' && document.getElementById('v71MemoList')){
+      window.v712RerenderMemo();
+    }
+  }, 4000);
 })();
 </script>
 
