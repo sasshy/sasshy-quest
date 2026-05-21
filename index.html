@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.3').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.4').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -16901,6 +16901,610 @@ nav.main-tabs .tab[data-tab="log"]{display:none !important;}
       window.v712RerenderMemo();
     }
   }, 4000);
+})();
+</script>
+
+<style id="v714-sync-history-guard-style">
+.v714-history-fab{
+  position:fixed;
+  left:14px;
+  bottom:76px;
+  z-index:920;
+  min-width:52px;
+  min-height:44px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  box-shadow:var(--shadow-md);
+  font-family:inherit;
+  font-size:13px;
+  font-weight:950;
+  cursor:pointer;
+}
+.v714-history-fab:active{transform:scale(0.96);}
+body.v701-sync-open .v714-history-fab{display:none;}
+.v714-sync-guard{
+  border-top:1px solid var(--border);
+  margin-top:10px;
+  padding-top:10px;
+}
+.v714-sync-guard .v714-sync-guard-title{
+  font-size:12px;
+  font-weight:950;
+  color:var(--text);
+  margin-bottom:8px;
+}
+.v714-sync-guard .v714-sync-guard-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.v714-sync-guard button,
+.v714-history-modal button{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:10px;
+  padding:8px 10px;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+.v714-sync-guard button.primary,
+.v714-history-modal button.primary{
+  background:var(--text);
+  color:var(--surface);
+}
+.v714-sync-guard button.danger,
+.v714-history-modal button.danger{
+  border-color:rgba(220,38,38,.35);
+  color:var(--red);
+}
+.v714-history-overlay{
+  position:fixed;
+  inset:0;
+  z-index:970;
+  display:none;
+  align-items:flex-end;
+  justify-content:center;
+  background:rgba(0,0,0,.34);
+  padding:12px;
+}
+body.v714-history-open .v714-history-overlay{display:flex;}
+.v714-history-modal{
+  width:min(680px,100%);
+  max-height:min(82vh,720px);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--surface);
+  box-shadow:var(--shadow-lg);
+}
+.v714-history-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:14px;
+  border-bottom:1px solid var(--border);
+}
+.v714-history-title{
+  font-size:15px;
+  font-weight:950;
+}
+.v714-history-sub{
+  font-size:11px;
+  color:var(--text3);
+  margin-top:3px;
+}
+.v714-history-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.v714-history-list{
+  overflow:auto;
+  padding:10px;
+}
+.v714-history-empty{
+  padding:18px;
+  color:var(--text2);
+  font-size:13px;
+  text-align:center;
+}
+.v714-history-row{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  border-radius:12px;
+  padding:10px;
+  margin-bottom:8px;
+}
+.v714-history-row-title{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:13px;
+  font-weight:950;
+}
+.v714-history-row-meta{
+  margin-top:4px;
+  font-size:11px;
+  color:var(--text2);
+  line-height:1.45;
+}
+.v714-history-row-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:9px;
+}
+.v714-toast{
+  position:fixed;
+  left:50%;
+  bottom:20px;
+  transform:translateX(-50%);
+  z-index:990;
+  max-width:min(520px,calc(100vw - 28px));
+  border:1px solid var(--border);
+  background:var(--text);
+  color:var(--surface);
+  border-radius:999px;
+  box-shadow:var(--shadow-lg);
+  padding:10px 14px;
+  font-size:12px;
+  font-weight:900;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease;
+}
+.v714-toast.show{opacity:1;}
+@media(max-width:700px){
+  .v714-history-fab{
+    left:12px;
+    bottom:70px;
+    min-width:50px;
+  }
+  .v714-history-overlay{
+    align-items:flex-end;
+    padding:8px;
+  }
+  .v714-history-modal{
+    max-height:86vh;
+    border-radius:14px;
+  }
+}
+</style>
+<script id="v714-sync-history-guard-script">
+(function(){
+  if(window.__v714SyncHistoryGuard) return;
+  window.__v714SyncHistoryGuard=true;
+
+  const VERSION='v71.4';
+  const KEY='sasshy_quest_v5';
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const HIST_KEY='sasshy_quest_history_v714';
+  const MAX_ENTRIES=30;
+  const MAX_CHARS=1800000;
+  const SNAP_MIN_MS=5*60*1000;
+  let internalWrite=false;
+  let restoring=false;
+  let lastRemote=null;
+  let manualPullAt=0;
+  let lastSnapshotAt=0;
+  let toastTimer=null;
+
+  const nativeGet=Storage.prototype.getItem;
+  const nativeSet=Storage.prototype.setItem;
+  const nativeRemove=Storage.prototype.removeItem;
+
+  function getLS(k){return nativeGet.call(localStorage,k);}
+  function setLS(k,v){nativeSet.call(localStorage,k,String(v));}
+  function parseJson(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return v;}
+  }
+  function hash(raw){
+    raw=String(raw||'');
+    let h=2166136261;
+    for(let i=0;i<raw.length;i++){
+      h^=raw.charCodeAt(i);
+      h=Math.imul(h,16777619);
+    }
+    return (h>>>0).toString(36);
+  }
+  function countsFromRaw(raw){
+    const s=parseJson(raw,null);
+    if(!s || typeof s!=='object') return {tasks:0,open:0,done:0,memos:0,logs:0,exp:0,lastOpen:''};
+    const tasks=Array.isArray(s.tasks)?s.tasks:[];
+    const memos=Array.isArray(s.memos)?s.memos:[];
+    const logs=Array.isArray(s.logs)?s.logs:[];
+    return {
+      tasks:tasks.length,
+      open:tasks.filter(t=>t && !t.done).length,
+      done:tasks.filter(t=>t && t.done).length,
+      memos:memos.length,
+      logs:logs.length,
+      exp:Number(s.exp||0),
+      lastOpen:(s.adhd&&s.adhd.lastOpenDate)||''
+    };
+  }
+  function countText(c){
+    return 'タスク'+c.tasks+'件 / 未完了'+c.open+'件 / メモ'+c.memos+'件 / EXP '+c.exp;
+  }
+  function loadHistory(){
+    const h=parseJson(getLS(HIST_KEY),null);
+    if(!h || !Array.isArray(h.entries)) return {version:1,entries:[]};
+    return h;
+  }
+  function totalChars(entries){
+    return entries.reduce((n,e)=>n+String(e.data||'').length+String(e.cfg||'').length+500,0);
+  }
+  function trimHistory(h){
+    h.entries=(h.entries||[]).filter(e=>e && e.data);
+    while(h.entries.length>MAX_ENTRIES) h.entries.pop();
+    while(h.entries.length>4 && totalChars(h.entries)>MAX_CHARS) h.entries.pop();
+    return h;
+  }
+  function saveHistory(h){
+    h=trimHistory(h);
+    try{
+      nativeSet.call(localStorage,HIST_KEY,JSON.stringify(h));
+    }catch(e){
+      while(h.entries.length>4){
+        h.entries.pop();
+        try{
+          nativeSet.call(localStorage,HIST_KEY,JSON.stringify(h));
+          break;
+        }catch(_){}
+      }
+    }
+  }
+  function pushSnapshot(label, opts){
+    opts=opts||{};
+    const raw=opts.raw || getLS(KEY);
+    if(!raw) return false;
+    const cfg=opts.cfg!==undefined ? opts.cfg : (getLS(CFG_KEY)||'');
+    const h=loadHistory();
+    const now=Date.now();
+    const rawHash=hash(raw);
+    const cfgHash=hash(cfg||'');
+    const last=h.entries[0];
+    if(!opts.force && last && last.hash===rawHash && last.cfgHash===cfgHash) return false;
+    if(!opts.force && now-lastSnapshotAt<SNAP_MIN_MS && last && last.hash===rawHash) return false;
+    const counts=countsFromRaw(raw);
+    h.entries.unshift({
+      id:'hist-'+now.toString(36)+'-'+Math.random().toString(36).slice(2,7),
+      ts:now,
+      label:label||'保存前',
+      version:VERSION,
+      href:location.href,
+      hash:rawHash,
+      cfgHash,
+      counts,
+      data:raw,
+      cfg:cfg||''
+    });
+    saveHistory(h);
+    lastSnapshotAt=now;
+    renderHistoryList();
+    return true;
+  }
+  function destructiveReason(oldRaw, newRaw){
+    const a=countsFromRaw(oldRaw);
+    const b=countsFromRaw(newRaw);
+    const reasons=[];
+    if(a.tasks>=3 && a.tasks-b.tasks>=3 && b.tasks<a.tasks*0.75) reasons.push('タスクが '+a.tasks+'件 → '+b.tasks+'件');
+    if(a.memos>0 && b.memos<a.memos) reasons.push('メモが '+a.memos+'件 → '+b.memos+'件');
+    if(a.exp-b.exp>=50) reasons.push('EXPが '+a.exp+' → '+b.exp);
+    if(a.logs>=20 && a.logs-b.logs>=10) reasons.push('ログが '+a.logs+'件 → '+b.logs+'件');
+    return reasons.join(' / ');
+  }
+  function isRecentRemoteWrite(newRaw){
+    if(!lastRemote || Date.now()-lastRemote.ts>12000) return false;
+    if(lastRemote.hash===hash(newRaw)) return true;
+    const a=lastRemote.counts;
+    const b=countsFromRaw(newRaw);
+    return a.tasks===b.tasks && a.memos===b.memos && a.logs===b.logs && a.exp===b.exp;
+  }
+  function refreshApp(){
+    try{ if(typeof applyTheme==='function') applyTheme(); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderPool==='function') renderPool(); }catch(e){}
+    try{ if(typeof renderRoutine==='function') renderRoutine(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+    try{ if(typeof renderQuestCoach==='function') renderQuestCoach(); }catch(e){}
+    try{ if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo(); }catch(e){}
+  }
+  function restoreObjectIntoApp(raw){
+    const data=parseJson(raw,null);
+    if(!data || typeof S==='undefined') return;
+    Object.keys(S).forEach(k=>delete S[k]);
+    Object.assign(S,clone(data));
+    refreshApp();
+  }
+  function disableSyncAfterBlock(){
+    const cfg=parseJson(getLS(CFG_KEY),{});
+    cfg.enabled=false;
+    cfg.dirty=true;
+    cfg.localUpdatedAt=Date.now();
+    cfg.lastSyncAt=0;
+    nativeSet.call(localStorage,CFG_KEY,JSON.stringify(cfg));
+  }
+  function blockRemoteWrite(oldRaw, reason){
+    notify('危ない同期読込を止めました: '+reason);
+    setTimeout(()=>{
+      internalWrite=true;
+      try{
+        nativeSet.call(localStorage,KEY,oldRaw);
+        restoreObjectIntoApp(oldRaw);
+        disableSyncAfterBlock();
+      }finally{
+        internalWrite=false;
+      }
+    },80);
+  }
+  function shouldAllowDangerousRemote(reason){
+    const manual=Date.now()-manualPullAt<10000;
+    if(!manual) return false;
+    return confirm('クラウドのデータはこの端末より少ないです。\n'+reason+'\n\n読み込む前の状態は履歴に保存しました。\nそれでもクラウドから読み込みますか？');
+  }
+  function notify(msg){
+    if(typeof toast==='function'){
+      try{ toast(msg); return; }catch(e){}
+    }
+    let el=document.getElementById('v714Toast');
+    if(!el){
+      el=document.createElement('div');
+      el.id='v714Toast';
+      el.className='v714-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent=msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>el.classList.remove('show'),3600);
+  }
+
+  function wrapStorage(){
+    if(Storage.prototype.setItem.__v714Wrapped) return;
+    const wrapped=function(key,value){
+      if(this===localStorage && String(key)===KEY && !internalWrite){
+        const oldRaw=nativeGet.call(localStorage,KEY);
+        const newRaw=String(value);
+        if(oldRaw && oldRaw!==newRaw){
+          const reason=destructiveReason(oldRaw,newRaw);
+          const remote=isRecentRemoteWrite(newRaw);
+          pushSnapshot(remote?'同期読込前':'保存前',{raw:oldRaw,force:remote||!!reason});
+          if(remote && reason && !shouldAllowDangerousRemote(reason)){
+            blockRemoteWrite(oldRaw,reason);
+            return;
+          }
+        }
+      }
+      return nativeSet.apply(this,arguments);
+    };
+    wrapped.__v714Wrapped=true;
+    Storage.prototype.setItem=wrapped;
+  }
+  function wrapFetch(){
+    if(window.fetch && !window.fetch.__v714Wrapped){
+      const nativeFetch=window.fetch;
+      const wrapped=function(input,init){
+        const p=nativeFetch.apply(this,arguments);
+        try{
+          const url=String(typeof input==='string'?input:(input&&input.url)||'');
+          const method=String((init&&init.method)||'GET').toUpperCase();
+          if(method==='GET' && url.includes('/rest/v1/app_state') && url.includes('sync_key=')){
+            p.then(res=>{
+              try{
+                res.clone().json().then(rows=>{
+                  const row=Array.isArray(rows)?rows[0]:null;
+                  if(row && row.data){
+                    const raw=JSON.stringify(row.data);
+                    lastRemote={
+                      ts:Date.now(),
+                      hash:hash(raw),
+                      counts:countsFromRaw(raw),
+                      updatedAt:row.updated_at||''
+                    };
+                  }
+                }).catch(()=>{});
+              }catch(e){}
+            }).catch(()=>{});
+          }
+        }catch(e){}
+        return p;
+      };
+      wrapped.__v714Wrapped=true;
+      window.fetch=wrapped;
+    }
+  }
+
+  function fmtTime(ts){
+    const d=new Date(ts||Date.now());
+    const mm=String(d.getMonth()+1).padStart(2,'0');
+    const dd=String(d.getDate()).padStart(2,'0');
+    const hh=String(d.getHours()).padStart(2,'0');
+    const mi=String(d.getMinutes()).padStart(2,'0');
+    return mm+'/'+dd+' '+hh+':'+mi;
+  }
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function ensureModal(){
+    let overlay=document.getElementById('v714HistoryOverlay');
+    if(overlay) return overlay;
+    overlay=document.createElement('div');
+    overlay.id='v714HistoryOverlay';
+    overlay.className='v714-history-overlay';
+    overlay.innerHTML=
+      '<div class="v714-history-modal" role="dialog" aria-modal="true">'+
+        '<div class="v714-history-head">'+
+          '<div><div class="v714-history-title">復元履歴</div><div class="v714-history-sub" id="v714HistorySub">同期前・保存前の状態</div></div>'+
+          '<div class="v714-history-actions">'+
+            '<button type="button" data-v714-history="save-now" class="primary">今を保存</button>'+
+            '<button type="button" data-v714-history="close">閉じる</button>'+
+          '</div>'+
+        '</div>'+
+        '<div class="v714-history-list" id="v714HistoryList"></div>'+
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click',e=>{
+      if(e.target===overlay || e.target.closest('[data-v714-history="close"]')){
+        closeHistory();
+        return;
+      }
+      const saveNow=e.target.closest('[data-v714-history="save-now"]');
+      if(saveNow){
+        pushSnapshot('手動保存',{force:true});
+        notify('今の状態を履歴に保存しました');
+        return;
+      }
+      const btn=e.target.closest('[data-v714-restore]');
+      if(btn){
+        restoreEntry(btn.dataset.v714Restore, btn.dataset.sync==='1');
+      }
+    });
+    return overlay;
+  }
+  function openHistory(){
+    ensureModal();
+    renderHistoryList();
+    document.body.classList.add('v714-history-open');
+  }
+  function closeHistory(){
+    document.body.classList.remove('v714-history-open');
+  }
+  function renderHistoryList(){
+    const list=document.getElementById('v714HistoryList');
+    const sub=document.getElementById('v714HistorySub');
+    if(!list) return;
+    const h=loadHistory();
+    if(sub) sub.textContent=h.entries.length+'件保存中';
+    if(!h.entries.length){
+      list.innerHTML='<div class="v714-history-empty">履歴はまだありません</div>';
+      return;
+    }
+    list.innerHTML=h.entries.map(e=>{
+      const c=e.counts||countsFromRaw(e.data||'');
+      return '<div class="v714-history-row" data-id="'+esc(e.id)+'">'+
+        '<div class="v714-history-row-title"><span>'+esc(e.label||'保存前')+'</span><span>'+esc(fmtTime(e.ts))+'</span></div>'+
+        '<div class="v714-history-row-meta">'+esc(countText(c))+'<br>'+esc(e.version||'')+' '+esc(e.href||'')+'</div>'+
+        '<div class="v714-history-row-actions">'+
+          '<button type="button" class="primary" data-v714-restore="'+esc(e.id)+'" data-sync="0">状態だけ戻す</button>'+
+          '<button type="button" data-v714-restore="'+esc(e.id)+'" data-sync="1">同期設定も戻す</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }
+  function restoreEntry(id, restoreCfg){
+    const h=loadHistory();
+    const entry=h.entries.find(e=>e.id===id);
+    if(!entry) return;
+    const msg=restoreCfg
+      ? 'この時点の状態と同期設定に戻します。自動同期はOFFで戻します。'
+      : 'この時点の状態に戻します。同期設定は今のままですが、自動同期はOFFにします。';
+    if(!confirm(msg)) return;
+    pushSnapshot('復元前',{force:true});
+    restoring=true;
+    internalWrite=true;
+    try{
+      nativeSet.call(localStorage,KEY,entry.data);
+      let cfg=restoreCfg && entry.cfg ? parseJson(entry.cfg,{}) : parseJson(getLS(CFG_KEY),{});
+      cfg.enabled=false;
+      cfg.dirty=true;
+      cfg.localUpdatedAt=Date.now();
+      cfg.lastSyncAt=0;
+      nativeSet.call(localStorage,CFG_KEY,JSON.stringify(cfg));
+      restoreObjectIntoApp(entry.data);
+      notify('履歴から戻しました。同期はOFFです');
+    }finally{
+      internalWrite=false;
+      restoring=false;
+      renderHistoryList();
+    }
+  }
+  function ensureFab(){
+    if(document.getElementById('v714HistoryFab')) return;
+    const btn=document.createElement('button');
+    btn.id='v714HistoryFab';
+    btn.className='v714-history-fab';
+    btn.type='button';
+    btn.textContent='履歴';
+    btn.title='復元履歴';
+    btn.addEventListener('click',openHistory);
+    document.body.appendChild(btn);
+  }
+  function ensureSyncPanelTools(){
+    const body=document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!body || document.getElementById('v714SyncGuard')) return;
+    const box=document.createElement('div');
+    box.id='v714SyncGuard';
+    box.className='v714-sync-guard';
+    box.innerHTML=
+      '<div class="v714-sync-guard-title">同期セーフティ</div>'+
+      '<div class="v714-sync-guard-actions">'+
+        '<button type="button" class="primary" data-v714-sync="history">復元履歴</button>'+
+        '<button type="button" data-v714-sync="save-now">今を保存</button>'+
+      '</div>';
+    body.appendChild(box);
+  }
+  document.addEventListener('click',e=>{
+    const syncBtn=e.target.closest('[data-v40-sync]');
+    if(syncBtn){
+      const act=syncBtn.dataset.v40Sync;
+      if(act==='pull') manualPullAt=Date.now();
+      if(act==='pull' || act==='push' || act==='toggle' || act==='save'){
+        pushSnapshot('同期操作前',{force:true});
+      }
+    }
+    const v714=e.target.closest('[data-v714-sync]');
+    if(v714){
+      e.preventDefault();
+      if(v714.dataset.v714Sync==='history') openHistory();
+      if(v714.dataset.v714Sync==='save-now'){
+        pushSnapshot('手動保存',{force:true});
+        notify('今の状態を履歴に保存しました');
+      }
+    }
+  },true);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape' && document.body.classList.contains('v714-history-open')) closeHistory();
+  },true);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden') pushSnapshot('画面を閉じる前');
+  });
+  window.addEventListener('pagehide',()=>pushSnapshot('画面を閉じる前'));
+
+  window.sasshyV714Snapshot=function(label){
+    return pushSnapshot(label||'手動保存',{force:true});
+  };
+  window.sasshyV714OpenHistory=openHistory;
+
+  wrapFetch();
+  wrapStorage();
+  setTimeout(()=>{
+    pushSnapshot('起動時',{force:true});
+    ensureFab();
+    ensureModal();
+    ensureSyncPanelTools();
+  },1200);
+  setInterval(()=>{
+    pushSnapshot('自動保存');
+    ensureFab();
+    ensureSyncPanelTools();
+  },5*60*1000);
 })();
 </script>
 
