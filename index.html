@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.2').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.3').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -13839,16 +13839,18 @@ body.v701-sync-open .v701-sync-toggle{
 </script>
 
 <style id="v702-fixes-style">
-/* v70.2: pin HERO to the top of QUEST */
-body.v68-quest #p-quest{
+/* v70.2: pin HERO to the top of QUEST
+   v71.3 fix: only flex-display when QUEST is active, otherwise this leaked
+   into BASE tab and made QUEST content visible there. */
+body.v68-quest #p-quest.active{
   display:flex;
   flex-direction:column;
 }
-body.v68-quest #p-quest > *{order:50;}
-body.v68-quest #p-quest > #runningBadge{order:1;}
-body.v68-quest #p-quest > #v68Hero{order:5;}
-body.v68-quest #p-quest > #v65UndoBar{order:10;}
-body.v68-quest #p-quest > #v66QuestDesk{order:20;}
+body.v68-quest #p-quest.active > *{order:50;}
+body.v68-quest #p-quest.active > #runningBadge{order:1;}
+body.v68-quest #p-quest.active > #v68Hero{order:5;}
+body.v68-quest #p-quest.active > #v65UndoBar{order:10;}
+body.v68-quest #p-quest.active > #v66QuestDesk{order:20;}
 
 .v68-hero{border-width:2px;}
 .v68-hero-title{font-size:23px;}
