@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.6').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.7').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.4';
+  const VERSION='v71.7';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -17412,7 +17412,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     overlay.innerHTML=
       '<div class="v714-history-modal" role="dialog" aria-modal="true">'+
         '<div class="v714-history-head">'+
-          '<div><div class="v714-history-title">復元履歴</div><div class="v714-history-sub" id="v714HistorySub">同期前・保存前の状態</div></div>'+
+          '<div><div class="v714-history-title">この端末の復元履歴</div><div class="v714-history-sub" id="v714HistorySub">同期前・保存前の状態</div></div>'+
           '<div class="v714-history-actions">'+
             '<button type="button" data-v714-history="save-now" class="primary">今を保存</button>'+
             '<button type="button" data-v714-history="close">閉じる</button>'+
@@ -17452,7 +17452,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     const sub=document.getElementById('v714HistorySub');
     if(!list) return;
     const h=loadHistory();
-    if(sub) sub.textContent=h.entries.length+'件保存中';
+    if(sub) sub.textContent='この端末に '+h.entries.length+'件保存中';
     if(!h.entries.length){
       list.innerHTML='<div class="v714-history-empty">履歴はまだありません</div>';
       return;
@@ -18174,9 +18174,10 @@ body.v714-history-open .v714-history-overlay{display:flex;}
 }
 </style>
 <script id="v716-safe-sync-script">
-/* ===== v71.6: safe sync authority =====
+/* ===== v71.7: safe sync authority =====
    Sync keeps local and cloud task/memo history instead of allowing one device
-   snapshot to erase the other. Uploads first read and merge the cloud row. */
+   snapshot to erase the other. New clients use an isolated safe cloud row so
+   old last-write-wins clients cannot write the new row back to an old state. */
 (function(){
   if(window.__v716SafeSync) return;
   window.__v716SafeSync=true;
@@ -18184,6 +18185,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const TABLE='/rest/v1/app_state';
+  const SAFE_SUFFIX='__safe_v716';
   const COUNTERS=new Set(['exp','level','totalKills','routineCombo']);
   let syncing=false;
   let internalApply=false;
@@ -18228,6 +18230,25 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   }
   function apiBase(cfg){return cleanUrl(cfg.url)+TABLE;}
   function hasStateUrl(url){return String(url||'').includes(TABLE);}
+  function safeSyncKey(key){
+    key=String(key||'').trim();
+    if(!key || key.endsWith(SAFE_SUFFIX)) return key;
+    return key+SAFE_SUFFIX;
+  }
+  function syncKeyFromUrl(url){
+    try{
+      const u=new URL(String(url||''),location.href);
+      const v=u.searchParams.get('sync_key')||'';
+      return v.startsWith('eq.') ? v.slice(3) : '';
+    }catch(e){return '';}
+  }
+  function urlWithSyncKey(url,key){
+    try{
+      const u=new URL(String(url||''),location.href);
+      u.searchParams.set('sync_key','eq.'+key);
+      return u.toString();
+    }catch(e){return url;}
+  }
   function localState(){
     if(typeof S!=='undefined' && S && typeof S==='object') return clone(S);
     return clone(parse(localStorage.getItem(KEY),{}));
@@ -18390,12 +18411,18 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     const rows=await res.json();
     return Array.isArray(rows)&&rows[0]?rows[0]:null;
   }
+  async function readPreferredRemote(base, syncKey, headers){
+    const safeKey=safeSyncKey(syncKey);
+    const safeRow=safeKey ? await readRemote(base,safeKey,headers) : null;
+    if(safeRow) return safeRow;
+    return safeKey!==syncKey ? readRemote(base,syncKey,headers) : null;
+  }
   async function writeRemote(base, cfg, data, headers){
     const updated=new Date().toISOString();
     const res=await lowerFetch(base,{
       method:'POST',
       headers:Object.assign({},headers||syncHeaders(cfg),{Prefer:'resolution=merge-duplicates,return=minimal'}),
-      body:JSON.stringify({sync_key:cfg.syncKey,data:data,updated_at:updated})
+      body:JSON.stringify({sync_key:safeSyncKey(cfg.syncKey),data:data,updated_at:updated})
     });
     if(!res.ok) throw new Error(await errorText('クラウド保存失敗',res));
     return updated;
@@ -18419,7 +18446,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     try{
       const base=apiBase(cfg);
       const h=syncHeaders(cfg);
-      const row=await readRemote(base,cfg.syncKey,h);
+      const row=await readPreferredRemote(base,cfg.syncKey,h);
       const merged=mergeState(localState(),row&&row.data);
       applyMerged(merged,'安全同期取込前');
       const updated=await writeRemote(base,cfg,merged,h);
@@ -18462,7 +18489,9 @@ body.v714-history-open .v714-history-overlay{display:flex;}
       const method=String((init&&init.method)||'GET').toUpperCase();
       if(!hasStateUrl(url)) return lowerFetch.apply(this,arguments);
       if(method==='GET' && url.includes('sync_key=')){
-        return lowerFetch.apply(this,arguments).then(async res=>{
+        const requestedKey=syncKeyFromUrl(url);
+        const nextKey=safeSyncKey(requestedKey);
+        const getRows=async(res)=>{
           if(!res.ok) return res;
           try{
             const rows=await res.clone().json();
@@ -18473,7 +18502,19 @@ body.v714-history-open .v714-history-overlay{display:flex;}
             }
           }catch(e){}
           return res;
-        });
+        };
+        return (async()=>{
+          if(nextKey && nextKey!==requestedKey){
+            const safeRes=await lowerFetch.call(this,urlWithSyncKey(url,nextKey),init);
+            if(safeRes.ok){
+              try{
+                const safeRows=await safeRes.clone().json();
+                if(Array.isArray(safeRows) && safeRows[0]) return getRows(safeRes);
+              }catch(e){}
+            }
+          }
+          return getRows(await lowerFetch.apply(this,arguments));
+        })();
       }
       if(method==='POST'){
         const body=parsePostBody(init);
@@ -18481,10 +18522,10 @@ body.v714-history-open .v714-history-overlay{display:flex;}
         return (async()=>{
           const cfg=loadCfg();
           const h=headersToObject(init&&init.headers);
-          const row=await readRemote(url,body.sync_key,h);
+          const row=await readPreferredRemote(url,body.sync_key,h);
           const merged=mergeState(body.data,row&&row.data);
           applyMerged(merged,'安全自動同期取込前');
-          const nextInit=Object.assign({},init,{body:JSON.stringify(Object.assign({},body,{data:merged}))});
+          const nextInit=Object.assign({},init,{body:JSON.stringify(Object.assign({},body,{sync_key:safeSyncKey(body.sync_key),data:merged}))});
           return lowerFetch.call(this,input,nextInit);
         })().catch(e=>{
           status('古い上書き送信を停止: '+e.message);
@@ -18513,7 +18554,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
       const note=document.createElement('div');
       note.id='v716SafeSyncNote';
       note.className='v716-safe-sync-note';
-      note.innerHTML='<b>安全同期:</b> Mac/iPhone のタスクとメモを残して合わせます。読み込めない状態で古い端末だけをアップロードする送信は止めます。<span id="v716SafeSyncStatus">'+escapeHtml(lastStatus)+'</span>';
+      note.innerHTML='<b>安全同期:</b> Mac/iPhone のタスクとメモを残して新しい安全同期先で合わせます。古い版の端末はこの同期先を上書きできません。<span id="v716SafeSyncStatus">'+escapeHtml(lastStatus)+'</span>';
       body.appendChild(note);
     }
     return true;
