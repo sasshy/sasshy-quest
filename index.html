@@ -6498,6 +6498,7 @@ body.v25-actual-time .v25-duration{font-family:'SF Mono','JetBrains Mono',monosp
   }
   function titleOf(taskId,fallback){ const t=findTask(taskId); return t ? (t.title||fallback||'') : (fallback||''); }
   function postprocessSchedule(){
+    if(window.__sasshyTimelineDragging) return;
     const body=document.getElementById('schedBody'); if(!body) return;
     const cards=[...body.querySelectorAll('.sched-task')].filter(el=>!el.classList.contains('gcal'));
     if(!cards.length) return;
@@ -6622,6 +6623,7 @@ body.v27-no-overlap-timeline .sched-task[data-display-min="1"]{min-height:48px !
 (function(){
   document.body.classList.add('v27-no-overlap-timeline');
   function patchCards(){
+    if(window.__sasshyTimelineDragging) return;
     document.querySelectorAll('.sched-task').forEach(el=>{
       if(el.classList.contains('gcal')) return;
       const h=parseFloat(el.style.height||'0');
@@ -6761,6 +6763,7 @@ body.v28-readable-timeline .sched-resize-handle{
   }
 
   function repairScheduleCards(){
+    if(window.__sasshyTimelineDragging) return;
     const body=document.getElementById('schedBody');
     if(!body) return;
     body.querySelectorAll('.sched-task').forEach(el=>{
@@ -6922,6 +6925,7 @@ body.v29-timeline-overlap-fix .sched-task.dragging{
   }
 
   function stabilizeTimelineCards(){
+    if(window.__sasshyTimelineDragging) return;
     const body=document.getElementById('schedBody');
     if(!body) return;
     const area=body.querySelector('.sched-grid');
@@ -9116,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.14').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.15').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17148,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.14';
+  const VERSION='v71.15';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -19415,7 +19419,7 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
 </script>
 
 <style id="v7112-timeline-resize-style">
-/* v71.14: stable move from card body and duration resize from card footer */
+/* v71.15: stable move from card body and duration resize from card footer */
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal){
   cursor:grab !important;
   padding-bottom:24px !important;
@@ -19470,6 +19474,12 @@ body.v7112-resizing #schedBody .sched-task.v7112-resizing-card{
 }
 body.v7112-resizing.v7112-resize-mode #schedBody .sched-task.v7112-resizing-card{cursor:ns-resize !important;}
 body.v7112-resizing.v7112-move-mode #schedBody .sched-task.v7112-resizing-card{cursor:grabbing !important;}
+body.v7112-resizing #schedBody .sched-task.v7112-resizing-card:hover{
+  height:var(--v35-card-height, 50px) !important;
+  min-height:50px !important;
+  overflow:hidden !important;
+  z-index:999 !important;
+}
 .v7112-resize-readout{
   position:fixed;
   left:50%;
@@ -19494,7 +19504,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 </style>
 
 <script id="v7112-timeline-resize-script">
-/* ===== v71.14: stable timeline move plus footer duration resize ===== */
+/* ===== v71.15: stable timeline move plus footer duration resize ===== */
 (function(){
   if(window.__v7112TimelineResize) return;
   window.__v7112TimelineResize=true;
@@ -19564,7 +19574,6 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   function flush(reason){
     try{if(typeof save==='function') save();}catch(e){}
     try{if(reason&&typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason);}catch(e){}
-    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
   }
   function updateTime(card, t, begin, min){
     const time=card.querySelector('.sched-task-time');
@@ -19655,6 +19664,9 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       (e.target.closest&&e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)'));
     const t=card&&byId(card.dataset.id);
     if(!card || !t || !t.startTime || isActionTarget(e.target) || (e.button!==undefined && e.button!==0)) return;
+    const rect=card.getBoundingClientRect();
+    const nearBottom=rect.height>0 && e.clientY>=rect.bottom-Math.min(40,Math.max(28,rect.height*.42));
+    const resizeMode=!!handle || nearBottom;
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -19662,7 +19674,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     const begin=clampStart(t,startMin(t.startTime));
     active={
       id:String(t.id),
-      mode:handle?'resize':'move',
+      mode:resizeMode?'resize':'move',
       card:card,
       pointerId:e.pointerId,
       startY:e.clientY,
@@ -19674,10 +19686,10 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       changed:false
     };
     window.__sasshyTimelineDragging=true;
-    document.body.classList.add('v7112-resizing',handle?'v7112-resize-mode':'v7112-move-mode');
+    document.body.classList.add('v7112-resizing',resizeMode?'v7112-resize-mode':'v7112-move-mode');
     card.classList.add('v7112-resizing-card');
     try{card.setPointerCapture(e.pointerId);}catch(err){}
-    showReadout(e.clientY,t.startTime,base,handle?'長さ':'移動');
+    showReadout(e.clientY,t.startTime,base,resizeMode?'長さ':'移動');
   },true);
   document.addEventListener('pointermove',e=>{
     if(!active || (active.pointerId!==undefined && e.pointerId!==active.pointerId)) return;
