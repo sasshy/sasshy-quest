@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.16').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.17').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.16';
+  const VERSION='v71.17';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -19397,6 +19397,12 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
     }
     const card=e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)');
     if(!card || e.target.closest('.v66-tl-del,.sched-undone-btn,.v7112-resize-handle')) return;
+    if(window.__sasshyTimelineDragging || Date.now()<Number(window.__sasshyTimelineDragClickBlockUntil||0)){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -19424,7 +19430,7 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
 </script>
 
 <style id="v7112-timeline-resize-style">
-/* v71.16: stable move from card body and duration resize from card footer */
+/* v71.17: stable move from card body and duration resize from card footer */
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal){
   cursor:grab !important;
   padding-bottom:24px !important;
@@ -19509,7 +19515,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 </style>
 
 <script id="v7112-timeline-resize-script">
-/* ===== v71.16: stable timeline move plus footer duration resize ===== */
+/* ===== v71.17: stable timeline move plus footer duration resize ===== */
 (function(){
   if(window.__v7112TimelineResize) return;
   window.__v7112TimelineResize=true;
@@ -19519,6 +19525,11 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   let active=null;
   let readout=null;
   let ignoreClickUntil=0;
+  function blockCardClick(ms){
+    const until=Date.now()+(Number(ms)||900);
+    ignoreClickUntil=Math.max(ignoreClickUntil,until);
+    window.__sasshyTimelineDragClickBlockUntil=Math.max(Number(window.__sasshyTimelineDragClickBlockUntil||0),until);
+  }
 
   function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks) && Array.isArray(S.sessions);}
   function byId(id){return ok() ? S.tasks.find(t=>t&&String(t.id)===String(id)) : null;}
@@ -19710,7 +19721,8 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       nextMin:base,
       nextStart:begin,
       ppm:ppmFor(card),
-      changed:false
+      changed:false,
+      moved:false
     };
     window.__sasshyTimelineDragging=true;
     document.body.classList.add('v7112-resizing',resizeMode?'v7112-resize-mode':'v7112-move-mode');
@@ -19723,6 +19735,10 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     const t=byId(active.id);
     if(!t) return;
     e.preventDefault();
+    if(Math.abs(e.clientY-active.startY)>4){
+      active.moved=true;
+      blockCardClick(1200);
+    }
     const delta=snap((e.clientY-active.startY)/active.ppm);
     if(active.mode==='resize'){
       const min=clampMin(t,active.baseMin+delta);
@@ -19746,12 +19762,12 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   },{capture:true,passive:false});
   function finish(e){
     if(!active || (e&&active.pointerId!==undefined && e.pointerId!==active.pointerId)) return;
-    if(e){e.preventDefault();e.stopPropagation();}
+    if(e){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();}
     const done=cleanup();
     if(!done) return;
     const t=byId(done.id);
+    if(done.moved || done.changed) blockCardClick(1200);
     if(done.changed && t){
-      ignoreClickUntil=Date.now()+500;
       if(done.mode==='resize'){
         commitDuration(t,done.nextMin);
         window.__sasshyTimelineEditQuietUntil=Date.now()+4200;
