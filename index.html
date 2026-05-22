@@ -3257,8 +3257,8 @@ function renderSchedule(){
   const schedFree=document.getElementById('schedFree');
   if(schedFree) schedFree.textContent=`業務中の空き ${freeH>0?freeH+'h ':''}${freeM}分`;
 
-  // 1時間 = 60px (分あたり 1px)
-  const PPM=60/60;
+  // 1時間 = 90px。短い予定もドラッグしやすい縦幅にする。
+  const PPM=90/60; // v71.9: roomier hour scale for short timeline cards.
   const startHour=Math.floor(startMin/60);
   const endHour=Math.ceil(endMin/60);
   const totalHeight=(endHour-startHour)*60*PPM;
@@ -6511,8 +6511,8 @@ body.v25-actual-time .v25-duration{font-family:'SF Mono','JetBrains Mono',monosp
       if(t.done){ const s=latestCompletedSession(t.id); if(s && s.endedAt){ start=hhmm(s.startedAt); end=hhmm(s.endedAt); actual=durMin(s); } }
       if(t.done && start && end && actual){
         if(timeEl) timeEl.innerHTML=start+'–'+end+' · 実績'+actual+'分'+(planned?' · 予定'+planned+'分':'');
-        el.style.top=toMin(start)+'px';
-        el.style.height=Math.max(actual,30)+'px';
+        el.style.top=(toMin(start)*1.5)+'px';
+        el.style.height=Math.max(actual*1.5,48)+'px';
         el.classList.toggle('v25-tiny', actual<12);
         el.setAttribute('title', start+'–'+end+' / 実績'+actual+'分'+(planned?' / 予定'+planned+'分':'')+' / '+(t.title||''));
       }
@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.8').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.9').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.8';
+  const VERSION='v71.9';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -18174,7 +18174,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
 }
 </style>
 <script id="v716-safe-sync-script">
-/* ===== v71.8: safe sync authority =====
+/* ===== v71.9: safe sync authority =====
    Sync keeps local and cloud task/memo history instead of allowing one device
    snapshot to erase the other. New clients use an isolated safe cloud row so
    old last-write-wins clients cannot write the new row back to an old state. */
@@ -18889,6 +18889,169 @@ body.v718-day-agenda.v35-timeline-drag .sched-task.v35-short:hover .sched-task-t
   }
   seedRecentDeletes();
   setTimeout(renderAgenda,300);
+})();
+</script>
+
+<style id="v719-roomy-timeline-style">
+/* v71.9: roomier day timeline and steadier drag surface */
+body.v719-roomy-timeline #schedBody .sched-grid{
+  overflow-anchor:none;
+}
+body.v719-roomy-timeline #schedBody .sched-task:not(.gcal){
+  min-height:50px !important;
+  padding-top:8px !important;
+}
+body.v719-roomy-timeline #schedBody .sched-task:not(.gcal) .sched-task-title{
+  font-size:13px !important;
+  line-height:1.3 !important;
+  max-height:2.65em !important;
+}
+body.v719-roomy-timeline #schedBody .sched-task:not(.gcal) .sched-task-time{
+  font-size:10.5px !important;
+}
+body.v719-roomy-timeline #schedBody .sched-task.moving,
+body.v719-roomy-timeline #schedBody .sched-task.resizing,
+body.v719-roomy-timeline #schedBody .sched-task.dragging{
+  min-height:50px !important;
+  transition:none !important;
+  will-change:top,height;
+}
+body.v719-roomy-timeline #schedBody .sched-task.moving:hover,
+body.v719-roomy-timeline #schedBody .sched-task.resizing:hover,
+body.v719-roomy-timeline #schedBody .sched-task.dragging:hover{
+  height:var(--v35-card-height, 50px) !important;
+  overflow:hidden !important;
+}
+body.v719-roomy-timeline #schedBody .v718-agenda-row{
+  min-height:50px;
+}
+</style>
+
+<script id="v719-completed-timeline-edit-script">
+/* ===== v71.9: keep completed task timeline edits and calm drag rerenders ===== */
+(function(){
+  if(window.__v719CompletedTimelineEdit) return;
+  window.__v719CompletedTimelineEdit=true;
+  document.body.classList.add('v719-roomy-timeline');
+
+  let active=null;
+  function hasState(){return typeof S!=='undefined' && S && Array.isArray(S.tasks) && Array.isArray(S.sessions);}
+  function task(id){return hasState() ? S.tasks.find(t=>t&&String(t.id)===String(id)) : null;}
+  function pad(n){return String(n).padStart(2,'0');}
+  function hm(ts){const d=new Date(ts);return pad(d.getHours())+':'+pad(d.getMinutes());}
+  function startFor(base, text){
+    const m=String(text||'').match(/^(\d{1,2}):(\d{2})$/);
+    if(!m) return null;
+    const d=new Date(base||Date.now());
+    d.setHours(Number(m[1]),Number(m[2]),0,0);
+    return d.getTime();
+  }
+  function completedSession(id){
+    return (S.sessions||[]).filter(s=>s&&String(s.taskId)===String(id)&&s.completed&&s.startedAt)
+      .sort((a,b)=>(Number(b.endedAt)||Number(b.startedAt)||0)-(Number(a.endedAt)||Number(a.startedAt)||0))[0] || null;
+  }
+  function readDesired(id){
+    const t=task(id);
+    if(!t || !t.done || !t.startTime) return null;
+    return {id:String(id), startTime:String(t.startTime), planMin:Math.max(1,Number(t.planMin)||15)};
+  }
+  function commitDesired(desired, flush){
+    if(!desired || !hasState()) return false;
+    const t=task(desired.id);
+    const s=completedSession(desired.id);
+    if(!t || !t.done || !s) return false;
+    const start=startFor(s.startedAt,desired.startTime);
+    if(!start) return false;
+    const min=Math.max(1,Math.min(999,Number(desired.planMin)||15));
+    const end=start+min*60000;
+    s.startedAt=start;
+    s.endedAt=end;
+    s.date=t.scheduledDate || s.date;
+    s.title=t.title || s.title;
+    s.rank=t.rank || s.rank;
+    t.startTime=desired.startTime;
+    t.planMin=min;
+    t.actualMin=min;
+    t.actualEndTime=hm(end);
+    t.v45TouchedAt=Date.now();
+    t.v719ManualTimelineAt=t.v45TouchedAt;
+    if(flush){
+      try{if(typeof save==='function') save();}catch(e){}
+      try{if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('完了タスク時間編集');}catch(e){}
+      try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+      try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+      try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    }
+    return true;
+  }
+  function rememberSoon(){
+    if(!active) return;
+    setTimeout(()=>{
+      if(!active) return;
+      const next=readDesired(active.id);
+      if(next) active.desired=next;
+    },0);
+  }
+  function finishDragSoon(){
+    const done=active;
+    active=null;
+    if(!done || !done.desired) return;
+    setTimeout(()=>commitDesired(done.desired,true),70);
+  }
+  document.addEventListener('mousedown',e=>{
+    const card=e.target.closest&&e.target.closest('.sched-task.done[data-id]:not(.gcal)');
+    const id=card&&card.dataset.id;
+    if(!id || e.target.closest('.sched-undone-btn,.v66-tl-del')) return;
+    const desired=readDesired(id);
+    if(desired) active={id:String(id), desired:desired};
+  },true);
+  document.addEventListener('touchstart',e=>{
+    const card=e.target.closest&&e.target.closest('.sched-task.done[data-id]:not(.gcal)');
+    const id=card&&card.dataset.id;
+    if(!id || e.target.closest('.sched-undone-btn,.v66-tl-del')) return;
+    const desired=readDesired(id);
+    if(desired) active={id:String(id), desired:desired};
+  },true);
+  document.addEventListener('mousemove',rememberSoon,true);
+  document.addEventListener('touchmove',rememberSoon,true);
+  document.addEventListener('mouseup',finishDragSoon,true);
+  document.addEventListener('touchend',finishDragSoon,true);
+  document.addEventListener('touchcancel',()=>{active=null;},true);
+
+  const oldSync=window.syncCompletedSession;
+  if(typeof oldSync==='function' && !oldSync.__v719CompletedTimelineEdit){
+    const wrapped=function(id){
+      const desired=readDesired(id);
+      const r=oldSync.apply(this,arguments);
+      if(desired) commitDesired(desired,false);
+      return r;
+    };
+    wrapped.__v719CompletedTimelineEdit=true;
+    window.syncCompletedSession=wrapped;
+  }
+  const oldRenderSchedule=window.renderSchedule;
+  if(typeof oldRenderSchedule==='function' && !oldRenderSchedule.__v719DragGuard){
+    let deferredRender=0;
+    function renderAfterDrag(ctx,args){
+      clearTimeout(deferredRender);
+      deferredRender=setTimeout(()=>{
+        if(window.__sasshyTimelineDragging){
+          renderAfterDrag(ctx,args);
+          return;
+        }
+        oldRenderSchedule.apply(ctx,args);
+      },80);
+    }
+    const wrapped=function(){
+      if(window.__sasshyTimelineDragging){
+        renderAfterDrag(this,arguments);
+        return;
+      }
+      return oldRenderSchedule.apply(this,arguments);
+    };
+    wrapped.__v719DragGuard=true;
+    window.renderSchedule=wrapped;
+  }
 })();
 </script>
 
