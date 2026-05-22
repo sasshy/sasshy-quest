@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.9').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.10').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.9';
+  const VERSION='v71.10';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -18174,7 +18174,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
 }
 </style>
 <script id="v716-safe-sync-script">
-/* ===== v71.9: safe sync authority =====
+/* ===== v71.10: safe sync authority =====
    Sync keeps local and cloud task/memo history instead of allowing one device
    snapshot to erase the other. New clients use an isolated safe cloud row so
    old last-write-wins clients cannot write the new row back to an old state. */
@@ -18897,6 +18897,13 @@ body.v718-day-agenda.v35-timeline-drag .sched-task.v35-short:hover .sched-task-t
 body.v719-roomy-timeline #schedBody .sched-grid{
   overflow-anchor:none;
 }
+body.v719-roomy-timeline,
+body.v719-roomy-timeline #schedBody{
+  overflow-anchor:none;
+}
+body.v719-roomy-timeline #v24ScheduleIndex{
+  display:none !important;
+}
 body.v719-roomy-timeline #schedBody .sched-task:not(.gcal){
   min-height:50px !important;
   padding-top:8px !important;
@@ -18950,6 +18957,29 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
     return (S.sessions||[]).filter(s=>s&&String(s.taskId)===String(id)&&s.completed&&s.startedAt)
       .sort((a,b)=>(Number(b.endedAt)||Number(b.startedAt)||0)-(Number(a.endedAt)||Number(a.startedAt)||0))[0] || null;
   }
+  function sessionDate(t){
+    if(t&&t.scheduledDate) return t.scheduledDate;
+    try{return todayKey();}catch(e){return new Date().toISOString().slice(0,10);}
+  }
+  function ensureCompletedSession(t, desired){
+    let s=completedSession(t&&t.id);
+    if(s || !t || !desired) return s;
+    const start=startFor(Date.now(),desired.startTime);
+    if(!start) return null;
+    const min=Math.max(1,Math.min(999,Number(desired.planMin)||15));
+    s={
+      id:'sess-v719-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+      taskId:t.id,
+      title:t.title||'',
+      rank:t.rank||'zako',
+      startedAt:start,
+      endedAt:start+min*60000,
+      completed:true,
+      date:sessionDate(t)
+    };
+    S.sessions.push(s);
+    return s;
+  }
   function readDesired(id){
     const t=task(id);
     if(!t || !t.done || !t.startTime) return null;
@@ -18958,7 +18988,7 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
   function commitDesired(desired, flush){
     if(!desired || !hasState()) return false;
     const t=task(desired.id);
-    const s=completedSession(desired.id);
+    const s=ensureCompletedSession(t,desired);
     if(!t || !t.done || !s) return false;
     const start=startFor(s.startedAt,desired.startTime);
     if(!start) return false;
@@ -18984,39 +19014,66 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
     }
     return true;
   }
-  function rememberSoon(){
+  let scrollLock=null;
+  let scrollFrame=0;
+  function rememberNow(){
     if(!active) return;
-    setTimeout(()=>{
-      if(!active) return;
-      const next=readDesired(active.id);
-      if(next) active.desired=next;
-    },0);
+    const next=readDesired(active.id);
+    if(next) active.desired=next;
   }
   function finishDragSoon(){
     const done=active;
     active=null;
-    if(!done || !done.desired) return;
-    setTimeout(()=>commitDesired(done.desired,true),70);
+    stopScrollLock();
+    if(!done) return;
+    setTimeout(()=>{
+      const next=readDesired(done.id) || done.desired;
+      if(next) commitDesired(next,true);
+    },180);
+  }
+  function holdScroll(){
+    if(!scrollLock) return;
+    const dx=Math.abs((window.scrollX||window.pageXOffset||0)-scrollLock.x);
+    const dy=Math.abs((window.scrollY||window.pageYOffset||0)-scrollLock.y);
+    if(dx>1 || dy>1) window.scrollTo(scrollLock.x,scrollLock.y);
+    scrollFrame=requestAnimationFrame(holdScroll);
+  }
+  function startScrollLock(){
+    stopScrollLock();
+    scrollLock={x:window.scrollX||window.pageXOffset||0,y:window.scrollY||window.pageYOffset||0};
+    document.documentElement.classList.add('v719-drag-lock');
+    scrollFrame=requestAnimationFrame(holdScroll);
+  }
+  function stopScrollLock(){
+    scrollLock=null;
+    if(scrollFrame) cancelAnimationFrame(scrollFrame);
+    scrollFrame=0;
+    document.documentElement.classList.remove('v719-drag-lock');
   }
   document.addEventListener('mousedown',e=>{
-    const card=e.target.closest&&e.target.closest('.sched-task.done[data-id]:not(.gcal)');
+    const anyCard=e.target.closest&&e.target.closest('.sched-task[data-id]:not(.gcal)');
+    if(anyCard && !e.target.closest('.sched-undone-btn,.v66-tl-del')) startScrollLock();
+    const card=anyCard&&anyCard.classList.contains('done')?anyCard:null;
     const id=card&&card.dataset.id;
     if(!id || e.target.closest('.sched-undone-btn,.v66-tl-del')) return;
     const desired=readDesired(id);
     if(desired) active={id:String(id), desired:desired};
   },true);
   document.addEventListener('touchstart',e=>{
-    const card=e.target.closest&&e.target.closest('.sched-task.done[data-id]:not(.gcal)');
+    const anyCard=e.target.closest&&e.target.closest('.sched-task[data-id]:not(.gcal)');
+    if(anyCard && !e.target.closest('.sched-undone-btn,.v66-tl-del')) startScrollLock();
+    const card=anyCard&&anyCard.classList.contains('done')?anyCard:null;
     const id=card&&card.dataset.id;
     if(!id || e.target.closest('.sched-undone-btn,.v66-tl-del')) return;
     const desired=readDesired(id);
     if(desired) active={id:String(id), desired:desired};
   },true);
-  document.addEventListener('mousemove',rememberSoon,true);
-  document.addEventListener('touchmove',rememberSoon,true);
+  document.addEventListener('mousemove',rememberNow);
+  document.addEventListener('touchmove',rememberNow);
   document.addEventListener('mouseup',finishDragSoon,true);
   document.addEventListener('touchend',finishDragSoon,true);
-  document.addEventListener('touchcancel',()=>{active=null;},true);
+  document.addEventListener('touchcancel',()=>{active=null;stopScrollLock();},true);
+  window.addEventListener('blur',()=>{active=null;stopScrollLock();},true);
 
   const oldSync=window.syncCompletedSession;
   if(typeof oldSync==='function' && !oldSync.__v719CompletedTimelineEdit){
