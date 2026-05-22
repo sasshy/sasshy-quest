@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.10').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.11').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.10';
+  const VERSION='v71.11';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -18174,7 +18174,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
 }
 </style>
 <script id="v716-safe-sync-script">
-/* ===== v71.10: safe sync authority =====
+/* ===== v71.11: safe sync authority =====
    Sync keeps local and cloud task/memo history instead of allowing one device
    snapshot to erase the other. New clients use an isolated safe cloud row so
    old last-write-wins clients cannot write the new row back to an old state. */
@@ -19109,6 +19109,306 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
     wrapped.__v719DragGuard=true;
     window.renderSchedule=wrapped;
   }
+})();
+</script>
+
+<style id="v7111-stable-timeline-editor-style">
+/* v71.11: stop unstable drag and edit time from the card */
+body.v7111-stable-timeline #schedBody .sched-task:not(.gcal){
+  cursor:pointer !important;
+  touch-action:manipulation !important;
+  padding-right:98px !important;
+}
+body.v7111-stable-timeline #schedBody .sched-task:not(.gcal) .sched-resize-handle{
+  display:none !important;
+}
+body.v7111-stable-timeline #schedBody .sched-task:not(.gcal).moving,
+body.v7111-stable-timeline #schedBody .sched-task:not(.gcal).resizing,
+body.v7111-stable-timeline #schedBody .sched-task:not(.gcal).dragging{
+  outline:none !important;
+  box-shadow:var(--shadow-sm) !important;
+  opacity:1 !important;
+}
+.v7111-time-btn{
+  position:absolute;
+  top:5px;
+  right:45px;
+  z-index:105;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:7px;
+  min-width:42px;
+  height:24px;
+  padding:0 7px;
+  font:inherit;
+  font-size:11px;
+  font-weight:950;
+  cursor:pointer;
+  pointer-events:auto !important;
+}
+.v7111-time-btn:hover{border-color:var(--text);}
+.v7111-editor-overlay{
+  position:fixed;
+  inset:0;
+  z-index:100000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(0,0,0,.34);
+}
+body.v7111-editor-open .v7111-editor-overlay{display:flex;}
+.v7111-editor{
+  width:min(440px,100%);
+  border:1px solid var(--border2);
+  border-radius:12px;
+  background:var(--surface);
+  box-shadow:var(--shadow-lg);
+  padding:14px;
+  display:grid;
+  gap:10px;
+}
+.v7111-editor-title{
+  color:var(--text);
+  font-size:14px;
+  font-weight:950;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+}
+.v7111-editor-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:8px;
+}
+.v7111-editor-field{
+  display:grid;
+  gap:4px;
+  min-width:0;
+  color:var(--text3);
+  font-size:11px;
+  font-weight:850;
+}
+.v7111-editor-field.date{grid-column:1 / -1;}
+.v7111-editor-field input{
+  width:100%;
+  min-height:42px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface2);
+  color:var(--text);
+  font:inherit;
+  font-size:15px;
+  font-weight:800;
+  padding:8px 10px;
+}
+.v7111-editor-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:7px;
+}
+.v7111-editor-actions button{
+  min-height:42px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface2);
+  color:var(--text);
+  font:inherit;
+  font-size:13px;
+  font-weight:950;
+  padding:9px 12px;
+  cursor:pointer;
+}
+.v7111-editor-actions .primary{
+  border-color:var(--text);
+  background:var(--text);
+  color:var(--surface);
+}
+@media(max-width:700px){
+  body.v7111-stable-timeline #schedBody .sched-task:not(.gcal){padding-right:92px !important;}
+  .v7111-editor-grid{grid-template-columns:1fr;}
+}
+</style>
+
+<script id="v7111-stable-timeline-editor-script">
+/* ===== v71.11: stable time editor replaces legacy timeline drag ===== */
+(function(){
+  if(window.__v7111StableTimelineEditor) return;
+  window.__v7111StableTimelineEditor=true;
+  document.body.classList.add('v7111-stable-timeline');
+
+  let editingId='';
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks) && Array.isArray(S.sessions);}
+  function byId(id){return ok() ? S.tasks.find(t=>t&&String(t.id)===String(id)) : null;}
+  function pad(n){return String(n).padStart(2,'0');}
+  function dateKey(){try{return todayKey();}catch(e){return new Date().toISOString().slice(0,10);}}
+  function hm(ts){const d=new Date(ts);return pad(d.getHours())+':'+pad(d.getMinutes());}
+  function startTs(day,time,base){
+    const m=String(time||'').match(/^(\d{1,2}):(\d{2})$/);
+    if(!m) return null;
+    const d=day ? new Date(day+'T00:00:00') : new Date(base||Date.now());
+    d.setHours(Number(m[1]),Number(m[2]),0,0);
+    return d.getTime();
+  }
+  function completedSession(id){
+    return (S.sessions||[]).filter(s=>s&&String(s.taskId)===String(id)&&s.completed)
+      .sort((a,b)=>(Number(b.endedAt)||Number(b.startedAt)||0)-(Number(a.endedAt)||Number(a.startedAt)||0))[0] || null;
+  }
+  function ensureCompletedSession(t,start,min){
+    let s=completedSession(t.id);
+    if(s) return s;
+    s={
+      id:'sess-v7111-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+      taskId:t.id,
+      title:t.title||'',
+      rank:t.rank||'zako',
+      startedAt:start,
+      endedAt:start+min*60000,
+      completed:true,
+      date:t.scheduledDate||dateKey()
+    };
+    S.sessions.push(s);
+    return s;
+  }
+  function refresh(reason){
+    try{if(typeof save==='function') save();}catch(e){}
+    try{if(reason&&typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason);}catch(e){}
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+  }
+  function ensureModal(){
+    let overlay=document.getElementById('v7111TimelineEditor');
+    if(overlay) return overlay;
+    overlay=document.createElement('div');
+    overlay.id='v7111TimelineEditor';
+    overlay.className='v7111-editor-overlay';
+    overlay.innerHTML=
+      '<div class="v7111-editor" role="dialog" aria-modal="true">'+
+        '<div class="v7111-editor-title" id="v7111EditorTitle">時刻を編集</div>'+
+        '<div class="v7111-editor-grid">'+
+          '<label class="v7111-editor-field date">日付<input id="v7111EditorDate" type="date"></label>'+
+          '<label class="v7111-editor-field">開始<input id="v7111EditorStart" type="time"></label>'+
+          '<label class="v7111-editor-field">長さ 分<input id="v7111EditorMin" type="number" min="1" max="999" inputmode="numeric"></label>'+
+        '</div>'+
+        '<div class="v7111-editor-actions">'+
+          '<button type="button" data-v7111-editor="cancel">閉じる</button>'+
+          '<button type="button" class="primary" data-v7111-editor="save">保存</button>'+
+        '</div>'+
+      '</div>';
+    overlay.addEventListener('click',e=>{
+      if(e.target===overlay || e.target.closest('[data-v7111-editor="cancel"]')){
+        closeModal();
+        return;
+      }
+      if(e.target.closest('[data-v7111-editor="save"]')) saveEdit();
+    });
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+  function openEdit(id){
+    const t=byId(id);
+    if(!t) return;
+    editingId=String(id);
+    const overlay=ensureModal();
+    overlay.querySelector('#v7111EditorTitle').textContent=t.title||'時刻を編集';
+    overlay.querySelector('#v7111EditorDate').value=t.scheduledDate||dateKey();
+    overlay.querySelector('#v7111EditorStart').value=t.startTime||'';
+    overlay.querySelector('#v7111EditorMin').value=Math.max(1,Number(t.planMin)||15);
+    document.body.classList.add('v7111-editor-open');
+    setTimeout(()=>overlay.querySelector('#v7111EditorStart')?.focus(),0);
+  }
+  function closeModal(){
+    editingId='';
+    document.body.classList.remove('v7111-editor-open');
+  }
+  function saveEdit(){
+    const t=byId(editingId);
+    const overlay=ensureModal();
+    if(!t) return closeModal();
+    const day=overlay.querySelector('#v7111EditorDate').value||dateKey();
+    const startText=overlay.querySelector('#v7111EditorStart').value||'';
+    const min=Math.max(1,Math.min(999,Number(overlay.querySelector('#v7111EditorMin').value)||15));
+    const start=startTs(day,startText,Date.now());
+    if(!start){alert('開始時刻を入れてください');return;}
+    t.scheduledDate=day;
+    t.startTime=startText;
+    t.planMin=min;
+    t.v45TouchedAt=Date.now();
+    t.v34ManualTodayDate=day;
+    t.v34UserRequestedToday=true;
+    t.adhdReview='';
+    t.adhdHiddenGenerated=false;
+    if(t.done){
+      const s=ensureCompletedSession(t,start,min);
+      s.startedAt=start;
+      s.endedAt=start+min*60000;
+      s.date=day;
+      s.title=t.title||s.title;
+      s.rank=t.rank||s.rank;
+      t.actualMin=min;
+      t.actualEndTime=hm(s.endedAt);
+      t.v7111ManualDoneTimeAt=t.v45TouchedAt;
+    }
+    closeModal();
+    refresh('タイムライン時刻編集');
+  }
+  function addCardButtons(){
+    document.querySelectorAll('#schedBody .sched-task[data-id]:not(.gcal)').forEach(card=>{
+      const id=card.dataset.id;
+      if(!id || card.querySelector('.v7111-time-btn')) return;
+      const btn=document.createElement('button');
+      btn.type='button';
+      btn.className='v7111-time-btn';
+      btn.dataset.v7111Time=id;
+      btn.textContent='時刻';
+      btn.title='開始時刻と長さを編集';
+      card.appendChild(btn);
+    });
+  }
+  function stopLegacyDrag(e){
+    const card=e.target.closest&&e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)');
+    if(!card) return;
+    if(e.target.closest('.v7111-time-btn,.v66-tl-del,.sched-undone-btn')) return;
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }
+  document.addEventListener('mousedown',stopLegacyDrag,true);
+  document.addEventListener('touchstart',stopLegacyDrag,true);
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-v7111-time]');
+    if(btn){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      openEdit(btn.dataset.v7111Time);
+      return;
+    }
+    const card=e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)');
+    if(!card || e.target.closest('.v66-tl-del,.sched-undone-btn')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if(typeof openTaskDetail==='function') openTaskDetail(card.dataset.id);
+  },true);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape' && document.body.classList.contains('v7111-editor-open')) closeModal();
+    if(e.key==='Enter' && document.body.classList.contains('v7111-editor-open') && e.target.closest('#v7111TimelineEditor input')){
+      e.preventDefault();
+      saveEdit();
+    }
+  },true);
+  const oldRenderSchedule=window.renderSchedule;
+  if(typeof oldRenderSchedule==='function' && !oldRenderSchedule.__v7111StableTimeline){
+    const wrapped=function(){
+      const r=oldRenderSchedule.apply(this,arguments);
+      setTimeout(addCardButtons,0);
+      return r;
+    };
+    wrapped.__v7111StableTimeline=true;
+    window.renderSchedule=wrapped;
+  }
+  setTimeout(()=>{ensureModal();addCardButtons();},400);
 })();
 </script>
 
