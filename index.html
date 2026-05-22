@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.7').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.8').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.7';
+  const VERSION='v71.8';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -18174,7 +18174,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
 }
 </style>
 <script id="v716-safe-sync-script">
-/* ===== v71.7: safe sync authority =====
+/* ===== v71.8: safe sync authority =====
    Sync keeps local and cloud task/memo history instead of allowing one device
    snapshot to erase the other. New clients use an isolated safe cloud row so
    old last-write-wins clients cannot write the new row back to an old state. */
@@ -18331,6 +18331,32 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     const session=(state.sessions||[]).find(s=>s&&s.taskId===id&&!s.endedAt);
     return !!(task&&session);
   }
+  function taskDeleteMap(state){
+    const map=new Map();
+    (state&&Array.isArray(state.taskDeleteTombstones)?state.taskDeleteTombstones:[]).forEach(x=>{
+      if(!x || !x.id) return;
+      const at=dateMs(x.deletedAt)||dateMs(x.ts);
+      if(at>(map.get(String(x.id))||0)) map.set(String(x.id),at);
+    });
+    return map;
+  }
+  function applyTaskDeletes(state){
+    if(!state || !Array.isArray(state.tasks)) return state;
+    const deleted=taskDeleteMap(state);
+    if(!deleted.size) return state;
+    state.tasks=state.tasks.filter(t=>{
+      if(!t || !t.id) return true;
+      const deletedAt=deleted.get(String(t.id))||0;
+      return !deletedAt || itemStamp(t)>deletedAt;
+    });
+    if(Array.isArray(state.taskDeleteTombstones) && state.taskDeleteTombstones.length>700){
+      state.taskDeleteTombstones=state.taskDeleteTombstones
+        .slice()
+        .sort((a,b)=>(dateMs(b&&b.deletedAt)||dateMs(b&&b.ts))-(dateMs(a&&a.deletedAt)||dateMs(a&&a.ts)))
+        .slice(0,700);
+    }
+    return state;
+  }
   function mergeState(local, remote){
     local=isPlainObject(local)?local:{};
     remote=isPlainObject(remote)?remote:{};
@@ -18343,7 +18369,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
     if(hasOpenRunning(local,local.runningTaskId)) out.runningTaskId=local.runningTaskId;
     else if(hasOpenRunning(remote,remote.runningTaskId)) out.runningTaskId=remote.runningTaskId;
     else out.runningTaskId=null;
-    return out;
+    return applyTaskDeletes(out);
   }
   function jsonSame(a,b){
     try{return JSON.stringify(a)===JSON.stringify(b);}
@@ -18579,6 +18605,290 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   setTimeout(()=>{installPanel();wrapFlush();},1500);
   setInterval(()=>{installPanel();wrapFlush();},4000);
   window.sasshySafeSyncNow=safeSync;
+})();
+</script>
+
+<style id="v718-safe-delete-and-day-agenda-style">
+/* v71.8: readable day agenda over the dense draggable timeline */
+body.v718-day-agenda #schedBody{
+  display:grid;
+  gap:10px;
+}
+.v718-agenda{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  border-radius:10px;
+  padding:10px;
+  display:grid;
+  gap:7px;
+}
+.v718-agenda-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  color:var(--text);
+  font-size:12px;
+  font-weight:950;
+}
+.v718-agenda-count{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:999px;
+  color:var(--text3);
+  min-height:23px;
+  padding:3px 8px;
+  font-size:10px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-weight:800;
+}
+.v718-agenda-list{display:grid;gap:5px;}
+.v718-agenda-row{
+  display:grid;
+  grid-template-columns:66px minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:8px;
+  min-height:46px;
+  padding:6px 7px;
+}
+.v718-agenda-row.done{opacity:.56;}
+.v718-agenda-time{
+  display:grid;
+  gap:1px;
+  align-content:center;
+  border-right:1px solid var(--border);
+  min-width:0;
+  color:var(--text);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.2;
+}
+.v718-agenda-time small{
+  color:var(--text3);
+  font-size:9px;
+  font-weight:800;
+}
+.v718-agenda-title{
+  min-width:0;
+  border:0;
+  background:none;
+  color:var(--text);
+  cursor:pointer;
+  font:inherit;
+  font-size:12.5px;
+  font-weight:850;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+  padding:3px 0;
+  text-align:left;
+}
+.v718-agenda-actions{display:flex;align-items:center;gap:4px;}
+.v718-agenda-btn{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:7px;
+  cursor:pointer;
+  font:inherit;
+  font-size:11px;
+  font-weight:900;
+  min-height:34px;
+  padding:6px 9px;
+  white-space:nowrap;
+}
+.v718-agenda-btn:hover{border-color:var(--text);}
+.v718-agenda-btn.danger{color:var(--red);background:var(--surface);}
+.v718-agenda-empty{
+  border:1px dashed var(--border);
+  border-radius:8px;
+  color:var(--text3);
+  padding:10px;
+  font-size:12px;
+  font-weight:750;
+}
+body.v718-day-agenda .sched-grid{
+  border-color:var(--border2);
+  background:
+    linear-gradient(90deg,var(--surface2) 0,var(--surface2) 58px,var(--surface) 58px,var(--surface) 100%);
+}
+body.v718-day-agenda .sched-hline{left:58px;}
+body.v718-day-agenda .sched-hlabel{
+  width:58px;
+  padding-left:10px;
+  letter-spacing:0;
+}
+body.v718-day-agenda .sched-click-area,
+body.v718-day-agenda .sched-now-line{left:58px;}
+body.v718-day-agenda.v35-timeline-drag .sched-task:not(.gcal){
+  padding:6px 48px 6px 9px !important;
+  overflow:hidden !important;
+}
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-micro .sched-task-title,
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-tiny .sched-task-title,
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-short .sched-task-title{
+  position:static !important;
+  transform:none !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  border-radius:0 !important;
+  display:-webkit-box !important;
+  -webkit-line-clamp:2 !important;
+  -webkit-box-orient:vertical !important;
+  height:auto !important;
+  max-height:2.6em !important;
+  min-height:0 !important;
+  line-height:1.25 !important;
+  white-space:normal !important;
+  padding:0 !important;
+}
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-micro .sched-task-time,
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-tiny .sched-task-time,
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-short .sched-task-time{
+  display:block !important;
+  position:static !important;
+  height:auto !important;
+  line-height:1.2 !important;
+  margin-top:2px !important;
+  white-space:nowrap !important;
+}
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-micro:hover .sched-task-title,
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-tiny:hover .sched-task-title,
+body.v718-day-agenda.v35-timeline-drag .sched-task.v35-short:hover .sched-task-title{
+  left:auto !important;
+  top:auto !important;
+}
+@media(max-width:700px){
+  .v718-agenda-row{grid-template-columns:58px minmax(0,1fr);}
+  .v718-agenda-actions{grid-column:2;justify-content:flex-start;}
+  .v718-agenda-btn{min-height:32px;}
+}
+</style>
+
+<script id="v718-safe-delete-and-day-agenda-script">
+/* ===== v71.8: task delete tombstones + readable QUEST day agenda ===== */
+(function(){
+  if(window.__v718SafeDeleteAgenda) return;
+  window.__v718SafeDeleteAgenda=true;
+
+  function hasTasks(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function clone(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return null;}}
+  function clean(v){return String(v==null?'':v).trim();}
+  function escText(v){
+    const s=String(v==null?'':v);
+    return typeof esc==='function'?esc(s):s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function toMin(hm){
+    const m=String(hm||'').match(/^(\d{1,2}):(\d{2})$/);
+    return m?Number(m[1])*60+Number(m[2]):99999;
+  }
+  function endTime(t){
+    const start=toMin(t&&t.startTime);
+    if(start>=99999) return '';
+    const total=(start+(Number(t.planMin)||15))%(24*60);
+    return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
+  }
+  function ensureDeletes(){
+    if(!hasTasks()) return [];
+    S.taskDeleteTombstones=Array.isArray(S.taskDeleteTombstones)?S.taskDeleteTombstones:[];
+    return S.taskDeleteTombstones;
+  }
+  function rememberDelete(t){
+    if(!hasTasks() || !t || !t.id) return;
+    const id=String(t.id);
+    const at=Date.now();
+    const list=ensureDeletes();
+    const idx=list.findIndex(x=>x&&String(x.id)===id);
+    if(idx>=0) list.splice(idx,1);
+    list.push({id:id, title:clean(t.title).slice(0,120), deletedAt:at});
+    while(list.length>700) list.splice(0,1);
+  }
+  const oldRemember=window.sasshyRememberDeletedTask;
+  window.sasshyRememberDeletedTask=function(t){
+    rememberDelete(clone(t)||t);
+    if(typeof oldRemember==='function') return oldRemember.apply(this,arguments);
+  };
+  function seedRecentDeletes(){
+    if(!hasTasks() || !Array.isArray(S.deletedTaskUndo)) return;
+    S.deletedTaskUndo.forEach(item=>{
+      const task=item&&item.task;
+      if(!task || !task.id || S.tasks.some(t=>t&&String(t.id)===String(task.id))) return;
+      const list=ensureDeletes();
+      if(list.some(x=>x&&String(x.id)===String(task.id))) return;
+      list.push({id:String(task.id), title:clean(task.title).slice(0,120), deletedAt:Number(item.ts)||Date.now()});
+    });
+    const list=ensureDeletes();
+    while(list.length>700) list.splice(0,1);
+  }
+  function viewDate(){
+    try{return questViewDate||todayKey();}
+    catch(e){return '';}
+  }
+  function dayTasks(){
+    if(!hasTasks()) return [];
+    const day=viewDate();
+    return S.tasks.filter(t=>t&&t.startTime&&t.scheduledDate===day&&!t.adhdHiddenGenerated)
+      .sort((a,b)=>toMin(a.startTime)-toMin(b.startTime) || (Number(a.created)||0)-(Number(b.created)||0));
+  }
+  function renderAgenda(){
+    const body=document.getElementById('schedBody');
+    if(!body) return;
+    document.body.classList.add('v718-day-agenda');
+    let box=body.querySelector('#v718Agenda');
+    if(!box){
+      box=document.createElement('section');
+      box.id='v718Agenda';
+      box.className='v718-agenda';
+      body.insertBefore(box,body.firstChild);
+    }
+    const tasks=dayTasks();
+    const rows=tasks.map(t=>{
+      const id=escText(t.id);
+      const min=Math.max(1,Number(t.planMin)||15);
+      return '<div class="v718-agenda-row '+(t.done?'done':'')+'" data-v718-id="'+id+'">'+
+        '<div class="v718-agenda-time"><span>'+escText(t.startTime)+'</span><small>'+escText(endTime(t))+' / '+min+'分</small></div>'+
+        '<button class="v718-agenda-title" type="button" data-v718-act="detail" data-id="'+id+'">'+escText(t.title||'無題')+'</button>'+
+        '<div class="v718-agenda-actions">'+
+          '<button class="v718-agenda-btn" type="button" data-v718-act="time" data-id="'+id+'">時刻</button>'+
+          '<button class="v718-agenda-btn danger" type="button" data-v718-act="delete" data-id="'+id+'">削除</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+    box.innerHTML='<div class="v718-agenda-head"><span>時刻つきタスク</span><span class="v718-agenda-count">'+tasks.length+'件</span></div>'+
+      '<div class="v718-agenda-list">'+(rows||'<div class="v718-agenda-empty">この日の時刻つきタスクはまだありません。</div>')+'</div>';
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-v718-act]');
+    if(!btn) return;
+    const id=btn.dataset.id||'';
+    const act=btn.dataset.v718Act;
+    if(!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(act==='delete' && typeof window.sasshyDeleteTaskById==='function'){
+      window.sasshyDeleteTaskById(id,{confirm:true});
+    }else if(act==='time' && typeof openSetDateModal==='function'){
+      openSetDateModal(id);
+    }else if(act==='detail' && typeof openTaskDetail==='function'){
+      openTaskDetail(id);
+    }
+  },true);
+  const oldRenderSchedule=window.renderSchedule;
+  if(typeof oldRenderSchedule==='function' && !oldRenderSchedule.__v718Agenda){
+    const wrapped=function(){
+      const r=oldRenderSchedule.apply(this,arguments);
+      setTimeout(renderAgenda,0);
+      return r;
+    };
+    wrapped.__v718Agenda=true;
+    window.renderSchedule=wrapped;
+  }
+  seedRecentDeletes();
+  setTimeout(renderAgenda,300);
 })();
 </script>
 
