@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.15').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.16').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -9508,6 +9508,10 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
     }
   }
   function applyRemote(row){
+    if(window.__sasshyTimelineDragging || Date.now()<Number(window.__sasshyTimelineEditQuietUntil||0)){
+      setStatus('タイムライン編集中のため読込保留');
+      return;
+    }
     if(!row || !row.data || typeof S==='undefined') return;
     const runningSnap=localRunningSnapshot();
     const remoteMs=Date.parse(row.updated_at)||Date.now();
@@ -17148,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.15';
+  const VERSION='v71.16';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -18399,6 +18403,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   }
   function applyMerged(next, label){
     if(internalApply || typeof S==='undefined' || !isPlainObject(next)) return false;
+    if(window.__sasshyTimelineDragging || Date.now()<Number(window.__sasshyTimelineEditQuietUntil||0)) return false;
     const before=localState();
     if(jsonSame(before,next)) return false;
     snapshot(label||'安全同期前');
@@ -19419,7 +19424,7 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
 </script>
 
 <style id="v7112-timeline-resize-style">
-/* v71.15: stable move from card body and duration resize from card footer */
+/* v71.16: stable move from card body and duration resize from card footer */
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal){
   cursor:grab !important;
   padding-bottom:24px !important;
@@ -19504,7 +19509,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 </style>
 
 <script id="v7112-timeline-resize-script">
-/* ===== v71.15: stable timeline move plus footer duration resize ===== */
+/* ===== v71.16: stable timeline move plus footer duration resize ===== */
 (function(){
   if(window.__v7112TimelineResize) return;
   window.__v7112TimelineResize=true;
@@ -19571,9 +19576,29 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     t.adhdReview='';
     t.adhdHiddenGenerated=false;
   }
+  let syncTimer=0;
+  function markSyncDirty(){
+    try{
+      const key='sasshy_quest_supabase_sync_v1';
+      const cfg=JSON.parse(localStorage.getItem(key)||'{}');
+      if(!cfg || !cfg.enabled) return;
+      cfg.dirty=true;
+      cfg.localUpdatedAt=Math.max(Date.now(),Number(cfg.localUpdatedAt||0)+1,Number(cfg.remoteUpdatedAt||0)+1);
+      localStorage.setItem(key,JSON.stringify(cfg));
+    }catch(e){}
+  }
   function flush(reason){
-    try{if(typeof save==='function') save();}catch(e){}
-    try{if(reason&&typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason);}catch(e){}
+    const localSave=window.__v40OriginalSave || window.save;
+    try{if(typeof localSave==='function') localSave();}catch(e){}
+    markSyncDirty();
+    clearTimeout(syncTimer);
+    syncTimer=setTimeout(()=>{
+      if(window.__sasshyTimelineDragging){
+        flush(reason);
+        return;
+      }
+      try{if(reason&&typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason);}catch(e){}
+    },3200);
   }
   function updateTime(card, t, begin, min){
     const time=card.querySelector('.sched-task-time');
@@ -19608,6 +19633,8 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     s.date=t.scheduledDate||s.date;
     s.title=t.title||s.title;
     s.rank=t.rank||s.rank;
+    s.updatedAt=t.v45TouchedAt||Date.now();
+    s.v7116TimelineTouchedAt=s.updatedAt;
     t.actualMin=min;
     t.actualEndTime=hm(startMin(t.startTime)+min);
   }
@@ -19727,9 +19754,11 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       ignoreClickUntil=Date.now()+500;
       if(done.mode==='resize'){
         commitDuration(t,done.nextMin);
+        window.__sasshyTimelineEditQuietUntil=Date.now()+4200;
         flush('タイムライン長さ変更');
       }else{
         commitMove(t,done.nextStart);
+        window.__sasshyTimelineEditQuietUntil=Date.now()+4200;
         flush('タイムライン移動');
       }
     }else{
