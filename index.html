@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.18').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.19').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -19948,6 +19948,282 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     const snap=takeSnapshot(byId(completionButtonId(btn)));
     if(snap) setTimeout(()=>preserve(snap),360);
   },true);
+})();
+</script>
+
+<style id="v7119-cross-day-and-scroll-style">
+/* v71.19: cross-day drag for week/month + scroll preservation for timeline */
+
+#weekViewContainer .wk-task[data-id],
+#monthViewContainer .mn-task[data-id]{
+  cursor:grab;
+  touch-action:none;
+}
+#weekViewContainer .wk-task[data-id]:active,
+#monthViewContainer .mn-task[data-id]:active{
+  cursor:grabbing;
+}
+.v7119-dragging-task{
+  opacity:0.45 !important;
+  outline:2px dashed var(--text2);
+}
+.v7119-drop-target{
+  outline:2px solid #2e7d32 !important;
+  outline-offset:-2px !important;
+  background:rgba(46,125,50,0.08) !important;
+}
+
+.v7119-drag-ghost{
+  position:fixed;
+  z-index:99999;
+  pointer-events:none;
+  background:var(--text);
+  color:var(--surface);
+  padding:6px 10px;
+  border-radius:8px;
+  font-size:12.5px;
+  font-weight:900;
+  box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  max-width:240px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  opacity:0;
+  transition:opacity 0.08s;
+}
+.v7119-drag-ghost.show{opacity:1;}
+
+.v7119-cross-day-hint{
+  font-size:10.5px;
+  color:var(--text3);
+  text-align:center;
+  margin:4px 0 6px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+</style>
+
+<script id="v7119-cross-day-and-scroll-script">
+/* ===== v71.19 =====
+   (1) Cross-day drag in week/month views (move task between days)
+   (2) Scroll position preservation around renderSchedule/renderTasks so the
+       page doesn't jump after a timeline drag / edit / completion. */
+(function(){
+  if(window.__v7119Loaded) return;
+  window.__v7119Loaded=true;
+
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function pad(n){return String(n).padStart(2,'0');}
+  function originalSave(){
+    const sv=window.__v40OriginalSave||window.save;
+    try{ if(typeof sv==='function') sv(); }catch(e){}
+  }
+  function markEdit(t){
+    if(!t) return;
+    t.v45TouchedAt=Date.now();
+    t.v7119CrossDayAt=t.v45TouchedAt;
+    t.v34ManualTodayDate=t.scheduledDate;
+    t.v34UserRequestedToday=true;
+    t.adhdReview='';
+    t.adhdHiddenGenerated=false;
+  }
+
+  // ============ (1) CROSS-DAY DRAG ============
+
+  let drag=null;
+
+  function findWeekTask(el){return el && el.closest && el.closest('#weekViewContainer .wk-task[data-id]');}
+  function findMonthTask(el){return el && el.closest && el.closest('#monthViewContainer .mn-task[data-id]');}
+  function findWeekCol(el){return el && el.closest && el.closest('.wk-day-col[data-date]');}
+  function findMonthCell(el){return el && el.closest && el.closest('.mn-day[data-date]');}
+
+  function ensureGhost(){
+    let g=document.getElementById('v7119DragGhost');
+    if(g) return g;
+    g=document.createElement('div');
+    g.id='v7119DragGhost';
+    g.className='v7119-drag-ghost';
+    document.body.appendChild(g);
+    return g;
+  }
+  function moveGhost(text, x, y){
+    const g=ensureGhost();
+    g.textContent=text;
+    g.style.left=(x+12)+'px';
+    g.style.top=(y+12)+'px';
+    g.classList.add('show');
+  }
+  function hideGhost(){
+    const g=document.getElementById('v7119DragGhost');
+    if(g) g.classList.remove('show');
+  }
+
+  function startDrag(e, type, taskEl){
+    if(!ok()) return;
+    const taskId=taskEl.dataset.id;
+    if(!taskId) return;
+    const t=S.tasks.find(x=>x && x.id===taskId);
+    if(!t) return;
+    drag={
+      type: type,
+      taskId: taskId,
+      task: t,
+      startX: e.clientX,
+      startY: e.clientY,
+      sourceEl: taskEl,
+      moved: false,
+      pointerId: e.pointerId
+    };
+    try{ taskEl.setPointerCapture(e.pointerId); }catch(_){}
+  }
+
+  function updateDrag(e){
+    if(!drag) return;
+    if(drag.pointerId!==undefined && drag.pointerId!==e.pointerId) return;
+    const dx=e.clientX-drag.startX;
+    const dy=e.clientY-drag.startY;
+    if(!drag.moved && (Math.abs(dx)>8 || Math.abs(dy)>8)){
+      drag.moved=true;
+      drag.sourceEl.classList.add('v7119-dragging-task');
+    }
+    if(drag.moved){
+      e.preventDefault();
+      moveGhost(drag.task.title || '(無題)', e.clientX, e.clientY);
+      const elem=document.elementFromPoint(e.clientX, e.clientY);
+      let drop=null;
+      if(drag.type==='week') drop=findWeekCol(elem);
+      else if(drag.type==='month') drop=findMonthCell(elem);
+      document.querySelectorAll('.v7119-drop-target').forEach(x=>x.classList.remove('v7119-drop-target'));
+      if(drop) drop.classList.add('v7119-drop-target');
+    }
+  }
+
+  function endDrag(e){
+    if(!drag) return;
+    if(drag.pointerId!==undefined && drag.pointerId!==e.pointerId) return;
+    const wasDrag=drag.moved;
+    const data=drag;
+    drag=null;
+    hideGhost();
+    document.querySelectorAll('.v7119-dragging-task').forEach(x=>x.classList.remove('v7119-dragging-task'));
+    document.querySelectorAll('.v7119-drop-target').forEach(x=>x.classList.remove('v7119-drop-target'));
+
+    if(!wasDrag) return;
+
+    e.preventDefault();
+    const elem=document.elementFromPoint(e.clientX, e.clientY);
+    let target=null;
+    if(data.type==='week') target=findWeekCol(elem);
+    else if(data.type==='month') target=findMonthCell(elem);
+
+    if(target && target.dataset.date && ok()){
+      const newDate=target.dataset.date;
+      const t=data.task;
+
+      t.scheduledDate=newDate;
+
+      if(data.type==='week'){
+        const rect=target.getBoundingClientRect();
+        const y=e.clientY-rect.top;
+        const PPM=0.8;
+        let totalMin=Math.max(0, Math.min(24*60-1, Math.round((y/PPM)/15)*15));
+        t.startTime=pad(Math.floor(totalMin/60)%24)+':'+pad(totalMin%60);
+      }
+
+      markEdit(t);
+      originalSave();
+
+      try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(data.type==='week'?'週ビュー移動':'月ビュー移動'); }catch(_){}
+
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(_){}
+      if(data.type==='week' && typeof renderWeekQ==='function') renderWeekQ();
+      else if(data.type==='month' && typeof renderMonth==='function') renderMonth();
+      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(_){}
+    }
+
+    window.__v7119DragJustEnded=Date.now()+800;
+  }
+
+  document.addEventListener('click', e=>{
+    if(window.__v7119DragJustEnded && Date.now()<window.__v7119DragJustEnded){
+      const wkTask=findWeekTask(e.target);
+      const mnTask=findMonthTask(e.target);
+      if(wkTask || mnTask){
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }
+  }, true);
+
+  document.addEventListener('pointerdown', e=>{
+    if(e.button!==undefined && e.button!==0) return;
+    const wkTask=findWeekTask(e.target);
+    if(wkTask){
+      startDrag(e, 'week', wkTask);
+      return;
+    }
+    const mnTask=findMonthTask(e.target);
+    if(mnTask){
+      startDrag(e, 'month', mnTask);
+    }
+  }, true);
+
+  document.addEventListener('pointermove', updateDrag, {capture:true, passive:false});
+  document.addEventListener('pointerup', endDrag, true);
+  document.addEventListener('pointercancel', endDrag, true);
+
+  function addHints(){
+    const wk=document.getElementById('weekViewContainer');
+    if(wk && !wk.querySelector('.v7119-cross-day-hint')){
+      const hint=document.createElement('div');
+      hint.className='v7119-cross-day-hint';
+      hint.textContent='タスクをドラッグして別の日に移動できます';
+      wk.insertBefore(hint, wk.firstChild);
+    }
+    const mn=document.getElementById('monthViewContainer');
+    if(mn && !mn.querySelector('.v7119-cross-day-hint')){
+      const hint=document.createElement('div');
+      hint.className='v7119-cross-day-hint';
+      hint.textContent='タスクをドラッグして別の日に移動できます';
+      mn.insertBefore(hint, mn.firstChild);
+    }
+  }
+  setTimeout(addHints, 600);
+  setInterval(addHints, 4000);
+
+  // ============ (2) SCROLL POSITION PRESERVATION ============
+
+  function preserveScrollAround(fnName){
+    const orig=window[fnName];
+    if(typeof orig!=='function' || orig.__v7119ScrollGuard) return false;
+    const wrapped=function(){
+      const sx=window.scrollX || window.pageXOffset || 0;
+      const sy=window.scrollY || window.pageYOffset || 0;
+      const r=orig.apply(this, arguments);
+      requestAnimationFrame(()=>{
+        requestAnimationFrame(()=>{
+          const cx=window.scrollX || window.pageXOffset || 0;
+          const cy=window.scrollY || window.pageYOffset || 0;
+          if(Math.abs(cx-sx)>2 || Math.abs(cy-sy)>2){
+            window.scrollTo(sx, sy);
+          }
+        });
+      });
+      return r;
+    };
+    wrapped.__v7119ScrollGuard=true;
+    window[fnName]=wrapped;
+    return true;
+  }
+
+  function tryWrapAll(){
+    preserveScrollAround('renderSchedule');
+    preserveScrollAround('renderTasks');
+    preserveScrollAround('renderTimeline');
+  }
+  tryWrapAll();
+  setTimeout(tryWrapAll, 400);
+  setTimeout(tryWrapAll, 1500);
 })();
 </script>
 
