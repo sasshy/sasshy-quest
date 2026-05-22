@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.12').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.13').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.12';
+  const VERSION='v71.13';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -19051,6 +19051,7 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
     document.documentElement.classList.remove('v719-drag-lock');
   }
   document.addEventListener('mousedown',e=>{
+    if(document.body.classList.contains('v7112-timeline-resize')) return;
     const anyCard=e.target.closest&&e.target.closest('.sched-task[data-id]:not(.gcal)');
     if(anyCard && !e.target.closest('.sched-undone-btn,.v66-tl-del,.v7112-resize-handle')) startScrollLock();
     const card=anyCard&&anyCard.classList.contains('done')?anyCard:null;
@@ -19060,6 +19061,7 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
     if(desired) active={id:String(id), desired:desired};
   },true);
   document.addEventListener('touchstart',e=>{
+    if(document.body.classList.contains('v7112-timeline-resize')) return;
     const anyCard=e.target.closest&&e.target.closest('.sched-task[data-id]:not(.gcal)');
     if(anyCard && !e.target.closest('.sched-undone-btn,.v66-tl-del,.v7112-resize-handle')) startScrollLock();
     const card=anyCard&&anyCard.classList.contains('done')?anyCard:null;
@@ -19413,9 +19415,16 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
 </script>
 
 <style id="v7112-timeline-resize-style">
-/* v71.12: stable duration resize from the bottom edge of timeline cards */
+/* v71.13: stable duration resize from timeline cards */
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal){
+  cursor:ns-resize !important;
   padding-bottom:16px !important;
+  touch-action:none !important;
+}
+body.v7112-timeline-resize #schedBody .sched-task:not(.gcal) .v7111-time-btn,
+body.v7112-timeline-resize #schedBody .sched-task:not(.gcal) .v66-tl-del,
+body.v7112-timeline-resize #schedBody .sched-task:not(.gcal) .sched-undone-btn{
+  cursor:pointer !important;
 }
 .v7112-resize-handle{
   position:absolute;
@@ -19484,7 +19493,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 </style>
 
 <script id="v7112-timeline-resize-script">
-/* ===== v71.12: resize task duration without reviving unstable timeline move drag ===== */
+/* ===== v71.13: resize task duration without reviving unstable timeline move drag ===== */
 (function(){
   if(window.__v7112TimelineResize) return;
   window.__v7112TimelineResize=true;
@@ -19620,14 +19629,20 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     });
   }
 
+  function isActionTarget(target){
+    return !!(target&&target.closest&&target.closest('.v7111-time-btn,.v66-tl-del,.sched-undone-btn'));
+  }
   document.addEventListener('pointerdown',e=>{
     const handle=e.target.closest&&e.target.closest('.v7112-resize-handle');
-    const card=handle&&handle.closest('#schedBody .sched-task[data-id]:not(.gcal)');
+    const card=(handle&&handle.closest('#schedBody .sched-task[data-id]:not(.gcal)')) ||
+      (e.target.closest&&e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)'));
     const t=card&&byId(card.dataset.id);
-    if(!card || !t || !t.startTime || (e.button!==undefined && e.button!==0)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
+    if(!card || !t || !t.startTime || isActionTarget(e.target) || (e.button!==undefined && e.button!==0)) return;
+    if(handle){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
     const base=clampMin(t,t.planMin||15);
     active={
       id:String(t.id),
@@ -19640,7 +19655,6 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       scroll:{x:window.scrollX||window.pageXOffset||0,y:window.scrollY||window.pageYOffset||0},
       changed:false
     };
-    if(typeof window.v36PushTimelineUndo==='function') try{window.v36PushTimelineUndo();}catch(err){}
     window.__sasshyTimelineDragging=true;
     document.body.classList.add('v7112-resizing');
     card.classList.add('v7112-resizing-card','dragging','resizing');
@@ -19655,23 +19669,21 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     const delta=snap((e.clientY-active.startY)/active.ppm);
     const min=clampMin(t,active.baseMin+delta);
     if(min!==active.nextMin){
+      if(!active.changed && typeof window.v36PushTimelineUndo==='function') try{window.v36PushTimelineUndo();}catch(err){}
       active.nextMin=min;
       active.changed=true;
       preview(active.card,t,min,active.ppm);
     }
     showReadout(e.clientY,t,min);
-    if(Math.abs((window.scrollY||window.pageYOffset||0)-active.scroll.y)>1 || Math.abs((window.scrollX||window.pageXOffset||0)-active.scroll.x)>1){
-      window.scrollTo(active.scroll.x,active.scroll.y);
-    }
   },{capture:true,passive:false});
   function finish(e){
     if(!active || (e&&active.pointerId!==undefined && e.pointerId!==active.pointerId)) return;
     if(e){e.preventDefault();e.stopPropagation();}
     const done=cleanup();
     if(!done) return;
-    ignoreClickUntil=Date.now()+500;
     const t=byId(done.id);
     if(done.changed && t){
+      ignoreClickUntil=Date.now()+500;
       commit(t,done.nextMin);
       flush('タイムライン長さ変更',done.scroll);
     }else{
