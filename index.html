@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.5.2').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.6').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -18151,6 +18151,393 @@ body.v714-history-open .v714-history-overlay{display:flex;}
       rerender();
     }
   });
+})();
+</script>
+
+<style id="v716-safe-sync-style">
+.v716-safe-sync-note{
+  margin-top:8px;
+  border:1px solid rgba(16,166,116,.32);
+  border-radius:10px;
+  background:rgba(16,166,116,.08);
+  color:var(--text2);
+  padding:8px 9px;
+  font-size:11px;
+  font-weight:850;
+  line-height:1.45;
+}
+.v716-safe-sync-note b{color:var(--text);}
+#v716SafeSyncStatus{
+  display:block;
+  margin-top:4px;
+  color:var(--text3);
+}
+</style>
+<script id="v716-safe-sync-script">
+/* ===== v71.6: safe sync authority =====
+   Sync keeps local and cloud task/memo history instead of allowing one device
+   snapshot to erase the other. Uploads first read and merge the cloud row. */
+(function(){
+  if(window.__v716SafeSync) return;
+  window.__v716SafeSync=true;
+
+  const KEY='sasshy_quest_v5';
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const TABLE='/rest/v1/app_state';
+  const COUNTERS=new Set(['exp','level','totalKills','routineCombo']);
+  let syncing=false;
+  let internalApply=false;
+  let lastStatus='安全同期待機';
+  const lowerFetch=window.fetch;
+
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return v;}
+  }
+  function parse(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function cleanUrl(v){
+    return String(v||'').trim().replace(/\/rest\/v1\/?$/,'').replace(/\/+$/,'');
+  }
+  function cleanKey(v){
+    return String(v||'').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,'');
+  }
+  function loadCfg(){
+    return Object.assign({enabled:false,url:'',anonKey:'',syncKey:'',dirty:false,localUpdatedAt:0,remoteUpdatedAt:0,lastSyncAt:0},parse(localStorage.getItem(CFG_KEY),{}));
+  }
+  function saveCfg(cfg){
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch(e){}
+    try{if(typeof renderPanel==='function') renderPanel();}catch(e){}
+  }
+  function cfgProblem(cfg){
+    if(!cfg.url || !cfg.anonKey || !cfg.syncKey) return '同期設定が未入力です';
+    if(/^sb_secret_/i.test(cleanKey(cfg.anonKey))) return 'secret key はブラウザ同期に使えません';
+    return '';
+  }
+  function looksLikeJwt(k){return String(k||'').split('.').length===3;}
+  function syncHeaders(cfg, extra){
+    const key=cleanKey(cfg.anonKey);
+    const h={apikey:key,'Content-Type':'application/json'};
+    if(looksLikeJwt(key)) h.Authorization='Bearer '+key;
+    return Object.assign(h,extra||{});
+  }
+  function apiBase(cfg){return cleanUrl(cfg.url)+TABLE;}
+  function hasStateUrl(url){return String(url||'').includes(TABLE);}
+  function localState(){
+    if(typeof S!=='undefined' && S && typeof S==='object') return clone(S);
+    return clone(parse(localStorage.getItem(KEY),{}));
+  }
+  function dateMs(v){
+    if(typeof v==='number' && Number.isFinite(v)) return v;
+    if(typeof v==='string'){
+      const n=Number(v);
+      if(Number.isFinite(n) && n>1000000000) return n;
+      const t=Date.parse(v);
+      if(Number.isFinite(t)) return t;
+    }
+    return 0;
+  }
+  function itemStamp(x){
+    if(!x || typeof x!=='object') return 0;
+    return Math.max(
+      dateMs(x.updatedAt), dateMs(x.updated), dateMs(x.v45TouchedAt),
+      dateMs(x.completedAt), dateMs(x.doneAt), dateMs(x.undoneAt),
+      dateMs(x.pausedAt), dateMs(x.taskedAt), dateMs(x.createdAt),
+      dateMs(x.created), dateMs(x.endedAt), dateMs(x.startedAt),
+      dateMs(x.ts), dateMs(x.remindAt), dateMs(x.deletedAt)
+    );
+  }
+  function rowKey(x, path){
+    if(x && typeof x==='object'){
+      if(x.id!=null && x.id!=='') return 'id:'+String(x.id);
+      if((path==='memoCategories' || path.endsWith('.memoCategories')) && x.name) return 'name:'+String(x.name);
+    }
+    try{return 'json:'+JSON.stringify(x);}
+    catch(e){return 'raw:'+String(x);}
+  }
+  function mergeItem(local, remote, path){
+    if(!local || typeof local!=='object' || Array.isArray(local)) return clone(local!==undefined?local:remote);
+    if(!remote || typeof remote!=='object' || Array.isArray(remote)) return clone(local);
+    const preferLocal=itemStamp(local)>=itemStamp(remote);
+    const win=preferLocal?local:remote;
+    const lose=preferLocal?remote:local;
+    const out=Object.assign({},clone(lose),clone(win));
+    if(Array.isArray(local.subs) || Array.isArray(remote.subs)){
+      out.subs=mergeArray(local.subs||[],remote.subs||[],path+'.subs');
+    }
+    return out;
+  }
+  function mergeArray(local, remote, path){
+    const out=[];
+    const index=new Map();
+    function add(x, side){
+      const key=rowKey(x,path);
+      if(!index.has(key)){
+        index.set(key,out.length);
+        out.push(clone(x));
+        return;
+      }
+      const i=index.get(key);
+      const old=out[i];
+      out[i]=side==='local' ? mergeItem(x,old,path) : mergeItem(old,x,path);
+    }
+    (Array.isArray(local)?local:[]).forEach(x=>add(x,'local'));
+    (Array.isArray(remote)?remote:[]).forEach(x=>add(x,'remote'));
+    return out;
+  }
+  function isPlainObject(v){return !!v && typeof v==='object' && !Array.isArray(v);}
+  function mergeObject(local, remote, path){
+    const out=isPlainObject(remote)?clone(remote):{};
+    Object.keys(isPlainObject(local)?local:{}).forEach(k=>{
+      const lv=local[k];
+      const rv=out[k];
+      const p=path?path+'.'+k:k;
+      if(Array.isArray(lv) || Array.isArray(rv)) out[k]=mergeArray(lv||[],rv||[],p);
+      else if(isPlainObject(lv) || isPlainObject(rv)) out[k]=mergeObject(lv||{},rv||{},p);
+      else if(COUNTERS.has(k) && Number.isFinite(Number(lv)) && Number.isFinite(Number(rv))) out[k]=Math.max(Number(lv),Number(rv));
+      else if(lv!==undefined) out[k]=clone(lv);
+    });
+    return out;
+  }
+  function hasOpenRunning(state, id){
+    if(!state || !id) return false;
+    const task=(state.tasks||[]).find(t=>t&&t.id===id&&!t.done);
+    const session=(state.sessions||[]).find(s=>s&&s.taskId===id&&!s.endedAt);
+    return !!(task&&session);
+  }
+  function mergeState(local, remote){
+    local=isPlainObject(local)?local:{};
+    remote=isPlainObject(remote)?remote:{};
+    const out=mergeObject(local,remote,'');
+    Object.keys(remote).concat(Object.keys(local)).forEach(k=>{
+      const lv=local[k], rv=remote[k];
+      if(Array.isArray(lv) || Array.isArray(rv)) out[k]=mergeArray(lv||[],rv||[],k);
+      else if(COUNTERS.has(k) && Number.isFinite(Number(lv)) && Number.isFinite(Number(rv))) out[k]=Math.max(Number(lv),Number(rv));
+    });
+    if(hasOpenRunning(local,local.runningTaskId)) out.runningTaskId=local.runningTaskId;
+    else if(hasOpenRunning(remote,remote.runningTaskId)) out.runningTaskId=remote.runningTaskId;
+    else out.runningTaskId=null;
+    return out;
+  }
+  function jsonSame(a,b){
+    try{return JSON.stringify(a)===JSON.stringify(b);}
+    catch(e){return false;}
+  }
+  function refreshApp(){
+    try{if(typeof applyTheme==='function') applyTheme();}catch(e){}
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderPool==='function') renderPool();}catch(e){}
+    try{if(typeof renderRoutine==='function') renderRoutine();}catch(e){}
+    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    try{if(typeof updateRunningBadge==='function') updateRunningBadge();}catch(e){}
+    try{if(typeof renderQuestCoach==='function') renderQuestCoach();}catch(e){}
+    try{if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo(true);}catch(e){}
+  }
+  function snapshot(label){
+    try{if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot(label);}catch(e){}
+  }
+  function saveStateDirect(){
+    const saver=window.__v40OriginalSave || window.save;
+    try{if(typeof saver==='function') saver();}catch(e){}
+  }
+  function applyMerged(next, label){
+    if(internalApply || typeof S==='undefined' || !isPlainObject(next)) return false;
+    const before=localState();
+    if(jsonSame(before,next)) return false;
+    snapshot(label||'安全同期前');
+    internalApply=true;
+    try{
+      Object.keys(S).forEach(k=>delete S[k]);
+      Object.assign(S,clone(next));
+      saveStateDirect();
+      refreshApp();
+    }finally{
+      internalApply=false;
+    }
+    return true;
+  }
+  function status(text){
+    lastStatus=text;
+    const st=document.getElementById('v40SyncStatus');
+    if(st) st.textContent=(loadCfg().enabled?'ON ':'OFF ')+text;
+    const safe=document.getElementById('v716SafeSyncStatus');
+    if(safe) safe.textContent=text;
+  }
+  function notify(text){
+    if(typeof toast==='function'){
+      try{toast(text); return;}catch(e){}
+    }
+    status(text);
+  }
+  async function errorText(prefix,res){
+    let detail='';
+    try{
+      const raw=String(await res.clone().text()||'').replace(/\s+/g,' ').trim();
+      if(raw) detail=raw.slice(0,120);
+    }catch(e){}
+    return prefix+' '+res.status+(detail?' '+detail:'');
+  }
+  async function readRemote(base, syncKey, headers){
+    const url=base+'?sync_key=eq.'+encodeURIComponent(syncKey)+'&select=sync_key,data,updated_at&limit=1';
+    const res=await lowerFetch(url,{headers:headers});
+    if(!res.ok) throw new Error(await errorText('クラウド読込失敗',res));
+    const rows=await res.json();
+    return Array.isArray(rows)&&rows[0]?rows[0]:null;
+  }
+  async function writeRemote(base, cfg, data, headers){
+    const updated=new Date().toISOString();
+    const res=await lowerFetch(base,{
+      method:'POST',
+      headers:Object.assign({},headers||syncHeaders(cfg),{Prefer:'resolution=merge-duplicates,return=minimal'}),
+      body:JSON.stringify({sync_key:cfg.syncKey,data:data,updated_at:updated})
+    });
+    if(!res.ok) throw new Error(await errorText('クラウド保存失敗',res));
+    return updated;
+  }
+  function finishCfg(cfg, updated){
+    const ms=Date.parse(updated)||Date.now();
+    cfg.localUpdatedAt=ms;
+    cfg.remoteUpdatedAt=ms;
+    cfg.lastSyncAt=Date.now();
+    cfg.dirty=false;
+    saveCfg(cfg);
+  }
+  async function safeSync(reason){
+    if(syncing) return false;
+    const cfg=loadCfg();
+    const problem=cfgProblem(cfg);
+    if(problem){status(problem); notify(problem); return false;}
+    syncing=true;
+    status('安全同期中...');
+    snapshot('安全同期前');
+    try{
+      const base=apiBase(cfg);
+      const h=syncHeaders(cfg);
+      const row=await readRemote(base,cfg.syncKey,h);
+      const merged=mergeState(localState(),row&&row.data);
+      applyMerged(merged,'安全同期取込前');
+      const updated=await writeRemote(base,cfg,merged,h);
+      finishCfg(cfg,updated);
+      const done=(reason||'安全同期')+' 済み '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+      status(done);
+      notify(done);
+      return true;
+    }catch(e){
+      status('安全同期停止: '+e.message);
+      notify('安全同期を止めました: '+e.message);
+      return false;
+    }finally{
+      syncing=false;
+    }
+  }
+  function headersToObject(h){
+    if(!h) return {};
+    if(typeof Headers!=='undefined' && h instanceof Headers){
+      const o={}; h.forEach((v,k)=>o[k]=v); return o;
+    }
+    return Object.assign({},h);
+  }
+  function responseWithJson(rows,res){
+    return new Response(JSON.stringify(rows),{
+      status:res.status,
+      statusText:res.statusText,
+      headers:{'Content-Type':'application/json'}
+    });
+  }
+  function parsePostBody(init){
+    const raw=init&&init.body;
+    if(typeof raw!=='string') return null;
+    return parse(raw,null);
+  }
+  function wrapFetch(){
+    if(!lowerFetch || lowerFetch.__v716Wrapped) return;
+    const wrapped=function(input, init){
+      const url=String(typeof input==='string'?input:(input&&input.url)||'');
+      const method=String((init&&init.method)||'GET').toUpperCase();
+      if(!hasStateUrl(url)) return lowerFetch.apply(this,arguments);
+      if(method==='GET' && url.includes('sync_key=')){
+        return lowerFetch.apply(this,arguments).then(async res=>{
+          if(!res.ok) return res;
+          try{
+            const rows=await res.clone().json();
+            const row=Array.isArray(rows)?rows[0]:null;
+            if(row && row.data){
+              row.data=mergeState(localState(),row.data);
+              return responseWithJson(rows,res);
+            }
+          }catch(e){}
+          return res;
+        });
+      }
+      if(method==='POST'){
+        const body=parsePostBody(init);
+        if(!body || !body.sync_key || !body.data) return lowerFetch.apply(this,arguments);
+        return (async()=>{
+          const cfg=loadCfg();
+          const h=headersToObject(init&&init.headers);
+          const row=await readRemote(url,body.sync_key,h);
+          const merged=mergeState(body.data,row&&row.data);
+          applyMerged(merged,'安全自動同期取込前');
+          const nextInit=Object.assign({},init,{body:JSON.stringify(Object.assign({},body,{data:merged}))});
+          return lowerFetch.call(this,input,nextInit);
+        })().catch(e=>{
+          status('古い上書き送信を停止: '+e.message);
+          throw e;
+        });
+      }
+      return lowerFetch.apply(this,arguments);
+    };
+    wrapped.__v716Wrapped=true;
+    window.fetch=wrapped;
+  }
+  function installPanel(){
+    const body=document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!body) return false;
+    const push=body.querySelector('[data-v40-sync="push"]');
+    const pull=body.querySelector('[data-v40-sync="pull"]');
+    if(push){
+      push.textContent='安全同期する';
+      push.title='この端末とクラウドのタスク・メモを残して合わせる';
+    }
+    if(pull){
+      pull.textContent='安全取込する';
+      pull.title='クラウド取込時もこの端末のタスク・メモを残す';
+    }
+    if(!document.getElementById('v716SafeSyncNote')){
+      const note=document.createElement('div');
+      note.id='v716SafeSyncNote';
+      note.className='v716-safe-sync-note';
+      note.innerHTML='<b>安全同期:</b> Mac/iPhone のタスクとメモを残して合わせます。読み込めない状態で古い端末だけをアップロードする送信は止めます。<span id="v716SafeSyncStatus">'+escapeHtml(lastStatus)+'</span>';
+      body.appendChild(note);
+    }
+    return true;
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-v40-sync="push"],[data-v40-sync="pull"]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    safeSync(btn.dataset.v40Sync==='pull'?'安全取込':'安全同期');
+  },true);
+  function wrapFlush(){
+    window.sasshySyncFlush=function(reason){
+      const cfg=loadCfg();
+      if(!cfg.enabled) return;
+      safeSync(reason||'自動安全同期');
+    };
+  }
+  wrapFetch();
+  wrapFlush();
+  setTimeout(()=>{installPanel();wrapFlush();},1500);
+  setInterval(()=>{installPanel();wrapFlush();},4000);
+  window.sasshySafeSyncNow=safeSync;
 })();
 </script>
 
