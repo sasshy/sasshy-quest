@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.13').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.14').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17144,7 +17144,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.13';
+  const VERSION='v71.14';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -19415,10 +19415,10 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
 </script>
 
 <style id="v7112-timeline-resize-style">
-/* v71.13: stable duration resize from timeline cards */
+/* v71.14: stable move from card body and duration resize from card footer */
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal){
-  cursor:ns-resize !important;
-  padding-bottom:16px !important;
+  cursor:grab !important;
+  padding-bottom:24px !important;
   touch-action:none !important;
 }
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal) .v7111-time-btn,
@@ -19435,14 +19435,14 @@ body.v7112-timeline-resize #schedBody .sched-task:not(.gcal) .sched-undone-btn{
   display:flex;
   align-items:flex-end;
   justify-content:center;
-  height:18px;
+  height:28px;
   border:0;
   background:transparent;
   color:var(--text3);
   cursor:ns-resize;
   touch-action:none;
   pointer-events:auto !important;
-  padding:0 0 5px;
+  padding:0 0 7px;
 }
 .v7112-resize-handle::before{
   content:"";
@@ -19463,12 +19463,13 @@ body.v7112-resizing *{
   user-select:none !important;
 }
 body.v7112-resizing #schedBody .sched-task.v7112-resizing-card{
-  cursor:ns-resize !important;
   transition:none !important;
-  will-change:height;
+  will-change:top,height;
   outline:2px solid color-mix(in srgb, var(--text) 22%, transparent);
   outline-offset:-1px;
 }
+body.v7112-resizing.v7112-resize-mode #schedBody .sched-task.v7112-resizing-card{cursor:ns-resize !important;}
+body.v7112-resizing.v7112-move-mode #schedBody .sched-task.v7112-resizing-card{cursor:grabbing !important;}
 .v7112-resize-readout{
   position:fixed;
   left:50%;
@@ -19493,7 +19494,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 </style>
 
 <script id="v7112-timeline-resize-script">
-/* ===== v71.13: resize task duration without reviving unstable timeline move drag ===== */
+/* ===== v71.14: stable timeline move plus footer duration resize ===== */
 (function(){
   if(window.__v7112TimelineResize) return;
   window.__v7112TimelineResize=true;
@@ -19560,52 +19561,68 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     t.adhdReview='';
     t.adhdHiddenGenerated=false;
   }
-  function flush(reason, scroll){
+  function flush(reason){
     try{if(typeof save==='function') save();}catch(e){}
     try{if(reason&&typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason);}catch(e){}
-    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
     try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
-    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
-    if(scroll) requestAnimationFrame(()=>window.scrollTo(scroll.x,scroll.y));
   }
-  function preview(card, t, min, ppm){
+  function updateTime(card, t, begin, min){
+    const time=card.querySelector('.sched-task-time');
+    if(time) time.textContent=begin+'–'+hm(startMin(begin)+min)+' · '+min+'分'+(t.done?' · 実'+min+'分':'');
+  }
+  function previewDuration(card, t, min, ppm){
     const px=Math.max(min*ppm+3,50);
     card.style.setProperty('--v35-card-height',px+'px');
     card.style.height=px+'px';
     card.setAttribute('data-duration-label',min+'分');
-    const time=card.querySelector('.sched-task-time');
-    if(time){
-      const begin=t.startTime||hm(startMin(t.startTime));
-      time.textContent=begin+'–'+hm(startMin(begin)+min)+' · '+min+'分'+(t.done?' · 実'+min+'分':'');
-    }
+    updateTime(card,t,t.startTime||hm(startMin(t.startTime)),min);
   }
-  function showReadout(clientY, t, min){
+  function previewMove(card, t, min, ppm){
+    card.style.top=(min*ppm)+'px';
+    updateTime(card,t,hm(min),Math.max(SNAP_MIN,Number(t.planMin)||15));
+  }
+  function showReadout(clientY, begin, min, label){
     if(!readout){
       readout=document.createElement('div');
       readout.className='v7112-resize-readout';
       document.body.appendChild(readout);
     }
-    readout.textContent=(t.startTime||'--:--')+'–'+hm(startMin(t.startTime)+min)+' / '+min+'分';
+    readout.textContent=begin+'–'+hm(startMin(begin)+min)+' / '+min+'分'+(label?' '+label:'');
     readout.style.top=Math.max(10,Math.min(window.innerHeight-48,(Number(clientY)||0)-48))+'px';
   }
-  function commit(t, min){
+  function applyDoneTime(t, min){
+    const start=startTs(t,Date.now());
+    if(!t.done || !start) return;
+    const s=ensureCompletedSession(t,start,min);
+    s.startedAt=start;
+    s.endedAt=start+min*60000;
+    s.date=t.scheduledDate||s.date;
+    s.title=t.title||s.title;
+    s.rank=t.rank||s.rank;
+    t.actualMin=min;
+    t.actualEndTime=hm(startMin(t.startTime)+min);
+  }
+  function commitDuration(t, min){
     if(!t) return;
     min=clampMin(t,min);
     t.planMin=min;
     markEdit(t);
     if(t.done){
-      const start=startTs(t,Date.now());
-      if(start){
-        const s=ensureCompletedSession(t,start,min);
-        s.startedAt=start;
-        s.endedAt=start+min*60000;
-        s.date=t.scheduledDate||s.date;
-        s.title=t.title||s.title;
-        s.rank=t.rank||s.rank;
-        t.actualMin=min;
-        t.actualEndTime=hm(startMin(t.startTime)+min);
-        t.v7112ManualDoneDurationAt=t.v45TouchedAt;
-      }
+      applyDoneTime(t,min);
+      t.v7112ManualDoneDurationAt=t.v45TouchedAt;
+    }
+  }
+  function clampStart(t, min){
+    const dur=Math.max(SNAP_MIN,Number(t&&t.planMin)||15);
+    return snap(Math.max(0,Math.min(24*60-dur,Number(min)||0)));
+  }
+  function commitMove(t, min){
+    if(!t) return;
+    t.startTime=hm(clampStart(t,min));
+    markEdit(t);
+    if(t.done){
+      applyDoneTime(t,Math.max(SNAP_MIN,Number(t.planMin)||15));
+      t.v7112ManualDoneMoveAt=t.v45TouchedAt;
     }
   }
   function cleanup(){
@@ -19613,8 +19630,8 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     if(!done) return null;
     active=null;
     window.__sasshyTimelineDragging=false;
-    document.body.classList.remove('v7112-resizing');
-    done.card.classList.remove('v7112-resizing-card','dragging','resizing');
+    document.body.classList.remove('v7112-resizing','v7112-resize-mode','v7112-move-mode');
+    done.card.classList.remove('v7112-resizing-card');
     return done;
   }
   function addHandles(){
@@ -19638,28 +19655,29 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       (e.target.closest&&e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)'));
     const t=card&&byId(card.dataset.id);
     if(!card || !t || !t.startTime || isActionTarget(e.target) || (e.button!==undefined && e.button!==0)) return;
-    if(handle){
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
     const base=clampMin(t,t.planMin||15);
+    const begin=clampStart(t,startMin(t.startTime));
     active={
       id:String(t.id),
+      mode:handle?'resize':'move',
       card:card,
       pointerId:e.pointerId,
       startY:e.clientY,
       baseMin:base,
+      baseStart:begin,
       nextMin:base,
+      nextStart:begin,
       ppm:ppmFor(card),
-      scroll:{x:window.scrollX||window.pageXOffset||0,y:window.scrollY||window.pageYOffset||0},
       changed:false
     };
     window.__sasshyTimelineDragging=true;
-    document.body.classList.add('v7112-resizing');
-    card.classList.add('v7112-resizing-card','dragging','resizing');
-    try{handle.setPointerCapture(e.pointerId);}catch(err){}
-    showReadout(e.clientY,t,base);
+    document.body.classList.add('v7112-resizing',handle?'v7112-resize-mode':'v7112-move-mode');
+    card.classList.add('v7112-resizing-card');
+    try{card.setPointerCapture(e.pointerId);}catch(err){}
+    showReadout(e.clientY,t.startTime,base,handle?'長さ':'移動');
   },true);
   document.addEventListener('pointermove',e=>{
     if(!active || (active.pointerId!==undefined && e.pointerId!==active.pointerId)) return;
@@ -19667,14 +19685,25 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     if(!t) return;
     e.preventDefault();
     const delta=snap((e.clientY-active.startY)/active.ppm);
-    const min=clampMin(t,active.baseMin+delta);
-    if(min!==active.nextMin){
-      if(!active.changed && typeof window.v36PushTimelineUndo==='function') try{window.v36PushTimelineUndo();}catch(err){}
-      active.nextMin=min;
-      active.changed=true;
-      preview(active.card,t,min,active.ppm);
+    if(active.mode==='resize'){
+      const min=clampMin(t,active.baseMin+delta);
+      if(min!==active.nextMin){
+        if(!active.changed && typeof window.v36PushTimelineUndo==='function') try{window.v36PushTimelineUndo();}catch(err){}
+        active.nextMin=min;
+        active.changed=true;
+        previewDuration(active.card,t,min,active.ppm);
+      }
+      showReadout(e.clientY,t.startTime,min,'長さ');
+      return;
     }
-    showReadout(e.clientY,t,min);
+    const nextStart=clampStart(t,active.baseStart+delta);
+    if(nextStart!==active.nextStart){
+      if(!active.changed && typeof window.v36PushTimelineUndo==='function') try{window.v36PushTimelineUndo();}catch(err){}
+      active.nextStart=nextStart;
+      active.changed=true;
+      previewMove(active.card,t,nextStart,active.ppm);
+    }
+    showReadout(e.clientY,hm(nextStart),active.baseMin,'移動');
   },{capture:true,passive:false});
   function finish(e){
     if(!active || (e&&active.pointerId!==undefined && e.pointerId!==active.pointerId)) return;
@@ -19684,10 +19713,16 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     const t=byId(done.id);
     if(done.changed && t){
       ignoreClickUntil=Date.now()+500;
-      commit(t,done.nextMin);
-      flush('タイムライン長さ変更',done.scroll);
+      if(done.mode==='resize'){
+        commitDuration(t,done.nextMin);
+        flush('タイムライン長さ変更');
+      }else{
+        commitMove(t,done.nextStart);
+        flush('タイムライン移動');
+      }
     }else{
-      preview(done.card,t||{},done.baseMin,done.ppm);
+      if(done.mode==='resize') previewDuration(done.card,t||{},done.baseMin,done.ppm);
+      else if(t) previewMove(done.card,t,done.baseStart,done.ppm);
     }
   }
   document.addEventListener('pointerup',finish,true);
