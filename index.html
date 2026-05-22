@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.17').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.18').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.17';
+  const VERSION='v71.18';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -19013,6 +19013,7 @@ body.v719-roomy-timeline #schedBody .v718-agenda-row{
     t.actualMin=min;
     t.actualEndTime=hm(end);
     t.v45TouchedAt=Date.now();
+    t.v7118TimelineEditedAt=t.v45TouchedAt;
     t.v719ManualTimelineAt=t.v45TouchedAt;
     if(flush){
       try{if(typeof save==='function') save();}catch(e){}
@@ -19346,6 +19347,7 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
     t.startTime=startText;
     t.planMin=min;
     t.v45TouchedAt=Date.now();
+    t.v7118TimelineEditedAt=t.v45TouchedAt;
     t.v34ManualTodayDate=day;
     t.v34UserRequestedToday=true;
     t.adhdReview='';
@@ -19430,7 +19432,7 @@ body.v7111-editor-open .v7111-editor-overlay{display:flex;}
 </script>
 
 <style id="v7112-timeline-resize-style">
-/* v71.17: stable move from card body and duration resize from card footer */
+/* v71.18: stable move from card body and duration resize from card footer */
 body.v7112-timeline-resize #schedBody .sched-task:not(.gcal){
   cursor:grab !important;
   padding-bottom:24px !important;
@@ -19515,7 +19517,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 </style>
 
 <script id="v7112-timeline-resize-script">
-/* ===== v71.17: stable timeline move plus footer duration resize ===== */
+/* ===== v71.18: stable timeline move plus footer duration resize ===== */
 (function(){
   if(window.__v7112TimelineResize) return;
   window.__v7112TimelineResize=true;
@@ -19582,6 +19584,7 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   }
   function markEdit(t){
     t.v45TouchedAt=Date.now();
+    t.v7118TimelineEditedAt=t.v45TouchedAt;
     t.v34ManualTodayDate=t.scheduledDate||dayKey();
     t.v34UserRequestedToday=true;
     t.adhdReview='';
@@ -19818,6 +19821,133 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     window.renderSchedule=wrapped;
   }
   setTimeout(addHandles,450);
+})();
+</script>
+
+<script id="v7118-complete-keep-timeline-script">
+/* ===== v71.18: completion keeps timeline-edited time and duration ===== */
+(function(){
+  if(window.__v7118CompleteKeepTimeline) return;
+  window.__v7118CompleteKeepTimeline=true;
+
+  const MARK='v7118TimelineEditedAt';
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks) && Array.isArray(S.sessions);}
+  function byId(id){return ok() ? S.tasks.find(t=>t&&String(t.id)===String(id)) : null;}
+  function pad(n){return String(n).padStart(2,'0');}
+  function hm(min){
+    const n=((Number(min)||0)%(24*60)+24*60)%(24*60);
+    return pad(Math.floor(n/60))+':'+pad(n%60);
+  }
+  function startMin(text){
+    const m=String(text||'').match(/^(\d{1,2}):(\d{2})$/);
+    return m ? Number(m[1])*60+Number(m[2]) : null;
+  }
+  function stamp(day, text){
+    const min=startMin(text);
+    if(min===null || !day) return null;
+    const d=new Date(day+'T00:00:00');
+    if(Number.isNaN(d.getTime())) return null;
+    d.setHours(Math.floor(min/60),min%60,0,0);
+    return d.getTime();
+  }
+  function takeSnapshot(t){
+    if(!t || !Number(t[MARK]) || !t.scheduledDate || !t.startTime) return null;
+    const min=Math.max(1,Math.min(999,Number(t.planMin)||0));
+    const start=stamp(t.scheduledDate,t.startTime);
+    if(!min || start===null) return null;
+    return {
+      id:String(t.id),
+      day:t.scheduledDate,
+      time:t.startTime,
+      startMin:startMin(t.startTime),
+      min,
+      start,
+      end:start+min*60000,
+      mark:Number(t[MARK])||Date.now()
+    };
+  }
+  function latestCompleted(id){
+    return (S.sessions||[]).filter(s=>s&&String(s.taskId)===String(id)&&s.completed)
+      .sort((a,b)=>(Number(b.updatedAt)||Number(b.endedAt)||Number(b.startedAt)||0)-(Number(a.updatedAt)||Number(a.endedAt)||Number(a.startedAt)||0))[0] || null;
+  }
+  function makeCompleted(t, snap){
+    return {
+      id:'sess-v7118-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+      taskId:t.id,
+      title:t.title||'',
+      rank:t.rank||'zako',
+      startedAt:snap.start,
+      endedAt:snap.end,
+      completed:true,
+      date:snap.day
+    };
+  }
+  function saveLocal(){
+    const saver=window.__v40OriginalSave || window.save;
+    try{if(typeof saver==='function') saver();}catch(e){}
+  }
+  function preserve(snap){
+    if(!snap || !ok()) return false;
+    const t=byId(snap.id);
+    if(!t) return false;
+    const now=Date.now();
+    t.scheduledDate=snap.day;
+    t.startTime=snap.time;
+    t.planMin=snap.min;
+    t.actualMin=snap.min;
+    t.actualEndTime=hm(snap.startMin+snap.min);
+    t[MARK]=Math.max(Number(t[MARK]||0),snap.mark);
+    t.v7118TimelineKeptOnCompleteAt=now;
+    let s=latestCompleted(t.id);
+    if(!s && t.done){
+      s=makeCompleted(t,snap);
+      S.sessions.push(s);
+    }
+    if(s){
+      s.startedAt=snap.start;
+      s.endedAt=snap.end;
+      s.date=snap.day;
+      s.title=t.title||s.title||'';
+      s.rank=t.rank||s.rank||'zako';
+      s.completed=true;
+      s.updatedAt=now;
+      s.v7118TimelineKeptOnCompleteAt=now;
+    }
+    window.__sasshyTimelineEditQuietUntil=Math.max(Number(window.__sasshyTimelineEditQuietUntil||0),now+1800);
+    saveLocal();
+    return true;
+  }
+  function wrap(name){
+    const old=window[name];
+    if(typeof old!=='function' || old.__v7118CompleteKeepTimeline) return;
+    const wrapped=function(id){
+      const snap=takeSnapshot(byId(id));
+      const result=old.apply(this,arguments);
+      if(snap){
+        preserve(snap);
+        setTimeout(()=>preserve(snap),260);
+      }
+      return result;
+    };
+    wrapped.__v7118CompleteKeepTimeline=true;
+    window[name]=wrapped;
+  }
+  function completionButtonId(btn){
+    return btn&&(
+      btn.getAttribute('data-id') ||
+      (btn.closest('[data-id]')&&btn.closest('[data-id]').getAttribute('data-id')) ||
+      (btn.closest('[data-task-id]')&&btn.closest('[data-task-id]').getAttribute('data-task-id'))
+    );
+  }
+
+  wrap('finishTask');
+  wrap('sasshyCompleteTaskNow');
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest&&e.target.closest('[data-v18="done"],[data-act="done"],[data-v45="done"],[data-v34="done"],#qtdDoneBtn');
+    if(!btn) return;
+    const snap=takeSnapshot(byId(completionButtonId(btn)));
+    if(snap) setTimeout(()=>preserve(snap),360);
+  },true);
 })();
 </script>
 
