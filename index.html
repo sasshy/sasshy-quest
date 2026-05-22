@@ -9116,7 +9116,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.5.1').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.5.2').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -15343,6 +15343,7 @@ body.v68-quest #v7012HistoryBar{order:12;}
    what to do (完了 / continue / 中断). Detects "forgot to complete" cases.
    Also re-checks on tab return. */
 (function(){
+  const STOPPED_KEY='v716_checkpoint_stopped';
   function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
   function escapeHtml(s){
     return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15370,6 +15371,57 @@ body.v68-quest #v7012HistoryBar{order:12;}
     // ask if elapsed > 2x plan AND at least planMin+15min
     const threshold = Math.min(4 * 3600, Math.max(planSec * 2, planSec + 15*60));
     return elapsed > threshold;
+  }
+  function stoppedToken(task, session){
+    if(!task || !session) return '';
+    const taskId=String(session.taskId || task.id || '');
+    const started=Number(session.v71OriginalStartedAt) || Number(session.startedAt) || 0;
+    return taskId+'|'+(started ? String(started) : 'id:'+String(session.id||''));
+  }
+  function loadStoppedTokens(){
+    try{
+      const rows=JSON.parse(localStorage.getItem(STOPPED_KEY)||'[]');
+      return Array.isArray(rows) ? rows.filter(r=>r&&r.token) : [];
+    }catch(e){ return []; }
+  }
+  function rememberStopped(task, session){
+    const token=stoppedToken(task,session);
+    if(!token) return;
+    const rows=loadStoppedTokens().filter(r=>r.token!==token);
+    rows.unshift({token:token,stoppedAt:Date.now()});
+    try{ localStorage.setItem(STOPPED_KEY,JSON.stringify(rows.slice(0,80))); }catch(e){}
+  }
+  function pausedAfterThisSession(task, session){
+    const pausedAt=Number(task&&task.pausedAt)||0;
+    const realStart=Number(session&&session.v71OriginalStartedAt)||Number(session&&session.startedAt)||0;
+    return !!(pausedAt && realStart && pausedAt>=realStart);
+  }
+  function wasStopped(task, session){
+    const token=stoppedToken(task,session);
+    return !!(token && loadStoppedTokens().some(r=>r.token===token)) || pausedAfterThisSession(task,session);
+  }
+  function closeAlreadyStopped(task, session){
+    if(!ok() || !task || !session) return;
+    const token=stoppedToken(task,session);
+    const now=Date.now();
+    let changed=false;
+    (S.sessions||[]).forEach(s=>{
+      if(!s || s.endedAt || s.taskId!==task.id) return;
+      if(token && stoppedToken(task,s)!==token) return;
+      s.endedAt=now;
+      s.completed=false;
+      changed=true;
+    });
+    if(S.runningTaskId===task.id){
+      S.runningTaskId=null;
+      changed=true;
+    }
+    if(changed){
+      originalSave();
+      try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+      try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+      try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    }
   }
 
   let modalEl = null;
@@ -15440,6 +15492,7 @@ body.v68-quest #v7012HistoryBar{order:12;}
       originalSave();
       hideCheckpoint();
     } else if(act === 'stop'){
+      rememberStopped(task, session);
       hideCheckpoint();
       if(typeof window.sasshyForceStopTask === 'function'){
         window.sasshyForceStopTask(task.id);
@@ -15460,6 +15513,12 @@ body.v68-quest #v7012HistoryBar{order:12;}
     const task = getRunningTask();
     if(!session || !task){
       askedForSessionId = null;
+      return;
+    }
+    if(wasStopped(task, session)){
+      closeAlreadyStopped(task, session);
+      askedForSessionId = session.id;
+      hideCheckpoint();
       return;
     }
     if(session._v71CheckpointAsked && Date.now() - session._v71CheckpointAsked < 30 * 60 * 1000){
@@ -15881,7 +15940,9 @@ body.v68-quest #v7012HistoryBar{order:12;}
     renderAll();
     // Re-render periodically (catches sync changes)
     setInterval(()=>{
-      if(document.getElementById('v71MemoList')) renderMemoList();
+      if(!document.getElementById('v71MemoList')) return;
+      if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo();
+      else renderMemoList();
     }, 5000);
   }
   setTimeout(start, 800);
