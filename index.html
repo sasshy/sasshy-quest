@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.20').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.21').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -20790,6 +20790,720 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     }
     startTicking();
   }, 600);
+})();
+</script>
+
+<style id="v7121-day-clock-improvements-style">
+/* v71.21: bigger labels, click-to-add, week-of-circles mode */
+.v7120-sector-label,
+.v7121-sector-label{
+  fill:#fff;
+  font-family:inherit;
+  font-size:7px;
+  font-weight:900;
+  text-anchor:middle;
+  dominant-baseline:middle;
+  pointer-events:none;
+  text-shadow:0 1px 2px rgba(0,0,0,0.7);
+  paint-order:stroke;
+  stroke:rgba(0,0,0,0.4);
+  stroke-width:0.4;
+}
+.v7121-sector-label.small{font-size:5.5px;}
+.v7121-sector-label.dur{font-size:5px;font-weight:700;opacity:0.95;}
+.v7121-clock-bg-clickable{
+  cursor:crosshair;
+}
+.v7121-mode-toggle{
+  display:inline-flex;
+  gap:4px;
+  margin-left:10px;
+}
+.v7121-mode-toggle button{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text2);
+  border-radius:6px;
+  padding:4px 10px;
+  font-family:inherit;
+  font-weight:800;
+  font-size:11px;
+  cursor:pointer;
+  min-height:30px;
+}
+.v7121-mode-toggle button.active{
+  background:var(--text);
+  color:var(--surface);
+  border-color:var(--text);
+}
+.v7121-week-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+  gap:12px;
+  margin-top:14px;
+}
+.v7121-week-cell{
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:12px;
+  padding:8px 8px 12px;
+  cursor:pointer;
+  transition:transform 0.12s, box-shadow 0.12s;
+}
+.v7121-week-cell:hover{
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+.v7121-week-cell.today{border-color:#b81b1b;border-width:2px;background:#fff5f5;}
+.v7121-week-cell.weekend{background:var(--surface2);}
+.v7121-week-day-label{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  margin-bottom:6px;
+}
+.v7121-week-dow{
+  font-size:11px;
+  font-weight:900;
+  color:var(--text2);
+  letter-spacing:0.04em;
+}
+.v7121-week-dow.sat{color:#3b82f6;}
+.v7121-week-dow.sun{color:#b81b1b;}
+.v7121-week-date{
+  font-size:14px;
+  font-weight:950;
+  color:var(--text);
+}
+.v7121-week-cell.today .v7121-week-date{color:#b81b1b;}
+.v7121-week-count{
+  font-size:10px;
+  color:var(--text3);
+  text-align:center;
+  margin-top:4px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v7121-week-cell.today .v7121-week-count{color:#b81b1b;font-weight:900;}
+
+.v7121-add-modal{
+  position:fixed;
+  inset:0;
+  z-index:9900;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,0.5);
+  padding:20px;
+}
+.v7121-add-modal.open{display:flex;}
+.v7121-add-card{
+  background:var(--surface);
+  border:2px solid var(--border);
+  border-radius:14px;
+  padding:18px 20px;
+  width:100%;
+  max-width:360px;
+  box-shadow:0 12px 36px rgba(0,0,0,0.3);
+}
+.v7121-add-title{
+  font-size:14px;
+  font-weight:950;
+  color:var(--text);
+  margin-bottom:6px;
+}
+.v7121-add-sub{
+  font-size:11px;
+  color:var(--text3);
+  margin-bottom:12px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v7121-add-row{margin-bottom:9px;}
+.v7121-add-row input,
+.v7121-add-row select{
+  width:100%;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  font-family:inherit;
+  font-size:14px;
+  outline:none;
+  box-sizing:border-box;
+}
+.v7121-add-row-2{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.v7121-add-actions{
+  display:flex;
+  gap:6px;
+  margin-top:12px;
+}
+.v7121-add-actions button{
+  flex:1;
+  padding:10px 14px;
+  border:1.5px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:10px;
+  font-family:inherit;
+  font-weight:900;
+  font-size:13px;
+  cursor:pointer;
+  min-height:42px;
+}
+.v7121-add-actions button.primary{
+  background:var(--text);
+  color:var(--surface);
+  border-color:var(--text);
+}
+.v7121-add-actions button.cancel{color:var(--text3);}
+</style>
+
+<script id="v7121-day-clock-improvements-script">
+/* ===== v71.21: improvements to the 24-hour clock view =====
+   - Larger sector labels (always visible if dur >= 12 min)
+   - Click on background ring opens "add task at this time" modal
+   - Mode toggle: single day / week (7 mini circles)
+   - Mini circles in week mode are clickable to drill into single day */
+(function(){
+  if(window.__v7121Loaded) return;
+  window.__v7121Loaded=true;
+
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function pad(n){return String(n).padStart(2,'0');}
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function originalSave(){
+    const sv=window.__v40OriginalSave||window.save;
+    try{ if(typeof sv==='function') sv(); }catch(e){}
+  }
+
+  // === Geometry helpers (same as v7120) ===
+  function timeToAngle(min){return (min/1440)*360-90;}
+  function polar(cx,cy,r,deg){
+    const rad=deg*Math.PI/180;
+    return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)};
+  }
+  function arcPath(cx,cy,ro,ri,startDeg,endDeg){
+    if(endDeg-startDeg<0.0001) endDeg=startDeg+0.0001;
+    const large=(endDeg-startDeg)>180?1:0;
+    const s1=polar(cx,cy,ro,startDeg);
+    const e1=polar(cx,cy,ro,endDeg);
+    const s2=polar(cx,cy,ri,endDeg);
+    const e2=polar(cx,cy,ri,startDeg);
+    return `M ${s1.x.toFixed(2)} ${s1.y.toFixed(2)} A ${ro} ${ro} 0 ${large} 1 ${e1.x.toFixed(2)} ${e1.y.toFixed(2)} L ${s2.x.toFixed(2)} ${s2.y.toFixed(2)} A ${ri} ${ri} 0 ${large} 0 ${e2.x.toFixed(2)} ${e2.y.toFixed(2)} Z`;
+  }
+  function startMin(text){
+    const m=String(text||'').match(/^(\d{1,2}):(\d{2})$/);
+    return m?Number(m[1])*60+Number(m[2]):null;
+  }
+  function tasksOnDate(dateKey){
+    if(!ok()) return [];
+    const out=[];
+    (S.tasks||[]).forEach(t=>{
+      if(!t||!t.startTime) return;
+      const min=startMin(t.startTime);
+      if(min===null) return;
+      const planMin=Math.max(5, Number(t.planMin)||15);
+      if(t.scheduledDate===dateKey){
+        out.push({
+          id:t.id,
+          title:t.title||'(無題)',
+          startMin:min, dur:planMin,
+          done:!!t.done,
+          running:S.runningTaskId===t.id,
+          kind:'task',
+          rank:t.rank||'zako'
+        });
+      }
+    });
+    (S.sessions||[]).forEach(s=>{
+      if(!s||s.date!==dateKey) return;
+      if(!String(s.taskId||'').startsWith('routine:')) return;
+      const startedAt=s.startedAt||0;
+      if(!startedAt) return;
+      const d=new Date(startedAt);
+      const min=d.getHours()*60+d.getMinutes();
+      const dur=Math.max(1, Math.round(((s.endedAt||Date.now())-startedAt)/60000));
+      const rid=String(s.taskId).slice(8);
+      const r=(S.routine||[]).find(x=>x.id===rid);
+      out.push({
+        id:'routine:'+rid+':'+s.id,
+        title:(r&&r.name)||'ルーティン',
+        startMin:min, dur:dur,
+        done:!!s.completed, running:false, kind:'routine'
+      });
+    });
+    try{
+      if(typeof gcalEventsForDate==='function'){
+        gcalEventsForDate(dateKey).forEach(e=>{
+          if(e.allDay || !e.startTime) return;
+          const min=startMin(e.startTime);
+          if(min===null) return;
+          out.push({
+            id:'gcal:'+e.id,
+            title:e.title||'(GCal)',
+            startMin:min, dur:Math.max(5,Number(e.planMin)||30),
+            done:false, running:false, kind:'gcal'
+          });
+        });
+      }
+    }catch(err){}
+    return out;
+  }
+  function colorFor(item){
+    if(item.done) return '#94a3b8';
+    if(item.running) return '#b81b1b';
+    if(item.kind==='routine') return '#a78bfa';
+    if(item.kind==='gcal') return '#3b82f6';
+    if(item.rank==='boss') return '#1f1f1f';
+    if(item.rank==='mid') return '#475569';
+    return '#0ea5e9';
+  }
+  function layoutItems(items){
+    items.sort((a,b)=>a.startMin-b.startMin || a.dur-b.dur);
+    const lanes=[];
+    items.forEach(it=>{
+      let placed=false;
+      for(let i=0;i<lanes.length;i++){
+        const lane=lanes[i];
+        const last=lane[lane.length-1];
+        if(last.startMin+last.dur<=it.startMin){
+          lane.push(it); it.lane=i; placed=true; break;
+        }
+      }
+      if(!placed){
+        lanes.push([it]); it.lane=lanes.length-1;
+      }
+    });
+    return {items, laneCount:Math.max(1,lanes.length)};
+  }
+
+  // === Build SVG for a date ===
+  // size: 'large' for main, 'small' for week mini
+  function buildClockSvg(dateKey, size){
+    size=size||'large';
+    const items=tasksOnDate(dateKey);
+    const {items:laidItems, laneCount}=layoutItems(items);
+    const today=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+    const isToday=dateKey===today;
+    const now=new Date();
+    const nowMin=now.getHours()*60+now.getMinutes();
+    const cx=100, cy=100;
+    const rOuter=size==='small'?90:92, rInner=size==='small'?38:42;
+    const ringSpace=rOuter-rInner;
+
+    let svg='';
+    // Background ring - clickable for "add at this time"
+    svg+=`<circle class="v7120-clock-bg v7121-clock-bg-clickable" cx="${cx}" cy="${cy}" r="${rOuter}" data-v7121-bg="1"></circle>`;
+
+    // Hour ticks
+    for(let h=0;h<24;h++){
+      const a=timeToAngle(h*60);
+      const p1=polar(cx,cy,rOuter,a);
+      const p2=polar(cx,cy,rOuter-(h%3===0?6:3),a);
+      svg+=`<line class="v7120-clock-tick ${h%6===0?'major':''}" x1="${p1.x.toFixed(2)}" y1="${p1.y.toFixed(2)}" x2="${p2.x.toFixed(2)}" y2="${p2.y.toFixed(2)}" pointer-events="none"></line>`;
+    }
+    // Hour labels at 0,3,...,21
+    if(size==='large'){
+      for(let h=0;h<24;h+=3){
+        const a=timeToAngle(h*60);
+        const p=polar(cx,cy,rOuter+5,a);
+        svg+=`<text class="v7120-hour-label ${h%6===0?'major':''}" x="${p.x.toFixed(2)}" y="${p.y.toFixed(2)}" pointer-events="none">${h}</text>`;
+      }
+    } else {
+      // simpler: only 0, 6, 12, 18
+      [0,6,12,18].forEach(h=>{
+        const a=timeToAngle(h*60);
+        const p=polar(cx,cy,rOuter+5,a);
+        svg+=`<text class="v7120-hour-label major" x="${p.x.toFixed(2)}" y="${p.y.toFixed(2)}" pointer-events="none">${h}</text>`;
+      });
+    }
+
+    // Task sectors
+    const laneRingWidth=Math.max(8, ringSpace/Math.max(2,laneCount));
+    laidItems.forEach(it=>{
+      const startA=timeToAngle(it.startMin);
+      const endA=timeToAngle(it.startMin+it.dur);
+      const laneOuter=rOuter-it.lane*laneRingWidth;
+      const laneInner=Math.max(rInner, laneOuter-laneRingWidth+2);
+      const path=arcPath(cx,cy,laneOuter,laneInner,startA,endA);
+      const cls=['v7120-sector'];
+      if(it.done) cls.push('done');
+      if(it.running) cls.push('running');
+      if(it.kind==='routine') cls.push('routine');
+      if(it.kind==='gcal') cls.push('gcal');
+      svg+=`<path class="${cls.join(' ')}" d="${path}" fill="${colorFor(it)}" data-v7120-id="${escapeHtml(it.id)}" data-v7120-kind="${it.kind}">
+        <title>${escapeHtml(pad(Math.floor(it.startMin/60))+':'+pad(it.startMin%60)+' · '+it.dur+'分 · '+it.title)}</title>
+      </path>`;
+
+      // Label: visible if duration is enough OR if it's the only one in its lane
+      if(size==='large'){
+        const showLabel = it.dur >= 12;
+        if(showLabel){
+          const midA=(startA+endA)/2;
+          const labelR=(laneOuter+laneInner)/2;
+          const lp=polar(cx,cy,labelR,midA);
+          // Determine max chars by sector arc length (in pixels)
+          const arcLen=Math.abs(endA-startA)/360 * 2*Math.PI * labelR;
+          const maxChars = Math.max(2, Math.floor(arcLen/3.5));
+          const baseTitle=(it.title||'').slice(0, Math.min(14, maxChars));
+          const sizeCls = it.dur < 25 ? 'small' : '';
+          svg+=`<text class="v7121-sector-label ${sizeCls}" x="${lp.x.toFixed(2)}" y="${lp.y.toFixed(2)}">${escapeHtml(baseTitle)}</text>`;
+          // Duration sub-label below
+          if(it.dur >= 25){
+            const lp2={x:lp.x, y:lp.y+5.5};
+            svg+=`<text class="v7121-sector-label dur" x="${lp2.x.toFixed(2)}" y="${lp2.y.toFixed(2)}">${pad(Math.floor(it.startMin/60))}:${pad(it.startMin%60)} ${it.dur}分</text>`;
+          }
+        }
+      }
+    });
+
+    // Inner circle
+    svg+=`<circle class="v7120-clock-inner" cx="${cx}" cy="${cy}" r="${rInner-1}" pointer-events="none"></circle>`;
+
+    // Current time pointer
+    if(isToday){
+      const a=timeToAngle(nowMin);
+      const p=polar(cx,cy,rOuter-2,a);
+      svg+=`<line class="v7120-now-line" x1="${cx}" y1="${cy}" x2="${p.x.toFixed(2)}" y2="${p.y.toFixed(2)}" pointer-events="none"></line>`;
+      svg+=`<circle class="v7120-now-dot" cx="${cx}" cy="${cy}" r="2.5" pointer-events="none"></circle>`;
+      const tip=polar(cx,cy,rOuter-1,a);
+      const back1=polar(cx,cy,rOuter-7, a-3);
+      const back2=polar(cx,cy,rOuter-7, a+3);
+      svg+=`<polygon class="v7120-now-arrow" points="${tip.x.toFixed(2)},${tip.y.toFixed(2)} ${back1.x.toFixed(2)},${back1.y.toFixed(2)} ${back2.x.toFixed(2)},${back2.y.toFixed(2)}" pointer-events="none"></polygon>`;
+    }
+
+    // Center text
+    if(size==='large'){
+      const total=laidItems.length;
+      const doneCount=laidItems.filter(x=>x.done).length;
+      const centerTime = isToday ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '';
+      if(isToday){
+        svg+=`<text class="v7120-center-time" x="${cx}" y="${cy-6}" pointer-events="none">${centerTime}</text>`;
+        svg+=`<text class="v7120-center-date" x="${cx}" y="${cy+4}" pointer-events="none">${escapeHtml(fmtDateLabel(dateKey))}</text>`;
+        svg+=`<text class="v7120-center-stat" x="${cx}" y="${cy+13}" pointer-events="none">完了 ${doneCount}/${total}</text>`;
+      } else {
+        svg+=`<text class="v7120-center-time" x="${cx}" y="${cy-2}" style="font-size:10px;" pointer-events="none">${escapeHtml(fmtDateLabel(dateKey))}</text>`;
+        svg+=`<text class="v7120-center-stat" x="${cx}" y="${cy+10}" pointer-events="none">完了 ${doneCount}/${total}</text>`;
+      }
+    }
+
+    return {svg, items:laidItems};
+  }
+
+  function fmtDateLabel(key){
+    const d=new Date(key+'T00:00:00');
+    const dow=['日','月','火','水','木','金','土'][d.getDay()];
+    const today=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+    const prefix = key===today ? '今日 ' : '';
+    return `${prefix}${d.getMonth()+1}/${d.getDate()}(${dow})`;
+  }
+  function shiftDate(key,days){
+    const d=new Date(key+'T00:00:00');
+    d.setDate(d.getDate()+days);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function weekStartFor(key){
+    const d=new Date(key+'T00:00:00');
+    // Week starts Sunday
+    const dow=d.getDay();
+    d.setDate(d.getDate()-dow);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  // === MODE state ===
+  function getMode(){
+    return window.__v7120Mode || 'single';
+  }
+  function setMode(m){
+    window.__v7120Mode=m;
+  }
+
+  // === Click-to-add modal ===
+  let addModalEl=null;
+  function ensureAddModal(){
+    if(addModalEl) return addModalEl;
+    addModalEl=document.createElement('div');
+    addModalEl.id='v7121AddModal';
+    addModalEl.className='v7121-add-modal';
+    document.body.appendChild(addModalEl);
+    return addModalEl;
+  }
+  function openAddAt(dateKey, hour, minute){
+    const el=ensureAddModal();
+    const timeLabel=`${pad(hour)}:${pad(minute)}`;
+    el.innerHTML=`
+      <div class="v7121-add-card">
+        <div class="v7121-add-title">新しいタスクを追加</div>
+        <div class="v7121-add-sub">${escapeHtml(fmtDateLabel(dateKey))} ${timeLabel} から</div>
+        <div class="v7121-add-row">
+          <input id="v7121AddTitle" type="text" placeholder="タスク名" autocomplete="off">
+        </div>
+        <div class="v7121-add-row v7121-add-row-2">
+          <input id="v7121AddTime" type="time" value="${timeLabel}">
+          <input id="v7121AddMin" type="number" min="1" max="999" value="30" placeholder="予定分">
+        </div>
+        <div class="v7121-add-actions">
+          <button class="cancel" data-v7121-add="cancel" type="button">取消</button>
+          <button class="primary" data-v7121-add="save" type="button">追加</button>
+        </div>
+      </div>`;
+    el.classList.add('open');
+    setTimeout(()=>{
+      const t=document.getElementById('v7121AddTitle');
+      if(t) t.focus();
+    }, 50);
+    el.onclick=(e)=>{
+      const btn=e.target.closest('[data-v7121-add]');
+      if(!btn) return;
+      const act=btn.dataset.v7121Add;
+      if(act==='cancel'){
+        el.classList.remove('open');
+      } else if(act==='save'){
+        const title=(document.getElementById('v7121AddTitle')?.value||'').trim();
+        const time=document.getElementById('v7121AddTime')?.value || timeLabel;
+        const planMin=Math.max(1, Math.min(999, Number(document.getElementById('v7121AddMin')?.value)||30));
+        if(!title){
+          document.getElementById('v7121AddTitle')?.focus();
+          return;
+        }
+        const raw={
+          title:title,
+          planMin:planMin,
+          startTime:time,
+          scheduledDate:dateKey,
+          nextAction:''
+        };
+        let added=false;
+        if(typeof window.sasshyAddTaskSafe==='function'){
+          const r=window.sasshyAddTaskSafe(raw, {today: dateKey===((typeof todayKey==='function')?todayKey():''), allowDeleted:true});
+          added=!!(r&&r.added);
+        }
+        if(!added && ok()){
+          const task=Object.assign({
+            id:'task-v7121-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+            done:false, subs:[], created:Date.now(), createdDate:dateKey, rank:'zako', lane:'now'
+          }, raw);
+          S.tasks.unshift(task);
+          added=true;
+        }
+        if(added){
+          originalSave();
+          try{ if(typeof renderTasks==='function') renderTasks(); }catch(_){}
+          try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(_){}
+          el.classList.remove('open');
+          renderDayClockV2();
+        }
+      }
+    };
+    el.addEventListener('keydown',e=>{
+      if(e.key==='Enter') e.target.closest('.v7121-add-card')?.querySelector('[data-v7121-add="save"]')?.click();
+      if(e.key==='Escape') el.classList.remove('open');
+    });
+  }
+
+  // Convert SVG click coordinates to time-of-day
+  function clickToMin(evt, svgEl){
+    const pt=svgEl.createSVGPoint();
+    pt.x=evt.clientX;
+    pt.y=evt.clientY;
+    const ctm=svgEl.getScreenCTM();
+    if(!ctm) return null;
+    const inv=ctm.inverse();
+    const p=pt.matrixTransform(inv);
+    const dx=p.x-100, dy=p.y-100;
+    const r=Math.sqrt(dx*dx+dy*dy);
+    if(r<35) return null; // center area
+    // angle: 0 at top, clockwise positive
+    let rad=Math.atan2(dy,dx);
+    // shift so top = 0
+    let deg=rad*180/Math.PI + 90;
+    if(deg<0) deg+=360;
+    const min=Math.round((deg/360)*1440);
+    return min;
+  }
+
+  // === Re-implemented render ===
+  function renderDayClockV2(){
+    const container=document.getElementById('dayClockContainer');
+    if(!container) return;
+    const mode=getMode();
+    const dateKey=window.__v7120ViewDate || (typeof todayKey==='function'?todayKey():new Date().toISOString().slice(0,10));
+
+    let html='';
+    html+=`<div class="v7120-nav">
+      <button data-v7120-nav="prev" type="button">◂</button>
+      <span class="v7120-date-label">${mode==='week'?escapeHtml(fmtDateLabel(weekStartFor(dateKey)).replace(/^今日\s*/,''))+'の週':escapeHtml(fmtDateLabel(dateKey))}</span>
+      <button data-v7120-nav="next" type="button">▸</button>
+      <button data-v7120-nav="today" type="button">今日</button>
+      <span class="v7121-mode-toggle">
+        <button data-v7121-mode="single" class="${mode==='single'?'active':''}" type="button">1日</button>
+        <button data-v7121-mode="week" class="${mode==='week'?'active':''}" type="button">1週間</button>
+      </span>
+    </div>`;
+    html+=`<div class="v7120-hint">セクター=タップで詳細、円の中の空きをタップ=その時刻に追加${mode==='week'?'、円自体をタップ=その日の詳細':''}</div>`;
+
+    if(mode==='single'){
+      const {svg, items}=buildClockSvg(dateKey, 'large');
+      html+=`<div class="v7120-clock-wrap">
+        <svg class="v7120-clock-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">${svg}</svg>
+      </div>`;
+      if(!items.length){
+        html+=`<div class="v7120-empty">この日に時刻つきタスクはありません。<br>円の中をタップしてその時刻にタスク追加できます。</div>`;
+      } else {
+        html+=`<div class="v7120-legend">
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#0ea5e9"></span>ザコ</div>
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#475569"></span>中ボス</div>
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#1f1f1f"></span>ボス</div>
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#a78bfa"></span>ルーティン</div>
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#3b82f6"></span>GCal</div>
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#b81b1b"></span>実行中</div>
+          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#94a3b8"></span>完了</div>
+        </div>`;
+      }
+    } else {
+      // week mode
+      const weekStart=weekStartFor(dateKey);
+      const today=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+      html+=`<div class="v7121-week-grid">`;
+      for(let i=0;i<7;i++){
+        const dk=shiftDate(weekStart,i);
+        const d=new Date(dk+'T00:00:00');
+        const dow=['日','月','火','水','木','金','土'][d.getDay()];
+        const dowCls=d.getDay()===0?'sun':(d.getDay()===6?'sat':'');
+        const isTodayCell=dk===today;
+        const isWeekend=d.getDay()===0 || d.getDay()===6;
+        const {svg, items}=buildClockSvg(dk, 'small');
+        const total=items.length;
+        const doneCount=items.filter(x=>x.done).length;
+        const cls=['v7121-week-cell'];
+        if(isTodayCell) cls.push('today');
+        if(isWeekend) cls.push('weekend');
+        html+=`<div class="${cls.join(' ')}" data-v7121-day="${dk}">
+          <div class="v7121-week-day-label">
+            <span class="v7121-week-dow ${dowCls}">${dow}</span>
+            <span class="v7121-week-date">${d.getMonth()+1}/${d.getDate()}</span>
+          </div>
+          <svg class="v7120-clock-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" data-v7121-mini-day="${dk}">${svg}</svg>
+          <div class="v7121-week-count">${doneCount}/${total} 件</div>
+        </div>`;
+      }
+      html+=`</div>`;
+    }
+
+    container.innerHTML=html;
+    container.removeEventListener('click', onClickV2, true);
+    container.addEventListener('click', onClickV2, true);
+  }
+
+  function onClickV2(e){
+    // Mode toggle
+    const modeBtn=e.target.closest('[data-v7121-mode]');
+    if(modeBtn){
+      setMode(modeBtn.dataset.v7121Mode);
+      renderDayClockV2();
+      return;
+    }
+    // Nav
+    const nav=e.target.closest('[data-v7120-nav]');
+    if(nav){
+      const act=nav.dataset.v7120Nav;
+      const cur=window.__v7120ViewDate || (typeof todayKey==='function'?todayKey():new Date().toISOString().slice(0,10));
+      const mode=getMode();
+      const step = mode==='week' ? 7 : 1;
+      if(act==='prev') window.__v7120ViewDate=shiftDate(cur,-step);
+      else if(act==='next') window.__v7120ViewDate=shiftDate(cur,step);
+      else if(act==='today') window.__v7120ViewDate=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+      renderDayClockV2();
+      return;
+    }
+    // Sector → detail
+    const sector=e.target.closest('[data-v7120-id]');
+    if(sector){
+      const id=sector.dataset.v7120Id;
+      const kind=sector.dataset.v7120Kind;
+      if(kind==='task' && id && typeof openTaskDetail==='function'){
+        openTaskDetail(id);
+      }
+      return;
+    }
+    // Week mini circle click → switch to single mode for that day
+    if(getMode()==='week'){
+      const cell=e.target.closest('[data-v7121-day]');
+      if(cell){
+        const dk=cell.dataset.v7121Day;
+        window.__v7120ViewDate=dk;
+        setMode('single');
+        renderDayClockV2();
+        return;
+      }
+    }
+    // Background click → add task at clicked time
+    const bg=e.target.closest('[data-v7121-bg]');
+    if(bg){
+      const svgEl=bg.closest('svg');
+      if(svgEl){
+        const min=clickToMin(e, svgEl);
+        if(min===null) return;
+        // Round to 15 min
+        const rounded=Math.round(min/15)*15;
+        const hour=Math.floor(rounded/60) % 24;
+        const minute=rounded%60;
+        const dateKey = svgEl.dataset.v7121MiniDay || window.__v7120ViewDate || ((typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10));
+        openAddAt(dateKey, hour, minute);
+      }
+      return;
+    }
+  }
+
+  // Override v7120 renderDayClock by replacing the global click handler / re-render
+  // Simplest: hook the existing button to call v2 instead
+  function installV2(){
+    // Patch the 24h button to call our v2
+    const btn=document.querySelector('.vs-btn[data-view="clock"]');
+    if(!btn) return false;
+    // Replace its handler
+    const newBtn=btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', ()=>{
+      document.querySelectorAll('.vs-btn').forEach(b=>b.classList.remove('active'));
+      newBtn.classList.add('active');
+      try{document.getElementById('schedHdrDay').style.display='none';}catch(_){}
+      try{document.getElementById('schedBody').style.display='none';}catch(_){}
+      try{document.getElementById('weekViewContainer').style.display='none';}catch(_){}
+      try{document.getElementById('monthViewContainer').style.display='none';}catch(_){}
+      const c=document.getElementById('dayClockContainer');
+      if(c){
+        c.style.display='block';
+        try{window.questCurrentView='clock';}catch(_){}
+        renderDayClockV2();
+      }
+    });
+    return true;
+  }
+
+  // tick re-render for current-time pointer (only single mode)
+  setInterval(()=>{
+    const c=document.getElementById('dayClockContainer');
+    if(c && c.style.display!=='none' && getMode()==='single'){
+      renderDayClockV2();
+    }
+  }, 60*1000);
+
+  setTimeout(()=>{
+    if(!installV2()){
+      let tries=0;
+      const iv=setInterval(()=>{ if(installV2() || ++tries>40) clearInterval(iv); }, 250);
+    }
+    // If clock is already open (refresh) render v2
+    const c=document.getElementById('dayClockContainer');
+    if(c && c.style.display==='block') renderDayClockV2();
+  }, 900);
 })();
 </script>
 
