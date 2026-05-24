@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.19').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.20').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -20224,6 +20224,572 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   tryWrapAll();
   setTimeout(tryWrapAll, 400);
   setTimeout(tryWrapAll, 1500);
+})();
+</script>
+
+<style id="v7120-day-clock-style">
+/* v71.20: 24-hour circular day-view for at-a-glance day visualization */
+
+#dayClockContainer{
+  display:none;
+  padding:8px 0 20px;
+}
+.v7120-clock-wrap{
+  position:relative;
+  width:100%;
+  max-width:480px;
+  margin:0 auto;
+  user-select:none;
+}
+.v7120-clock-svg{
+  width:100%;
+  height:auto;
+  display:block;
+}
+.v7120-clock-bg{
+  fill:var(--surface2);
+  stroke:var(--border);
+  stroke-width:1;
+}
+.v7120-clock-inner{
+  fill:var(--surface);
+  stroke:var(--border);
+  stroke-width:0.5;
+}
+.v7120-clock-tick{
+  stroke:var(--text3);
+  stroke-width:0.6;
+  opacity:0.5;
+}
+.v7120-clock-tick.major{
+  stroke:var(--text2);
+  stroke-width:1.2;
+  opacity:0.85;
+}
+.v7120-hour-label{
+  fill:var(--text2);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:6.5px;
+  font-weight:700;
+  text-anchor:middle;
+  dominant-baseline:middle;
+}
+.v7120-hour-label.major{
+  fill:var(--text);
+  font-size:8px;
+  font-weight:900;
+}
+.v7120-sector{
+  cursor:pointer;
+  transition:opacity 0.15s, transform 0.15s;
+  transform-origin:center;
+}
+.v7120-sector:hover{
+  opacity:0.85;
+  filter:brightness(1.08);
+}
+.v7120-sector.done{opacity:0.55;}
+.v7120-sector.running{
+  stroke:#b81b1b;
+  stroke-width:2;
+  filter:drop-shadow(0 0 4px rgba(184,27,27,0.6));
+}
+.v7120-sector.routine{opacity:0.45;}
+.v7120-sector.gcal{opacity:0.6;}
+.v7120-sector-label{
+  fill:#fff;
+  font-family:inherit;
+  font-size:4.5px;
+  font-weight:900;
+  text-anchor:middle;
+  dominant-baseline:middle;
+  pointer-events:none;
+  text-shadow:0 0 2px rgba(0,0,0,0.7);
+}
+.v7120-now-line{
+  stroke:#b81b1b;
+  stroke-width:1.2;
+  stroke-linecap:round;
+  filter:drop-shadow(0 0 3px rgba(184,27,27,0.6));
+}
+.v7120-now-arrow{fill:#b81b1b;}
+.v7120-now-dot{fill:#b81b1b;}
+.v7120-center-time{
+  fill:var(--text);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:12px;
+  font-weight:950;
+  text-anchor:middle;
+  dominant-baseline:middle;
+}
+.v7120-center-date{
+  fill:var(--text3);
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:5.5px;
+  font-weight:700;
+  text-anchor:middle;
+  dominant-baseline:middle;
+}
+.v7120-center-stat{
+  fill:var(--text2);
+  font-family:inherit;
+  font-size:4.5px;
+  font-weight:800;
+  text-anchor:middle;
+  dominant-baseline:middle;
+}
+.v7120-am-pm-bg-am{fill:#f8f9fc;opacity:0.4;}
+.v7120-am-pm-bg-pm{fill:#e8ecf3;opacity:0.4;}
+
+.v7120-empty{
+  text-align:center;
+  color:var(--text3);
+  font-size:13px;
+  padding:30px 12px;
+  font-weight:700;
+}
+.v7120-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:14px;
+  font-size:11px;
+}
+.v7120-legend-item{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:4px 8px;
+  border-radius:6px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+}
+.v7120-legend-color{
+  width:10px;
+  height:10px;
+  border-radius:2px;
+  display:inline-block;
+}
+.v7120-hint{
+  font-size:10.5px;
+  color:var(--text3);
+  text-align:center;
+  margin:6px 0 10px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v7120-nav{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  justify-content:center;
+  margin-bottom:10px;
+}
+.v7120-nav button{
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  border-radius:8px;
+  padding:6px 12px;
+  font-family:inherit;
+  font-weight:800;
+  font-size:12px;
+  cursor:pointer;
+}
+.v7120-nav .v7120-date-label{
+  font-size:13px;
+  font-weight:900;
+  color:var(--text);
+}
+
+/* extra view-switcher button */
+.vs-btn[data-view="clock"]{font-family:inherit;}
+</style>
+
+<script id="v7120-day-clock-script">
+/* ===== v71.20: 24-hour circular day-view =====
+   Inspired by 一日予定表's pie chart, but cleaner. Renders today's scheduled
+   tasks, sessions, routines and GCal events on a 24-hour wheel. Tap a sector
+   to open the task. Updates current-time pointer every minute. */
+(function(){
+  if(window.__v7120Loaded) return;
+  window.__v7120Loaded=true;
+
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function pad(n){return String(n).padStart(2,'0');}
+  function clockDate(){
+    return window.__v7120ViewDate || (typeof todayKey==='function' ? todayKey() : new Date().toISOString().slice(0,10));
+  }
+  function fmtDateLabel(key){
+    const d=new Date(key+'T00:00:00');
+    const dow=['日','月','火','水','木','金','土'][d.getDay()];
+    const today=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+    const prefix = key===today ? '今日 ' : '';
+    return `${prefix}${d.getMonth()+1}/${d.getDate()}(${dow})`;
+  }
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeXml(s){return escapeHtml(s);}
+
+  function startMin(text){
+    const m=String(text||'').match(/^(\d{1,2}):(\d{2})$/);
+    return m ? Number(m[1])*60+Number(m[2]) : null;
+  }
+  function timeToAngle(min){
+    // 0 min = top (12 midnight); clockwise; 360 min (6am) = right
+    return (min/1440)*360 - 90;
+  }
+  function polar(cx, cy, r, deg){
+    const rad=deg*Math.PI/180;
+    return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)};
+  }
+  function arcPath(cx, cy, ro, ri, startDeg, endDeg){
+    // Closed annular sector path
+    if(endDeg-startDeg<0.0001) endDeg=startDeg+0.0001;
+    const large = (endDeg-startDeg)>180 ? 1 : 0;
+    const s1=polar(cx,cy,ro,startDeg);
+    const e1=polar(cx,cy,ro,endDeg);
+    const s2=polar(cx,cy,ri,endDeg);
+    const e2=polar(cx,cy,ri,startDeg);
+    return `M ${s1.x.toFixed(2)} ${s1.y.toFixed(2)} A ${ro} ${ro} 0 ${large} 1 ${e1.x.toFixed(2)} ${e1.y.toFixed(2)} L ${s2.x.toFixed(2)} ${s2.y.toFixed(2)} A ${ri} ${ri} 0 ${large} 0 ${e2.x.toFixed(2)} ${e2.y.toFixed(2)} Z`;
+  }
+
+  function tasksOnDate(dateKey){
+    if(!ok()) return [];
+    const out=[];
+    (S.tasks||[]).forEach(t=>{
+      if(!t || !t.startTime) return;
+      const min=startMin(t.startTime);
+      if(min===null) return;
+      const planMin=Math.max(5, Number(t.planMin)||15);
+      if(t.scheduledDate===dateKey){
+        out.push({
+          id:t.id,
+          title:t.title||'(無題)',
+          startMin:min,
+          dur:planMin,
+          done:!!t.done,
+          running:S.runningTaskId===t.id,
+          kind:'task',
+          rank:t.rank||'zako'
+        });
+      }
+    });
+    // Routine sessions for this day
+    (S.sessions||[]).forEach(s=>{
+      if(!s || s.date!==dateKey) return;
+      if(!String(s.taskId||'').startsWith('routine:')) return;
+      const startedAt=s.startedAt||0;
+      if(!startedAt) return;
+      const d=new Date(startedAt);
+      const min=d.getHours()*60+d.getMinutes();
+      const dur=Math.max(1,Math.round(((s.endedAt||Date.now())-startedAt)/60000));
+      const rid=String(s.taskId).slice(8);
+      const r=(S.routine||[]).find(x=>x.id===rid);
+      out.push({
+        id:'routine:'+rid+':'+s.id,
+        title:(r&&r.name)||'ルーティン',
+        startMin:min,
+        dur:dur,
+        done:!!s.completed,
+        running:false,
+        kind:'routine'
+      });
+    });
+    // GCal events
+    try{
+      if(typeof gcalEventsForDate==='function'){
+        gcalEventsForDate(dateKey).forEach(e=>{
+          if(e.allDay || !e.startTime) return;
+          const min=startMin(e.startTime);
+          if(min===null) return;
+          out.push({
+            id:'gcal:'+e.id,
+            title:e.title||'(GCal)',
+            startMin:min,
+            dur:Math.max(5,Number(e.planMin)||30),
+            done:false,
+            running:false,
+            kind:'gcal',
+            calendarName:e.calendarName||''
+          });
+        });
+      }
+    }catch(err){}
+    return out;
+  }
+
+  function colorFor(item){
+    if(item.done) return '#94a3b8';
+    if(item.running) return '#b81b1b';
+    if(item.kind==='routine') return '#a78bfa';
+    if(item.kind==='gcal') return '#3b82f6';
+    if(item.rank==='boss') return '#1f1f1f';
+    if(item.rank==='mid') return '#475569';
+    return '#0ea5e9'; // zako/default
+  }
+
+  // Layer items by lane (for overlap visualization)
+  function layoutItems(items){
+    items.sort((a,b)=>a.startMin-b.startMin || a.dur-b.dur);
+    const lanes=[];
+    items.forEach(it=>{
+      let placed=false;
+      for(let i=0;i<lanes.length;i++){
+        const lane=lanes[i];
+        const last=lane[lane.length-1];
+        if(last.startMin+last.dur<=it.startMin){
+          lane.push(it);
+          it.lane=i;
+          placed=true;
+          break;
+        }
+      }
+      if(!placed){
+        lanes.push([it]);
+        it.lane=lanes.length-1;
+      }
+    });
+    return {items, laneCount: Math.max(1, lanes.length)};
+  }
+
+  function buildClockSvg(dateKey){
+    const items=tasksOnDate(dateKey);
+    const {items:laidItems, laneCount}=layoutItems(items);
+    const today=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+    const isToday=dateKey===today;
+    const now=new Date();
+    const nowMin=now.getHours()*60+now.getMinutes();
+    const cx=100, cy=100;
+    const rOuter=92, rInner=42;
+    const ringSpace=rOuter-rInner;
+
+    let svg='';
+    // AM/PM background halves (split by 12:00)
+    // Day half (6-18): light
+    // Night half (18-6): darker
+    // Approximated as full bg ring for simplicity
+    svg+=`<circle class="v7120-clock-bg" cx="${cx}" cy="${cy}" r="${rOuter}"></circle>`;
+
+    // Hour ticks
+    for(let h=0;h<24;h++){
+      const a=timeToAngle(h*60);
+      const p1=polar(cx,cy,rOuter,a);
+      const p2=polar(cx,cy,rOuter-(h%3===0?6:3),a);
+      svg+=`<line class="v7120-clock-tick ${h%6===0?'major':''}" x1="${p1.x.toFixed(2)}" y1="${p1.y.toFixed(2)}" x2="${p2.x.toFixed(2)}" y2="${p2.y.toFixed(2)}"></line>`;
+    }
+    // Hour labels at 0,3,6,...,21
+    for(let h=0;h<24;h+=3){
+      const a=timeToAngle(h*60);
+      const p=polar(cx,cy,rOuter+5,a);
+      svg+=`<text class="v7120-hour-label ${h%6===0?'major':''}" x="${p.x.toFixed(2)}" y="${p.y.toFixed(2)}">${h}</text>`;
+    }
+
+    // Task sectors (each lane is a sub-ring)
+    const laneRingWidth=Math.max(8, ringSpace/Math.max(2,laneCount));
+    laidItems.forEach(it=>{
+      const startA=timeToAngle(it.startMin);
+      const endA=timeToAngle(it.startMin+it.dur);
+      const laneOuter=rOuter-it.lane*laneRingWidth;
+      const laneInner=Math.max(rInner, laneOuter-laneRingWidth+2);
+      const path=arcPath(cx,cy,laneOuter,laneInner,startA,endA);
+      const cls=['v7120-sector'];
+      if(it.done) cls.push('done');
+      if(it.running) cls.push('running');
+      if(it.kind==='routine') cls.push('routine');
+      if(it.kind==='gcal') cls.push('gcal');
+      svg+=`<path class="${cls.join(' ')}" d="${path}" fill="${colorFor(it)}" data-v7120-id="${escapeXml(it.id)}" data-v7120-kind="${it.kind}">
+        <title>${escapeXml(pad(Math.floor(it.startMin/60))+':'+pad(it.startMin%60)+' · '+it.dur+'分 · '+it.title)}</title>
+      </path>`;
+      // Label if sector wide enough
+      if(it.dur >= 30){
+        const midA=(startA+endA)/2;
+        const labelR=(laneOuter+laneInner)/2;
+        const lp=polar(cx,cy,labelR,midA);
+        const labelText=(it.title||'').slice(0,8);
+        svg+=`<text class="v7120-sector-label" x="${lp.x.toFixed(2)}" y="${lp.y.toFixed(2)}">${escapeXml(labelText)}</text>`;
+      }
+    });
+
+    // Inner circle (center)
+    svg+=`<circle class="v7120-clock-inner" cx="${cx}" cy="${cy}" r="${rInner-1}"></circle>`;
+
+    // Current time pointer (only if viewing today)
+    if(isToday){
+      const a=timeToAngle(nowMin);
+      const p=polar(cx,cy,rOuter-2,a);
+      svg+=`<line class="v7120-now-line" x1="${cx}" y1="${cy}" x2="${p.x.toFixed(2)}" y2="${p.y.toFixed(2)}"></line>`;
+      svg+=`<circle class="v7120-now-dot" cx="${cx}" cy="${cy}" r="2.5"></circle>`;
+      // Arrow head
+      const tip=polar(cx,cy,rOuter-1,a);
+      const back1=polar(cx,cy,rOuter-7, a-3);
+      const back2=polar(cx,cy,rOuter-7, a+3);
+      svg+=`<polygon class="v7120-now-arrow" points="${tip.x.toFixed(2)},${tip.y.toFixed(2)} ${back1.x.toFixed(2)},${back1.y.toFixed(2)} ${back2.x.toFixed(2)},${back2.y.toFixed(2)}"></polygon>`;
+    }
+
+    // Center text: time + date + stats
+    const centerTime = isToday ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : fmtDateLabel(dateKey).replace(/^今日\s*/, '');
+    const totalTasks = laidItems.length;
+    const doneCount = laidItems.filter(x=>x.done).length;
+    if(isToday){
+      svg+=`<text class="v7120-center-time" x="${cx}" y="${cy-6}">${centerTime}</text>`;
+      svg+=`<text class="v7120-center-date" x="${cx}" y="${cy+4}">${escapeXml(fmtDateLabel(dateKey))}</text>`;
+      svg+=`<text class="v7120-center-stat" x="${cx}" y="${cy+13}">完了 ${doneCount}/${totalTasks}</text>`;
+    } else {
+      svg+=`<text class="v7120-center-time" x="${cx}" y="${cy-2}" style="font-size:10px;">${escapeXml(fmtDateLabel(dateKey))}</text>`;
+      svg+=`<text class="v7120-center-stat" x="${cx}" y="${cy+10}">完了 ${doneCount}/${totalTasks}</text>`;
+    }
+
+    return {svg, items:laidItems};
+  }
+
+  function shiftDate(key, days){
+    const d=new Date(key+'T00:00:00');
+    d.setDate(d.getDate()+days);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  function renderDayClock(){
+    const container=document.getElementById('dayClockContainer');
+    if(!container) return;
+    const dateKey=clockDate();
+    const {svg, items}=buildClockSvg(dateKey);
+
+    let html='';
+    html+=`<div class="v7120-nav">
+      <button data-v7120-nav="prev" type="button">◂</button>
+      <span class="v7120-date-label">${escapeXml(fmtDateLabel(dateKey))}</span>
+      <button data-v7120-nav="next" type="button">▸</button>
+      <button data-v7120-nav="today" type="button">今日</button>
+    </div>`;
+    html+=`<div class="v7120-hint">セクタータップでタスク詳細</div>`;
+    html+=`<div class="v7120-clock-wrap">
+      <svg class="v7120-clock-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">${svg}</svg>
+    </div>`;
+    if(!items.length){
+      html+=`<div class="v7120-empty">この日に時刻つきタスクはありません。</div>`;
+    } else {
+      html+=`<div class="v7120-legend">
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#0ea5e9"></span>ザコ</div>
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#475569"></span>中ボス</div>
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#1f1f1f"></span>ボス</div>
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#a78bfa"></span>ルーティン</div>
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#3b82f6"></span>GCal</div>
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#b81b1b"></span>実行中</div>
+        <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#94a3b8"></span>完了</div>
+      </div>`;
+    }
+    container.innerHTML=html;
+
+    container.addEventListener('click', onContainerClick, true);
+  }
+  let bound=false;
+  function onContainerClick(e){
+    const nav=e.target.closest('[data-v7120-nav]');
+    if(nav){
+      const act=nav.dataset.v7120Nav;
+      const cur=clockDate();
+      if(act==='prev') window.__v7120ViewDate=shiftDate(cur,-1);
+      else if(act==='next') window.__v7120ViewDate=shiftDate(cur,1);
+      else if(act==='today'){
+        window.__v7120ViewDate=(typeof todayKey==='function')?todayKey():new Date().toISOString().slice(0,10);
+      }
+      renderDayClock();
+      return;
+    }
+    const sector=e.target.closest('[data-v7120-id]');
+    if(sector){
+      const id=sector.dataset.v7120Id;
+      const kind=sector.dataset.v7120Kind;
+      if(kind==='task' && id && typeof openTaskDetail==='function'){
+        openTaskDetail(id);
+      } else if(kind==='task' && id && typeof window.sasshyV68Hero==='function'){
+        // fallback
+      }
+      return;
+    }
+  }
+
+  // ============ INTEGRATION ============
+
+  function ensureContainer(){
+    if(document.getElementById('dayClockContainer')) return true;
+    const monthEl=document.getElementById('monthViewContainer');
+    if(!monthEl || !monthEl.parentNode) return false;
+    const div=document.createElement('div');
+    div.id='dayClockContainer';
+    monthEl.parentNode.insertBefore(div, monthEl.nextSibling);
+    return true;
+  }
+
+  function ensureButton(){
+    const switcher=document.querySelector('.view-switcher');
+    if(!switcher) return false;
+    if(switcher.querySelector('[data-view="clock"]')) return true;
+    const btn=document.createElement('button');
+    btn.className='vs-btn';
+    btn.dataset.view='clock';
+    btn.textContent='🕐 24h';
+    btn.type='button';
+    switcher.appendChild(btn);
+    btn.addEventListener('click', ()=>{
+      // Toggle activeness
+      switcher.querySelectorAll('.vs-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      // Hide all other views
+      try{document.getElementById('schedHdrDay').style.display='none';}catch(_){}
+      try{document.getElementById('schedBody').style.display='none';}catch(_){}
+      try{document.getElementById('weekViewContainer').style.display='none';}catch(_){}
+      try{document.getElementById('monthViewContainer').style.display='none';}catch(_){}
+      // Show clock
+      if(ensureContainer()){
+        document.getElementById('dayClockContainer').style.display='block';
+        try{window.questCurrentView='clock';}catch(_){}
+        renderDayClock();
+      }
+    });
+    return true;
+  }
+
+  // Re-render every 30s for current time pointer / stats
+  let tick=null;
+  function startTicking(){
+    if(tick) return;
+    tick=setInterval(()=>{
+      const c=document.getElementById('dayClockContainer');
+      if(c && c.style.display!=='none') renderDayClock();
+    }, 30*1000);
+  }
+
+  // When user clicks day/week/month buttons, hide clock view
+  function hookOtherButtons(){
+    const switcher=document.querySelector('.view-switcher');
+    if(!switcher) return;
+    switcher.querySelectorAll('.vs-btn:not([data-view="clock"])').forEach(b=>{
+      if(b.__v7120Hooked) return;
+      b.__v7120Hooked=true;
+      b.addEventListener('click', ()=>{
+        const c=document.getElementById('dayClockContainer');
+        if(c) c.style.display='none';
+      });
+    });
+  }
+
+  function init(){
+    let done=true;
+    if(!ensureContainer()) done=false;
+    if(!ensureButton()) done=false;
+    hookOtherButtons();
+    return done;
+  }
+
+  setTimeout(()=>{
+    if(!init()){
+      let tries=0;
+      const iv=setInterval(()=>{ if(init() || ++tries>40) clearInterval(iv); }, 250);
+    }
+    startTicking();
+  }, 600);
 })();
 </script>
 
