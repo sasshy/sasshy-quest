@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.21').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.22').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -20797,20 +20797,19 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 /* v71.21: bigger labels, click-to-add, week-of-circles mode */
 .v7120-sector-label,
 .v7121-sector-label{
-  fill:#fff;
+  fill:#1f1f1f;
   font-family:inherit;
-  font-size:7px;
+  font-size:9px;
   font-weight:900;
   text-anchor:middle;
   dominant-baseline:middle;
   pointer-events:none;
-  text-shadow:0 1px 2px rgba(0,0,0,0.7);
   paint-order:stroke;
-  stroke:rgba(0,0,0,0.4);
-  stroke-width:0.4;
+  stroke:rgba(255,255,255,0.95);
+  stroke-width:1.6;
 }
-.v7121-sector-label.small{font-size:5.5px;}
-.v7121-sector-label.dur{font-size:5px;font-weight:700;opacity:0.95;}
+.v7121-sector-label.small{font-size:7px;stroke-width:1.1;}
+.v7121-sector-label.dur{font-size:6px;font-weight:700;opacity:0.85;stroke-width:1;}
 .v7121-clock-bg-clickable{
   cursor:crosshair;
 }
@@ -20960,6 +20959,47 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   border-color:var(--text);
 }
 .v7121-add-actions button.cancel{color:var(--text3);}
+
+/* Recent task chips (one-tap quick-add) */
+.v7122-chips-wrap{
+  margin-top:18px;
+  padding:12px 14px;
+  border-radius:12px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+}
+.v7122-chips-label{
+  font-size:10.5px;
+  color:var(--text3);
+  font-weight:800;
+  letter-spacing:0.05em;
+  margin-bottom:8px;
+  text-transform:uppercase;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+}
+.v7122-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.v7122-chip{
+  border:none;
+  color:#1f1f1f;
+  border-radius:18px;
+  padding:6px 12px;
+  font-family:inherit;
+  font-weight:900;
+  font-size:12px;
+  cursor:pointer;
+  box-shadow:0 1px 3px rgba(0,0,0,0.12);
+  transition:transform 0.08s, box-shadow 0.08s;
+}
+.v7122-chip:hover{
+  transform:translateY(-1px);
+  box-shadow:0 3px 8px rgba(0,0,0,0.18);
+  filter:brightness(1.04);
+}
+.v7122-chip:active{transform:translateY(0);}
 </style>
 
 <script id="v7121-day-clock-improvements-script">
@@ -21055,14 +21095,37 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     }catch(err){}
     return out;
   }
+  // Distinct color palette like 一日予定表 / Tiimo - hash title to assign
+  const V7121_PALETTE = [
+    '#fb7185', // pink
+    '#fbbf24', // amber
+    '#34d399', // green
+    '#60a5fa', // blue
+    '#c084fc', // purple
+    '#fb923c', // orange
+    '#f87171', // red
+    '#22d3ee', // cyan
+    '#a3e635', // lime
+    '#ec4899', // hot pink
+    '#14b8a6', // teal
+    '#facc15', // yellow
+    '#818cf8', // indigo
+    '#f472b6', // rose
+    '#4ade80', // emerald
+    '#fb7185'  // wrap
+  ];
+  function hashTitle(title){
+    let h=0;
+    const s=String(title||'').slice(0,30);
+    for(let i=0;i<s.length;i++) h=(h*31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
   function colorFor(item){
-    if(item.done) return '#94a3b8';
-    if(item.running) return '#b81b1b';
+    if(item.done) return '#cbd5e1';
+    if(item.running) return '#dc2626';
     if(item.kind==='routine') return '#a78bfa';
-    if(item.kind==='gcal') return '#3b82f6';
-    if(item.rank==='boss') return '#1f1f1f';
-    if(item.rank==='mid') return '#475569';
-    return '#0ea5e9';
+    if(item.kind==='gcal') return '#94a3b8';
+    return V7121_PALETTE[hashTitle(item.title) % V7121_PALETTE.length];
   }
   function layoutItems(items){
     items.sort((a,b)=>a.startMin-b.startMin || a.dur-b.dur);
@@ -21141,23 +21204,26 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
         <title>${escapeHtml(pad(Math.floor(it.startMin/60))+':'+pad(it.startMin%60)+' · '+it.dur+'分 · '+it.title)}</title>
       </path>`;
 
-      // Label: visible if duration is enough OR if it's the only one in its lane
+      // Label: visible if duration is enough (>=10 min)
       if(size==='large'){
-        const showLabel = it.dur >= 12;
+        const showLabel = it.dur >= 10;
         if(showLabel){
           const midA=(startA+endA)/2;
           const labelR=(laneOuter+laneInner)/2;
           const lp=polar(cx,cy,labelR,midA);
-          // Determine max chars by sector arc length (in pixels)
+          // Arc length (px) for this sector at the label radius
           const arcLen=Math.abs(endA-startA)/360 * 2*Math.PI * labelR;
-          const maxChars = Math.max(2, Math.floor(arcLen/3.5));
-          const baseTitle=(it.title||'').slice(0, Math.min(14, maxChars));
-          const sizeCls = it.dur < 25 ? 'small' : '';
+          // Estimate max readable chars by arc length (assume ~4px per char at 9px font)
+          const maxChars = Math.max(2, Math.floor(arcLen/4));
+          const rawTitle = it.title||'';
+          const baseTitle = rawTitle.length > maxChars ? rawTitle.slice(0, maxChars-1)+'…' : rawTitle;
+          const sizeCls = it.dur < 20 ? 'small' : '';
+          // Title (line 1)
           svg+=`<text class="v7121-sector-label ${sizeCls}" x="${lp.x.toFixed(2)}" y="${lp.y.toFixed(2)}">${escapeHtml(baseTitle)}</text>`;
-          // Duration sub-label below
-          if(it.dur >= 25){
-            const lp2={x:lp.x, y:lp.y+5.5};
-            svg+=`<text class="v7121-sector-label dur" x="${lp2.x.toFixed(2)}" y="${lp2.y.toFixed(2)}">${pad(Math.floor(it.startMin/60))}:${pad(it.startMin%60)} ${it.dur}分</text>`;
+          // Duration sub-label (line 2) for medium+ sectors
+          if(it.dur >= 20){
+            const lp2={x:lp.x, y:lp.y+6.5};
+            svg+=`<text class="v7121-sector-label dur" x="${lp2.x.toFixed(2)}" y="${lp2.y.toFixed(2)}">${it.dur}分</text>`;
           }
         }
       }
@@ -21234,15 +21300,16 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     document.body.appendChild(addModalEl);
     return addModalEl;
   }
-  function openAddAt(dateKey, hour, minute){
+  function openAddAt(dateKey, hour, minute, presetTitle){
     const el=ensureAddModal();
     const timeLabel=`${pad(hour)}:${pad(minute)}`;
+    const tv=presetTitle?escapeHtml(presetTitle):'';
     el.innerHTML=`
       <div class="v7121-add-card">
         <div class="v7121-add-title">新しいタスクを追加</div>
         <div class="v7121-add-sub">${escapeHtml(fmtDateLabel(dateKey))} ${timeLabel} から</div>
         <div class="v7121-add-row">
-          <input id="v7121AddTitle" type="text" placeholder="タスク名" autocomplete="off">
+          <input id="v7121AddTitle" type="text" placeholder="タスク名" autocomplete="off" value="${tv}">
         </div>
         <div class="v7121-add-row v7121-add-row-2">
           <input id="v7121AddTime" type="time" value="${timeLabel}">
@@ -21328,6 +21395,25 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     return min;
   }
 
+  // Collect recent unique task titles for the chip palette
+  function collectRecentTitles(maxN){
+    if(!ok()) return [];
+    const seen=new Map();
+    const tasksSorted=(S.tasks||[]).slice().sort((a,b)=>(b.created||0)-(a.created||0));
+    for(const t of tasksSorted){
+      if(!t || !t.title) continue;
+      const key=String(t.title).trim().slice(0,30);
+      if(!key) continue;
+      if(seen.has(key)) continue;
+      seen.set(key, {
+        title:key,
+        color: colorFor({title:key, kind:'task', done:false, running:false})
+      });
+      if(seen.size >= (maxN||12)) break;
+    }
+    return Array.from(seen.values());
+  }
+
   // === Re-implemented render ===
   function renderDayClockV2(){
     const container=document.getElementById('dayClockContainer');
@@ -21356,14 +21442,28 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       if(!items.length){
         html+=`<div class="v7120-empty">この日に時刻つきタスクはありません。<br>円の中をタップしてその時刻にタスク追加できます。</div>`;
       } else {
-        html+=`<div class="v7120-legend">
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#0ea5e9"></span>ザコ</div>
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#475569"></span>中ボス</div>
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#1f1f1f"></span>ボス</div>
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#a78bfa"></span>ルーティン</div>
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#3b82f6"></span>GCal</div>
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#b81b1b"></span>実行中</div>
-          <div class="v7120-legend-item"><span class="v7120-legend-color" style="background:#94a3b8"></span>完了</div>
+        // Per-task legend: each task name with its color
+        const uniqueTasksInDay = {};
+        items.forEach(it=>{
+          if(it.kind!=='task') return;
+          const key=(it.title||'').slice(0,30);
+          if(!uniqueTasksInDay[key]) uniqueTasksInDay[key]={color:colorFor(it), title:key, dur:0};
+          uniqueTasksInDay[key].dur += it.dur;
+        });
+        const dayLegendHtml = Object.values(uniqueTasksInDay).map(t=>
+          `<div class="v7120-legend-item"><span class="v7120-legend-color" style="background:${t.color}"></span>${escapeHtml(t.title)} <span style="opacity:0.7;font-size:10px;">${t.dur}分</span></div>`
+        ).join('');
+        html+=`<div class="v7120-legend">${dayLegendHtml}</div>`;
+      }
+      // Recent task title chips (across all dates) - tap to quick-add
+      const recentTitles = collectRecentTitles(12);
+      if(recentTitles.length){
+        const chipsHtml = recentTitles.map(t=>
+          `<button class="v7122-chip" type="button" data-v7122-chip="${escapeHtml(t.title)}" style="background:${t.color};">${escapeHtml(t.title)}</button>`
+        ).join('');
+        html+=`<div class="v7122-chips-wrap">
+          <div class="v7122-chips-label">よく使うタスク （タップで追加）</div>
+          <div class="v7122-chips">${chipsHtml}</div>
         </div>`;
       }
     } else {
@@ -21402,6 +21502,17 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   }
 
   function onClickV2(e){
+    // Recent chip → open add modal pre-filled
+    const chip=e.target.closest('[data-v7122-chip]');
+    if(chip){
+      const title=chip.dataset.v7122Chip;
+      const dateKey = window.__v7120ViewDate || (typeof todayKey==='function'?todayKey():new Date().toISOString().slice(0,10));
+      const now=new Date();
+      const hour=now.getHours();
+      const minute=Math.round(now.getMinutes()/15)*15 % 60;
+      openAddAt(dateKey, hour, minute, title);
+      return;
+    }
     // Mode toggle
     const modeBtn=e.target.closest('[data-v7121-mode]');
     if(modeBtn){
