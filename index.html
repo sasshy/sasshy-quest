@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.22').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.23').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -21000,6 +21000,17 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   filter:brightness(1.04);
 }
 .v7122-chip:active{transform:translateY(0);}
+
+/* v71.23: stats bar outside the circle */
+.v7123-stats-bar{
+  text-align:center;
+  font-size:13px;
+  color:var(--text2);
+  margin:8px 0 4px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-weight:700;
+}
+.v7123-stats-bar b{color:var(--text);font-weight:950;font-size:15px;}
 </style>
 
 <script id="v7121-day-clock-improvements-script">
@@ -21157,7 +21168,8 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
     const now=new Date();
     const nowMin=now.getHours()*60+now.getMinutes();
     const cx=100, cy=100;
-    const rOuter=size==='small'?90:92, rInner=size==='small'?38:42;
+    // v71.23: full-pie like 一日予定表 - rInner shrunk so wedges fan from center.
+    const rOuter=size==='small'?90:92, rInner=size==='small'?12:16;
     const ringSpace=rOuter-rInner;
 
     let svg='';
@@ -21244,19 +21256,10 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
       svg+=`<polygon class="v7120-now-arrow" points="${tip.x.toFixed(2)},${tip.y.toFixed(2)} ${back1.x.toFixed(2)},${back1.y.toFixed(2)} ${back2.x.toFixed(2)},${back2.y.toFixed(2)}" pointer-events="none"></polygon>`;
     }
 
-    // Center text
-    if(size==='large'){
-      const total=laidItems.length;
-      const doneCount=laidItems.filter(x=>x.done).length;
-      const centerTime = isToday ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '';
-      if(isToday){
-        svg+=`<text class="v7120-center-time" x="${cx}" y="${cy-6}" pointer-events="none">${centerTime}</text>`;
-        svg+=`<text class="v7120-center-date" x="${cx}" y="${cy+4}" pointer-events="none">${escapeHtml(fmtDateLabel(dateKey))}</text>`;
-        svg+=`<text class="v7120-center-stat" x="${cx}" y="${cy+13}" pointer-events="none">完了 ${doneCount}/${total}</text>`;
-      } else {
-        svg+=`<text class="v7120-center-time" x="${cx}" y="${cy-2}" style="font-size:10px;" pointer-events="none">${escapeHtml(fmtDateLabel(dateKey))}</text>`;
-        svg+=`<text class="v7120-center-stat" x="${cx}" y="${cy+10}" pointer-events="none">完了 ${doneCount}/${total}</text>`;
-      }
+    // Center text - just the current time (no stats, no date - those are outside)
+    if(size==='large' && isToday){
+      const centerTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      svg+=`<text class="v7120-center-time" x="${cx}" y="${cy+1}" pointer-events="none" style="font-size:7.5px;">${centerTime}</text>`;
     }
 
     return {svg, items:laidItems};
@@ -21436,6 +21439,9 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
 
     if(mode==='single'){
       const {svg, items}=buildClockSvg(dateKey, 'large');
+      const totalSingle=items.length;
+      const doneSingle=items.filter(x=>x.done).length;
+      html+=`<div class="v7123-stats-bar">予定 <b>${totalSingle}</b> 件 ／ 完了 <b>${doneSingle}</b></div>`;
       html+=`<div class="v7120-clock-wrap">
         <svg class="v7120-clock-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">${svg}</svg>
       </div>`;
