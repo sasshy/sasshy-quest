@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.25').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.26').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.25';
+  const VERSION='v71.26';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -21960,17 +21960,17 @@ body.v7125-moving .v7125-move-bar{display:flex;}
 .v7125-week-grid{
   display:grid;
   grid-template-columns:repeat(7,minmax(120px,1fr));
-  gap:8px;
+  gap:7px;
   overflow-x:auto;
   padding-bottom:2px;
   scroll-snap-type:x proximity;
 }
 .v7125-day,.v7125-bucket{
-  min-height:128px;
+  min-height:96px;
   border:1px solid var(--border);
   border-radius:10px;
   background:var(--surface2);
-  padding:8px;
+  padding:7px;
   scroll-snap-align:start;
 }
 .v7125-day.today{border-color:rgba(16,166,116,.45);background:rgba(16,166,116,.06);}
@@ -21987,13 +21987,42 @@ body.v7125-moving .v7125-move-bar{display:flex;}
   font-weight:950;
 }
 .v7125-day-date{font-family:'SF Mono','JetBrains Mono',monospace;color:var(--text3);font-size:10px;}
-.v7125-card-list{display:grid;gap:6px;}
+.v7125-card-list{display:grid;gap:5px;}
+.v7125-add-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 30px;
+  gap:5px;
+  margin-top:6px;
+}
+.v7125-add-row input{
+  min-width:0;
+  min-height:30px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-family:inherit;
+  font-size:11px;
+  font-weight:850;
+  padding:5px 7px;
+}
+.v7125-add-row input::placeholder{color:var(--text3);}
+.v7125-add-row button{
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-family:inherit;
+  font-size:16px;
+  font-weight:950;
+  cursor:pointer;
+}
 .v7125-card{
   border:1px solid var(--border);
   border-left:4px solid var(--border2);
-  border-radius:9px;
+  border-radius:8px;
   background:var(--surface);
-  padding:8px;
+  padding:6px 7px;
   box-shadow:var(--shadow-xs);
   cursor:grab;
 }
@@ -22002,10 +22031,26 @@ body.v7125-moving .v7125-move-bar{display:flex;}
 .v7125-card.i{border-left-color:var(--green);}
 .v7125-card.u{border-left-color:var(--orange);}
 .v7125-card.dragging{opacity:.55;}
-.v7125-card-title{
+.v7125-title-row{
+  display:grid;
+  grid-template-columns:22px minmax(0,1fr);
+  align-items:start;
+  gap:5px;
+}
+.v7125-card button.v7125-check{
+  min-width:22px;
+  width:22px;
+  min-height:22px;
+  height:22px;
+  padding:0;
+  border-radius:6px;
   font-size:12px;
+  line-height:1;
+}
+.v7125-card-title{
+  font-size:11.5px;
   font-weight:950;
-  line-height:1.35;
+  line-height:1.3;
   color:var(--text);
   word-break:break-word;
 }
@@ -22013,9 +22058,9 @@ body.v7125-moving .v7125-move-bar{display:flex;}
   display:flex;
   flex-wrap:wrap;
   gap:4px;
-  margin-top:6px;
+  margin-top:4px;
   color:var(--text3);
-  font-size:10px;
+  font-size:9.5px;
   font-weight:800;
 }
 .v7125-pill{
@@ -22029,13 +22074,13 @@ body.v7125-moving .v7125-move-bar{display:flex;}
 .v7125-card-actions{
   display:flex;
   flex-wrap:wrap;
-  gap:5px;
-  margin-top:7px;
+  gap:4px;
+  margin-top:5px;
 }
 .v7125-card button{
-  min-height:28px;
-  padding:4px 7px;
-  font-size:10.5px;
+  min-height:23px;
+  padding:2px 6px;
+  font-size:10px;
 }
 .v7125-card button.on{
   border-color:var(--text);
@@ -22052,22 +22097,22 @@ body.v7125-moving .v7125-move-bar{display:flex;}
 .v7125-empty{
   border:1px dashed var(--border);
   border-radius:8px;
-  min-height:42px;
+  min-height:30px;
   display:flex;
   align-items:center;
   justify-content:center;
   color:var(--text3);
-  font-size:11px;
+  font-size:10px;
   font-weight:800;
 }
 @media(max-width:860px){
-  .v7125-week-grid{grid-template-columns:repeat(7,minmax(170px,78vw));}
+  .v7125-week-grid{grid-template-columns:repeat(7,minmax(180px,76vw));}
   .v7125-backlog-grid{grid-template-columns:1fr;}
 }
 </style>
 
 <script id="v7125-week-task-board-script">
-/* ===== v71.25: weekly task board with buckets and importance controls ===== */
+/* ===== v71.26: compact weekly task board with inline add ===== */
 (function(){
   if(window.__v7125WeekTaskBoard) return;
   window.__v7125WeekTaskBoard=true;
@@ -22166,15 +22211,18 @@ body.v7125-moving .v7125-move-bar{display:flex;}
     const cls=matrixClass(t);
     const bucket=bucketOf(t);
     return '<div class="v7125-card '+cls+'" draggable="true" data-v7125-card="'+escText(t.id)+'">'+
-      '<div class="v7125-card-title">'+escText(t.title||'無題')+'</div>'+
+      '<div class="v7125-title-row">'+
+        '<button type="button" class="v7125-check" data-v7125-act="done" data-id="'+escText(t.id)+'">□</button>'+
+        '<div class="v7125-card-title">'+escText(t.title||'無題')+'</div>'+
+      '</div>'+
       '<div class="v7125-card-meta">'+taskPills(t)+'</div>'+
       '<div class="v7125-card-actions">'+
-        '<button type="button" class="'+(isImportant(t)?'on':'')+'" data-v7125-act="important" data-id="'+escText(t.id)+'">重要</button>'+
-        '<button type="button" class="'+(isUrgent(t)?'on':'')+'" data-v7125-act="urgent" data-id="'+escText(t.id)+'">緊急</button>'+
+        '<button type="button" class="'+(isImportant(t)?'on':'')+'" data-v7125-act="important" data-id="'+escText(t.id)+'">重</button>'+
+        '<button type="button" class="'+(isUrgent(t)?'on':'')+'" data-v7125-act="urgent" data-id="'+escText(t.id)+'">急</button>'+
         '<button type="button" class="'+(bucket==='someday'?'on':'soft')+'" data-v7125-act="bucket" data-bucket="someday" data-id="'+escText(t.id)+'">いつか</button>'+
-        '<button type="button" class="'+(bucket==='wish'?'on':'soft')+'" data-v7125-act="bucket" data-bucket="wish" data-id="'+escText(t.id)+'">やりたい</button>'+
+        '<button type="button" class="'+(bucket==='wish'?'on':'soft')+'" data-v7125-act="bucket" data-bucket="wish" data-id="'+escText(t.id)+'">願望</button>'+
         '<button type="button" class="soft" data-v7125-act="move" data-id="'+escText(t.id)+'">移動</button>'+
-        '<button type="button" class="danger" data-v7125-act="undate" data-id="'+escText(t.id)+'">日付外す</button>'+
+        '<button type="button" class="danger" data-v7125-act="undate" data-id="'+escText(t.id)+'">外す</button>'+
       '</div>'+
     '</div>';
   }
@@ -22182,6 +22230,12 @@ body.v7125-moving .v7125-move-bar{display:flex;}
   function renderList(items){
     items=items.slice().sort(sortTasks);
     return '<div class="v7125-card-list">'+(items.length?items.map(card).join(''):empty())+'</div>';
+  }
+  function addForm(type,value){
+    return '<form class="v7125-add-row" data-v7125-add-type="'+escText(type)+'" data-v7125-add-value="'+escText(value||'')+'">'+
+      '<input type="text" autocomplete="off" placeholder="+ 新規タスク">'+
+      '<button type="submit" aria-label="追加">+</button>'+
+    '</form>';
   }
   function counts(tasks){
     return {
@@ -22244,6 +22298,7 @@ body.v7125-moving .v7125-move-bar{display:flex;}
         return '<div class="v7125-day '+(isToday?'today':'')+'"'+targetAttrs('day',d)+'>'+
           '<div class="v7125-day-head"><span>'+escText(dow(d))+'</span><span class="v7125-day-date">'+escText(md(d))+'</span></div>'+
           renderList(dayTasks[d])+
+          addForm('day',d)+
         '</div>';
       }).join('')+'</div>'+
       '<div class="v7125-backlog-grid">'+
@@ -22257,6 +22312,7 @@ body.v7125-moving .v7125-move-bar{display:flex;}
     return '<div class="v7125-bucket"'+targetAttrs('bucket',key)+'>'+
       '<div class="v7125-bucket-head"><span>'+escText(label)+'</span><span>'+items.length+'件</span></div>'+
       renderList(items)+
+      addForm('bucket',key)+
     '</div>';
   }
   function ensureBoard(){
@@ -22311,6 +22367,53 @@ body.v7125-moving .v7125-move-bar{display:flex;}
     touch(t);
     saveAll('タスク棚分類');
   }
+  function addTaskTo(type,value,title){
+    title=String(title||'').replace(/[　\t]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!title || !ok()) return false;
+    const raw={title, planMin:15, lane:'now', rank:'zako', nextAction:''};
+    const opts={allowDeleted:true};
+    if(type==='day'){
+      raw.scheduledDate=value;
+      opts.today=value===today();
+    }else{
+      if(value==='someday' || value==='wish') raw.v7125Bucket=value;
+    }
+    let task=null;
+    if(typeof window.sasshyAddTaskSafe==='function'){
+      const r=window.sasshyAddTaskSafe(raw,opts);
+      if(r&&r.added) task=r.task;
+    }
+    if(!task){
+      task=Object.assign({
+        id:'task-v7125-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7),
+        done:false,
+        subs:[],
+        created:Date.now(),
+        createdDate:type==='day'?value:today()
+      },raw);
+      S.tasks.unshift(task);
+    }
+    touch(task);
+    try{ if(typeof addLog==='function') addLog('📝 週の棚に追加: '+escText(title)); }catch(e){}
+    saveAll('週タスク追加');
+    return true;
+  }
+  function completeTask(id){
+    const t=byId(id);
+    if(!t || t.done) return;
+    if(typeof window.sasshyCompleteTaskNow==='function'){
+      window.sasshyCompleteTaskNow(id);
+    }else{
+      try{ if(typeof finishTask==='function') finishTask(id); }catch(e){}
+      t.done=true;
+      t.completedAt=Date.now();
+      t.doneAt=t.completedAt;
+      if(Array.isArray(t.subs)) t.subs.forEach(s=>{ if(s) s.done=true; });
+      touch(t);
+      try{ if(typeof save==='function') save(); }catch(e){}
+    }
+    saveAll('週タスク完了');
+  }
   function toggleFlag(id,flag){
     const t=byId(id);
     if(!t) return;
@@ -22322,6 +22425,15 @@ body.v7125-moving .v7125-move-bar{display:flex;}
   function bind(){
     if(installed) return;
     installed=true;
+    document.addEventListener('submit',e=>{
+      const form=e.target.closest&&e.target.closest('.v7125-add-row');
+      if(!form) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const input=form.querySelector('input');
+      const title=input&&input.value;
+      if(addTaskTo(form.dataset.v7125AddType,form.dataset.v7125AddValue,title) && input) input.value='';
+    },true);
     document.addEventListener('click',e=>{
       const nav=e.target.closest('[data-v7125-nav]');
       if(nav){
@@ -22339,7 +22451,8 @@ body.v7125-moving .v7125-move-bar{display:flex;}
         e.stopPropagation();
         const id=act.dataset.id;
         const a=act.dataset.v7125Act;
-        if(a==='important' || a==='urgent') toggleFlag(id,a);
+        if(a==='done') completeTask(id);
+        else if(a==='important' || a==='urgent') toggleFlag(id,a);
         else if(a==='bucket') setBucket(id,act.dataset.bucket);
         else if(a==='undate') setBucket(id,'backlog');
         else if(a==='move'){
@@ -22351,6 +22464,7 @@ body.v7125-moving .v7125-move-bar{display:flex;}
         }
         return;
       }
+      if(e.target.closest('.v7125-add-row')) return;
       if(movingId){
         const target=e.target.closest('[data-v7125-drop]');
         if(target){
