@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.24').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.25').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.24';
+  const VERSION='v71.25';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -21872,6 +21872,548 @@ body.v7112-resizing .v7112-resize-readout{display:flex;}
   window.addEventListener('pagehide',()=>protectNewTasks(),true);
   setTimeout(()=>{seedKnown();installAll();},0);
   setInterval(installAll,1500);
+})();
+</script>
+
+<style id="v7125-week-task-board-style">
+body.v7125-week-task-board #v7125WeekBoard{
+  margin:14px 0;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--surface);
+  box-shadow:var(--shadow-sm);
+  overflow:hidden;
+}
+#v7125WeekBoard summary{
+  list-style:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+  font-size:13px;
+  font-weight:950;
+}
+#v7125WeekBoard summary::-webkit-details-marker{display:none;}
+.v7125-board-body{padding:12px;display:grid;gap:12px;}
+.v7125-board-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.v7125-week-nav,.v7125-stats,.v7125-targets{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+}
+.v7125-week-nav button,.v7125-card button,.v7125-target,.v7125-move-cancel{
+  min-height:32px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface2);
+  color:var(--text);
+  font-family:inherit;
+  font-size:11px;
+  font-weight:900;
+  cursor:pointer;
+  padding:6px 9px;
+}
+.v7125-week-nav button.primary,.v7125-card button.primary,.v7125-target.active{
+  background:var(--text);
+  border-color:var(--text);
+  color:var(--surface);
+}
+.v7125-week-label{font-size:12px;font-weight:950;color:var(--text2);min-width:110px;text-align:center;}
+.v7125-stat{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  min-height:28px;
+  padding:4px 8px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:var(--surface2);
+  font-size:10.5px;
+  font-weight:900;
+  color:var(--text2);
+}
+.v7125-stat.hot{border-color:rgba(220,38,38,.38);background:rgba(220,38,38,.06);color:var(--red);}
+.v7125-stat.important{border-color:rgba(16,166,116,.35);background:rgba(16,166,116,.07);color:var(--green);}
+.v7125-move-bar{
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border:1px solid var(--border2);
+  border-radius:10px;
+  padding:8px 10px;
+  background:var(--surface2);
+  font-size:12px;
+  font-weight:900;
+}
+body.v7125-moving .v7125-move-bar{display:flex;}
+.v7125-week-grid{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(120px,1fr));
+  gap:8px;
+  overflow-x:auto;
+  padding-bottom:2px;
+  scroll-snap-type:x proximity;
+}
+.v7125-day,.v7125-bucket{
+  min-height:128px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface2);
+  padding:8px;
+  scroll-snap-align:start;
+}
+.v7125-day.today{border-color:rgba(16,166,116,.45);background:rgba(16,166,116,.06);}
+.v7125-day.drop,.v7125-bucket.drop{outline:2px solid var(--accent);outline-offset:2px;}
+.v7125-day-head,.v7125-bucket-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  min-height:28px;
+  margin-bottom:6px;
+  color:var(--text2);
+  font-size:11px;
+  font-weight:950;
+}
+.v7125-day-date{font-family:'SF Mono','JetBrains Mono',monospace;color:var(--text3);font-size:10px;}
+.v7125-card-list{display:grid;gap:6px;}
+.v7125-card{
+  border:1px solid var(--border);
+  border-left:4px solid var(--border2);
+  border-radius:9px;
+  background:var(--surface);
+  padding:8px;
+  box-shadow:var(--shadow-xs);
+  cursor:grab;
+}
+.v7125-card:active{cursor:grabbing;}
+.v7125-card.iu{border-left-color:var(--red);background:rgba(220,38,38,.045);}
+.v7125-card.i{border-left-color:var(--green);}
+.v7125-card.u{border-left-color:var(--orange);}
+.v7125-card.dragging{opacity:.55;}
+.v7125-card-title{
+  font-size:12px;
+  font-weight:950;
+  line-height:1.35;
+  color:var(--text);
+  word-break:break-word;
+}
+.v7125-card-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  margin-top:6px;
+  color:var(--text3);
+  font-size:10px;
+  font-weight:800;
+}
+.v7125-pill{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:var(--surface2);
+  padding:2px 6px;
+}
+.v7125-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:7px;
+}
+.v7125-card button{
+  min-height:28px;
+  padding:4px 7px;
+  font-size:10.5px;
+}
+.v7125-card button.on{
+  border-color:var(--text);
+  background:var(--text);
+  color:var(--surface);
+}
+.v7125-card button.soft{color:var(--text2);}
+.v7125-card button.danger{color:var(--red);border-color:rgba(220,38,38,.32);background:rgba(220,38,38,.04);}
+.v7125-backlog-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(160px,1fr));
+  gap:8px;
+}
+.v7125-empty{
+  border:1px dashed var(--border);
+  border-radius:8px;
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--text3);
+  font-size:11px;
+  font-weight:800;
+}
+@media(max-width:860px){
+  .v7125-week-grid{grid-template-columns:repeat(7,minmax(170px,78vw));}
+  .v7125-backlog-grid{grid-template-columns:1fr;}
+}
+</style>
+
+<script id="v7125-week-task-board-script">
+/* ===== v71.25: weekly task board with buckets and importance controls ===== */
+(function(){
+  if(window.__v7125WeekTaskBoard) return;
+  window.__v7125WeekTaskBoard=true;
+  document.body.classList.add('v7125-week-task-board');
+
+  let viewDate='';
+  let movingId='';
+  let installed=false;
+
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function escText(v){
+    const s=String(v==null?'':v);
+    return typeof esc==='function'?esc(s):s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function today(){
+    try{return todayKey();}
+    catch(e){
+      const d=new Date();
+      return fmtDate(d);
+    }
+  }
+  function fmtDate(d){
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function dateObj(key){
+    const d=new Date(String(key||today())+'T00:00:00');
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+  function addDays(key,n){
+    const d=dateObj(key);
+    d.setDate(d.getDate()+n);
+    return fmtDate(d);
+  }
+  function weekStart(key){
+    const d=dateObj(key);
+    const diff=(d.getDay()+6)%7;
+    d.setDate(d.getDate()-diff);
+    return fmtDate(d);
+  }
+  function md(key){
+    const d=dateObj(key);
+    return String(d.getMonth()+1)+'/'+String(d.getDate());
+  }
+  function dow(key){
+    return ['日','月','火','水','木','金','土'][dateObj(key).getDay()];
+  }
+  function byId(id){return ok()?S.tasks.find(t=>t&&String(t.id)===String(id)):null;}
+  function bucketOf(t){return String(t&&t.v7125Bucket||'backlog');}
+  function isImportant(t){return !!(t&&t.v7125Important);}
+  function isUrgent(t){return !!(t&&t.v7125Urgent);}
+  function matrixClass(t){
+    if(isImportant(t)&&isUrgent(t)) return 'iu';
+    if(isImportant(t)) return 'i';
+    if(isUrgent(t)) return 'u';
+    return '';
+  }
+  function matrixLabel(t){
+    if(isImportant(t)&&isUrgent(t)) return '緊急・重要';
+    if(isImportant(t)) return '重要';
+    if(isUrgent(t)) return '緊急';
+    return '通常';
+  }
+  function touch(t){
+    if(!t) return;
+    const ts=Date.now();
+    t.v45TouchedAt=ts;
+    t.updatedAt=ts;
+    try{ if(typeof window.sasshyMarkLocalEditQuiet==='function') window.sasshyMarkLocalEditQuiet('週タスク棚編集',7000); }catch(e){}
+  }
+  function saveAll(reason){
+    try{ if(typeof save==='function') save(); }catch(e){}
+    try{ if(reason && typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason); }catch(e){}
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    renderBoard();
+  }
+  function sortTasks(a,b){
+    const as=(isImportant(a)?4:0)+(isUrgent(a)?2:0)+(a.startTime?1:0);
+    const bs=(isImportant(b)?4:0)+(isUrgent(b)?2:0)+(b.startTime?1:0);
+    if(as!==bs) return bs-as;
+    if(a.startTime&&b.startTime) return String(a.startTime).localeCompare(String(b.startTime));
+    if(a.scheduledDate&&b.scheduledDate&&a.scheduledDate!==b.scheduledDate) return String(a.scheduledDate).localeCompare(String(b.scheduledDate));
+    return Number(b.v45TouchedAt||b.updatedAt||b.created||0)-Number(a.v45TouchedAt||a.updatedAt||a.created||0);
+  }
+  function taskPills(t){
+    const pills=[];
+    if(t.startTime) pills.push(t.startTime);
+    pills.push((Number(t.planMin)||15)+'分');
+    pills.push(matrixLabel(t));
+    if(bucketOf(t)==='someday') pills.push('いつか');
+    if(bucketOf(t)==='wish') pills.push('やりたい');
+    return pills.map(x=>'<span class="v7125-pill">'+escText(x)+'</span>').join('');
+  }
+  function card(t){
+    const cls=matrixClass(t);
+    const bucket=bucketOf(t);
+    return '<div class="v7125-card '+cls+'" draggable="true" data-v7125-card="'+escText(t.id)+'">'+
+      '<div class="v7125-card-title">'+escText(t.title||'無題')+'</div>'+
+      '<div class="v7125-card-meta">'+taskPills(t)+'</div>'+
+      '<div class="v7125-card-actions">'+
+        '<button type="button" class="'+(isImportant(t)?'on':'')+'" data-v7125-act="important" data-id="'+escText(t.id)+'">重要</button>'+
+        '<button type="button" class="'+(isUrgent(t)?'on':'')+'" data-v7125-act="urgent" data-id="'+escText(t.id)+'">緊急</button>'+
+        '<button type="button" class="'+(bucket==='someday'?'on':'soft')+'" data-v7125-act="bucket" data-bucket="someday" data-id="'+escText(t.id)+'">いつか</button>'+
+        '<button type="button" class="'+(bucket==='wish'?'on':'soft')+'" data-v7125-act="bucket" data-bucket="wish" data-id="'+escText(t.id)+'">やりたい</button>'+
+        '<button type="button" class="soft" data-v7125-act="move" data-id="'+escText(t.id)+'">移動</button>'+
+        '<button type="button" class="danger" data-v7125-act="undate" data-id="'+escText(t.id)+'">日付外す</button>'+
+      '</div>'+
+    '</div>';
+  }
+  function empty(){return '<div class="v7125-empty">空</div>';}
+  function renderList(items){
+    items=items.slice().sort(sortTasks);
+    return '<div class="v7125-card-list">'+(items.length?items.map(card).join(''):empty())+'</div>';
+  }
+  function counts(tasks){
+    return {
+      all:tasks.length,
+      iu:tasks.filter(t=>isImportant(t)&&isUrgent(t)).length,
+      i:tasks.filter(t=>isImportant(t)&&!isUrgent(t)).length,
+      u:tasks.filter(t=>!isImportant(t)&&isUrgent(t)).length
+    };
+  }
+  function targetAttrs(type,value){
+    return ' data-v7125-drop="'+type+'" data-v7125-value="'+escText(value||'')+'"';
+  }
+  function renderBoard(){
+    const box=document.getElementById('v7125WeekBoard');
+    if(!box || !ok()) return;
+    if(!viewDate) viewDate=localStorage.getItem('v7125_week_view_date')||today();
+    const start=weekStart(viewDate);
+    const days=Array.from({length:7},(_,i)=>addDays(start,i));
+    const openTasks=(S.tasks||[]).filter(t=>t&&!t.done&&!t.adhdHiddenGenerated);
+    const weekSet=new Set(days);
+    const dayTasks={};
+    days.forEach(d=>dayTasks[d]=[]);
+    const buckets={backlog:[],someday:[],wish:[]};
+    openTasks.forEach(t=>{
+      if(t.scheduledDate && weekSet.has(String(t.scheduledDate))){
+        dayTasks[String(t.scheduledDate)].push(t);
+        return;
+      }
+      if(!t.scheduledDate){
+        const b=bucketOf(t);
+        if(b==='someday') buckets.someday.push(t);
+        else if(b==='wish') buckets.wish.push(t);
+        else buckets.backlog.push(t);
+      }
+    });
+    const c=counts(openTasks);
+    const label=md(start)+' - '+md(addDays(start,6));
+    const summary=box.querySelector('summary .v7125-summary-count');
+    if(summary) summary.textContent='未完了 '+openTasks.length+'件';
+    const body=box.querySelector('.v7125-board-body');
+    if(!body) return;
+    body.innerHTML=
+      '<div class="v7125-board-top">'+
+        '<div class="v7125-week-nav">'+
+          '<button type="button" data-v7125-nav="prev">前週</button>'+
+          '<span class="v7125-week-label">'+escText(label)+'</span>'+
+          '<button type="button" data-v7125-nav="next">翌週</button>'+
+          '<button type="button" class="primary" data-v7125-nav="today">今週</button>'+
+        '</div>'+
+        '<div class="v7125-stats">'+
+          '<span class="v7125-stat">全部 '+c.all+'</span>'+
+          '<span class="v7125-stat hot">緊急重要 '+c.iu+'</span>'+
+          '<span class="v7125-stat important">重要 '+c.i+'</span>'+
+          '<span class="v7125-stat">緊急 '+c.u+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="v7125-move-bar"><span id="v7125MoveLabel">移動先を選択</span><button type="button" class="v7125-move-cancel" data-v7125-act="cancel-move">解除</button></div>'+
+      '<div class="v7125-week-grid">'+days.map(d=>{
+        const isToday=d===today();
+        return '<div class="v7125-day '+(isToday?'today':'')+'"'+targetAttrs('day',d)+'>'+
+          '<div class="v7125-day-head"><span>'+escText(dow(d))+'</span><span class="v7125-day-date">'+escText(md(d))+'</span></div>'+
+          renderList(dayTasks[d])+
+        '</div>';
+      }).join('')+'</div>'+
+      '<div class="v7125-backlog-grid">'+
+        bucketBlock('backlog','日付なし',buckets.backlog)+
+        bucketBlock('someday','いつかやる',buckets.someday)+
+        bucketBlock('wish','やりたいこと',buckets.wish)+
+      '</div>';
+    updateMoveLabel();
+  }
+  function bucketBlock(key,label,items){
+    return '<div class="v7125-bucket"'+targetAttrs('bucket',key)+'>'+
+      '<div class="v7125-bucket-head"><span>'+escText(label)+'</span><span>'+items.length+'件</span></div>'+
+      renderList(items)+
+    '</div>';
+  }
+  function ensureBoard(){
+    let box=document.getElementById('v7125WeekBoard');
+    if(box) return box;
+    const host=document.querySelector('#p-quest');
+    if(!host) return null;
+    box=document.createElement('details');
+    box.id='v7125WeekBoard';
+    box.open=true;
+    box.innerHTML='<summary><span>週のタスク棚</span><span class="v7125-summary-count">--</span></summary><div class="v7125-board-body"></div>';
+    const desk=document.getElementById('v66QuestDesk');
+    const sched=document.getElementById('schedHdrDay');
+    if(desk && desk.parentNode) desk.parentNode.insertBefore(box, desk.nextSibling);
+    else if(sched && sched.parentNode) sched.parentNode.insertBefore(box, sched);
+    else host.appendChild(box);
+    return box;
+  }
+  function updateMoveLabel(){
+    const label=document.getElementById('v7125MoveLabel');
+    if(!label) return;
+    const t=byId(movingId);
+    label.textContent=t ? '移動中: '+(t.title||'無題') : '移動先を選択';
+    document.body.classList.toggle('v7125-moving',!!t);
+  }
+  function moveTask(id,type,value){
+    const t=byId(id);
+    if(!t) return false;
+    if(type==='day'){
+      t.scheduledDate=value;
+      if(t.v7125Bucket) delete t.v7125Bucket;
+      t.lane=t.lane||'now';
+    }else if(type==='bucket'){
+      delete t.scheduledDate;
+      delete t.startTime;
+      if(value==='someday' || value==='wish') t.v7125Bucket=value;
+      else delete t.v7125Bucket;
+    }
+    touch(t);
+    movingId='';
+    updateMoveLabel();
+    saveAll('週タスク棚移動');
+    return true;
+  }
+  function setBucket(id,bucket){
+    const t=byId(id);
+    if(!t) return;
+    delete t.scheduledDate;
+    delete t.startTime;
+    if(bucket==='someday' || bucket==='wish') t.v7125Bucket=bucket;
+    else delete t.v7125Bucket;
+    touch(t);
+    saveAll('タスク棚分類');
+  }
+  function toggleFlag(id,flag){
+    const t=byId(id);
+    if(!t) return;
+    if(flag==='important') t.v7125Important=!t.v7125Important;
+    if(flag==='urgent') t.v7125Urgent=!t.v7125Urgent;
+    touch(t);
+    saveAll('重要度変更');
+  }
+  function bind(){
+    if(installed) return;
+    installed=true;
+    document.addEventListener('click',e=>{
+      const nav=e.target.closest('[data-v7125-nav]');
+      if(nav){
+        e.preventDefault();
+        if(nav.dataset.v7125Nav==='prev') viewDate=addDays(weekStart(viewDate||today()),-7);
+        if(nav.dataset.v7125Nav==='next') viewDate=addDays(weekStart(viewDate||today()),7);
+        if(nav.dataset.v7125Nav==='today') viewDate=today();
+        localStorage.setItem('v7125_week_view_date',viewDate);
+        renderBoard();
+        return;
+      }
+      const act=e.target.closest('[data-v7125-act]');
+      if(act){
+        e.preventDefault();
+        e.stopPropagation();
+        const id=act.dataset.id;
+        const a=act.dataset.v7125Act;
+        if(a==='important' || a==='urgent') toggleFlag(id,a);
+        else if(a==='bucket') setBucket(id,act.dataset.bucket);
+        else if(a==='undate') setBucket(id,'backlog');
+        else if(a==='move'){
+          movingId=movingId===id?'':id;
+          updateMoveLabel();
+        }else if(a==='cancel-move'){
+          movingId='';
+          updateMoveLabel();
+        }
+        return;
+      }
+      if(movingId){
+        const target=e.target.closest('[data-v7125-drop]');
+        if(target){
+          e.preventDefault();
+          moveTask(movingId,target.dataset.v7125Drop,target.dataset.v7125Value);
+        }
+      }
+    },true);
+    document.addEventListener('dragstart',e=>{
+      const cardEl=e.target.closest&&e.target.closest('[data-v7125-card]');
+      if(!cardEl) return;
+      movingId=cardEl.dataset.v7125Card;
+      cardEl.classList.add('dragging');
+      try{
+        e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('text/plain',movingId);
+      }catch(err){}
+      updateMoveLabel();
+    },true);
+    document.addEventListener('dragend',e=>{
+      document.querySelectorAll('.v7125-card.dragging,.v7125-day.drop,.v7125-bucket.drop').forEach(el=>el.classList.remove('dragging','drop'));
+    },true);
+    document.addEventListener('dragover',e=>{
+      const target=e.target.closest&&e.target.closest('[data-v7125-drop]');
+      if(!target) return;
+      e.preventDefault();
+      target.classList.add('drop');
+      try{e.dataTransfer.dropEffect='move';}catch(err){}
+    },true);
+    document.addEventListener('dragleave',e=>{
+      const target=e.target.closest&&e.target.closest('[data-v7125-drop]');
+      if(target) target.classList.remove('drop');
+    },true);
+    document.addEventListener('drop',e=>{
+      const target=e.target.closest&&e.target.closest('[data-v7125-drop]');
+      if(!target) return;
+      e.preventDefault();
+      target.classList.remove('drop');
+      const id=(e.dataTransfer&&e.dataTransfer.getData('text/plain')) || movingId;
+      if(id) moveTask(id,target.dataset.v7125Drop,target.dataset.v7125Value);
+    },true);
+  }
+  function wrapRenderTasks(){
+    const old=window.renderTasks;
+    if(typeof old!=='function' || old.__v7125WeekTaskBoard) return false;
+    const wrapped=function(){
+      const r=old.apply(this,arguments);
+      setTimeout(()=>{ensureBoard();renderBoard();},80);
+      return r;
+    };
+    wrapped.__v7125WeekTaskBoard=true;
+    window.renderTasks=wrapped;
+    return true;
+  }
+  function start(){
+    bind();
+    ensureBoard();
+    wrapRenderTasks();
+    renderBoard();
+  }
+  setTimeout(start,1200);
+  setInterval(()=>{ensureBoard();wrapRenderTasks();renderBoard();},5000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden) setTimeout(renderBoard,150);});
 })();
 </script>
 
