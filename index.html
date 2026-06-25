@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.26').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.27').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.26';
+  const VERSION='v71.27';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22528,6 +22528,487 @@ body.v7125-moving .v7125-move-bar{display:flex;}
   setTimeout(start,1200);
   setInterval(()=>{ensureBoard();wrapRenderTasks();renderBoard();},5000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden) setTimeout(renderBoard,150);});
+})();
+</script>
+
+<style id="v7127-stability-style">
+/* v71.27: stabilization layer - sync tombstones + calmer timeline */
+body.v7127-stability #schedBody,
+body.v7127-stability #schedBody .sched-grid{
+  overflow-anchor:none !important;
+}
+body.v7127-timeline-lock,
+html.v7127-timeline-lock{
+  scroll-behavior:auto !important;
+  overscroll-behavior:none;
+}
+body.v7127-timeline-lock #schedBody .sched-grid{
+  contain:layout paint;
+}
+body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
+  transition:none !important;
+  user-select:none !important;
+  -webkit-user-select:none !important;
+}
+.v7127-day-add{
+  border:1px solid var(--border);
+  background:var(--text);
+  color:var(--surface);
+  border-radius:999px;
+  min-height:34px;
+  padding:7px 12px;
+  font:inherit;
+  font-size:12px;
+  font-weight:950;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.v7127-sync-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-top:7px;
+  border:1px solid rgba(16,166,116,.35);
+  background:rgba(16,166,116,.07);
+  color:var(--green);
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:11px;
+  font-weight:950;
+}
+</style>
+
+<script id="v7127-stability-script">
+/* ===== v71.27: stabilization release ===== */
+(function(){
+  if(window.__v7127Stability) return;
+  window.__v7127Stability=true;
+  document.body.classList.add('v7127-stability');
+
+  const KEY='sasshy_quest_v5';
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const VERSION='v71.27';
+  let deleteIntentUntil=0;
+  let syncTimer=0;
+  let renderTimer=0;
+  let timelinePointer=null;
+  let timelineBusyUntil=0;
+  let scrollLock=null;
+  let scrollFrame=0;
+  let deleteListenersInstalled=false;
+  let timelineListenersInstalled=false;
+  const deferredRenders=new Map();
+
+  function now(){return Date.now();}
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function parse(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return v;}
+  }
+  function escText(v){
+    return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function dateMs(v){
+    if(typeof v==='number' && Number.isFinite(v)) return v;
+    if(typeof v==='string'){
+      const n=Number(v);
+      if(Number.isFinite(n) && n>1000000000) return n;
+      const t=Date.parse(v);
+      if(Number.isFinite(t)) return t;
+    }
+    return 0;
+  }
+  function taskStamp(t){
+    if(!t || typeof t!=='object') return 0;
+    return Math.max(
+      dateMs(t.updatedAt), dateMs(t.updated), dateMs(t.v45TouchedAt),
+      dateMs(t.v7118TimelineEditedAt), dateMs(t.v7119CrossDayAt),
+      dateMs(t.v7124LocalCreateAt), dateMs(t.v7127TouchedAt),
+      dateMs(t.completedAt), dateMs(t.doneAt), dateMs(t.undoneAt),
+      dateMs(t.createdAt), dateMs(t.created)
+    );
+  }
+  function byId(id){
+    if(!ok()) return null;
+    return S.tasks.find(t=>t && String(t.id)===String(id)) || null;
+  }
+  function saveDirect(){
+    const saver=window.__v40OriginalSave || window.save;
+    try{ if(typeof saver==='function') saver(); }
+    catch(e){}
+  }
+  function refreshLight(){
+    try{ if(typeof renderTasks==='function') renderTasks(); }catch(e){}
+    try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+    try{ if(typeof renderTimeline==='function') renderTimeline(); }catch(e){}
+    try{ if(typeof updateRunningBadge==='function') updateRunningBadge(); }catch(e){}
+    try{ if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo(true); }catch(e){}
+  }
+  function snapshot(label){
+    try{ if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot(label||VERSION+' 保存前'); }catch(e){}
+  }
+  function toastMsg(text){
+    if(typeof toast==='function'){
+      try{ toast(text); return; }catch(e){}
+    }
+    const st=document.getElementById('v40SyncStatus');
+    if(st) st.textContent=text;
+  }
+  function loadCfg(){
+    return Object.assign({enabled:false,dirty:false,localUpdatedAt:0,remoteUpdatedAt:0,lastSyncAt:0},parse(localStorage.getItem(CFG_KEY),{}));
+  }
+  function saveCfg(cfg){
+    try{ localStorage.setItem(CFG_KEY,JSON.stringify(cfg)); }catch(e){}
+    try{ if(typeof renderPanel==='function') renderPanel(); }catch(e){}
+  }
+  function markCfgDirty(){
+    const cfg=loadCfg();
+    if(!cfg.enabled) return;
+    cfg.dirty=true;
+    cfg.localUpdatedAt=Math.max(now(),Number(cfg.localUpdatedAt||0)+1,Number(cfg.remoteUpdatedAt||0)+1);
+    saveCfg(cfg);
+  }
+  function ensureTombstones(state){
+    if(!state || typeof state!=='object') return [];
+    if(!Array.isArray(state.taskDeleteTombstones)) state.taskDeleteTombstones=[];
+    return state.taskDeleteTombstones;
+  }
+  function addTombstoneToState(state, id, title, deletedAt){
+    if(!state || !id || String(id).startsWith('routine:') || String(id).startsWith('gcal:')) return false;
+    const list=ensureTombstones(state);
+    const key=String(id);
+    const at=Number(deletedAt)||now();
+    const old=list.find(x=>x && String(x.id)===key);
+    if(old){
+      old.deletedAt=Math.max(dateMs(old.deletedAt),at);
+      old.title=old.title || title || '';
+      old.source='v7127';
+    }else{
+      list.unshift({id:key,title:String(title||''),deletedAt:at,source:'v7127'});
+    }
+    state.taskDeleteTombstones=list
+      .filter(x=>x && x.id)
+      .sort((a,b)=>dateMs(b.deletedAt)-dateMs(a.deletedAt))
+      .slice(0,700);
+    return true;
+  }
+  function applyTombstones(state){
+    if(!state || !Array.isArray(state.tasks) || !Array.isArray(state.taskDeleteTombstones)) return state;
+    const del=new Map();
+    state.taskDeleteTombstones.forEach(x=>{
+      if(x && x.id) del.set(String(x.id),Math.max(del.get(String(x.id))||0,dateMs(x.deletedAt)));
+    });
+    if(!del.size) return state;
+    state.tasks=state.tasks.filter(t=>{
+      if(!t || !t.id) return true;
+      const deletedAt=del.get(String(t.id))||0;
+      return !deletedAt || taskStamp(t)>deletedAt;
+    });
+    return state;
+  }
+  function addRemovedTaskTombstones(oldRaw, newRaw){
+    const oldState=parse(oldRaw,null);
+    const newState=parse(newRaw,null);
+    if(!oldState || !newState || !Array.isArray(oldState.tasks) || !Array.isArray(newState.tasks)) return newRaw;
+    const newIds=new Set(newState.tasks.filter(t=>t&&t.id).map(t=>String(t.id)));
+    const removed=oldState.tasks.filter(t=>t && t.id && !newIds.has(String(t.id)));
+    if(!removed.length) return newRaw;
+    removed.forEach(t=>addTombstoneToState(newState,t.id,t.title,now()));
+    applyTombstones(newState);
+    return JSON.stringify(newState);
+  }
+  function recordDeletedTask(id, title){
+    if(!ok() || !id) return false;
+    const t=byId(id);
+    const changed=addTombstoneToState(S,id,title || (t&&t.title),now());
+    if(changed){
+      markCfgDirty();
+      window.__sasshyLocalEditQuietUntil=Math.max(Number(window.__sasshyLocalEditQuietUntil||0),now()+6000);
+    }
+    return changed;
+  }
+  function markDeleteIntent(){
+    deleteIntentUntil=now()+5000;
+    window.__v7127DeleteIntentUntil=deleteIntentUntil;
+  }
+  function isDeleteTarget(target){
+    return !!(target && target.closest && target.closest(
+      '.v66-tl-del,[data-v66="delete"],[data-act="del"],[data-v45="delete"],#qtdDelBtn,#qtdDeleteBtn,[data-v718-act="delete"]'
+    ));
+  }
+  function installStorageDeleteGuard(){
+    const oldSet=Storage.prototype.setItem;
+    const oldGet=Storage.prototype.getItem;
+    if(oldSet.__v7127DeleteGuard) return;
+    const wrapped=function(key,value){
+    if(this===localStorage && String(key)===KEY && now()<Math.max(deleteIntentUntil,Number(window.__v7127DeleteIntentUntil||0))){
+      const oldRaw=oldGet.call(localStorage,KEY);
+      if(oldRaw && oldRaw!==String(value)){
+          try{
+            value=addRemovedTaskTombstones(oldRaw,String(value));
+            const nextState=parse(String(value),null);
+            if(nextState && typeof S!=='undefined' && S && Array.isArray(nextState.taskDeleteTombstones)){
+              S.taskDeleteTombstones=clone(nextState.taskDeleteTombstones);
+            }
+          }catch(e){}
+      }
+    }
+      return oldSet.call(this,key,value);
+    };
+    wrapped.__v7127DeleteGuard=true;
+    Storage.prototype.setItem=wrapped;
+  }
+  function installDeleteListeners(){
+    if(deleteListenersInstalled) return;
+    deleteListenersInstalled=true;
+    ['pointerdown','mousedown','touchstart','click'].forEach(type=>{
+      window.addEventListener(type,e=>{
+        if(isDeleteTarget(e.target)) markDeleteIntent();
+      },{capture:true,passive:true});
+    });
+  }
+  function wrapDeleteApis(){
+    const old=window.sasshyDeleteTaskById;
+    if(typeof old==='function' && !old.__v7127DeleteGuard){
+      const wrapped=function(id, opts){
+        const t=byId(id);
+        if(!t) return old.apply(this,arguments);
+        if(opts && opts.confirm){
+          if(!confirm('このタスクを削除する？')) return false;
+          opts=Object.assign({},opts,{confirm:false});
+        }
+        markDeleteIntent();
+        snapshot('タスク削除前');
+        recordDeletedTask(t.id,t.title);
+        const r=old.call(this,id,opts);
+        if(r!==false){
+          saveDirect();
+          try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('タスク削除同期'); }catch(e){}
+        }
+        return r;
+      };
+      wrapped.__v7127DeleteGuard=true;
+      window.sasshyDeleteTaskById=wrapped;
+    }
+    const sched=window.handleSchedAction;
+    if(typeof sched==='function' && !sched.__v7127DeleteGuard){
+      const wrapped=function(id, act){
+        if(act==='del'){
+          const t=byId(id);
+          if(t){
+            markDeleteIntent();
+            snapshot('タスク削除前');
+            recordDeletedTask(t.id,t.title);
+          }
+        }
+        return sched.apply(this,arguments);
+      };
+      wrapped.__v7127DeleteGuard=true;
+      window.handleSchedAction=wrapped;
+    }
+  }
+
+  function isTyping(){
+    const a=document.activeElement;
+    if(!a) return false;
+    if(a.closest && a.closest('#v40SyncPanel')) return false;
+    return !!(a.matches && a.matches('input,textarea,select,[contenteditable="true"]'));
+  }
+  function timelineBusy(){
+    return !!(window.__sasshyTimelineDragging || window.__v7127TimelineBusy || document.body.classList.contains('v7112-resizing') || now()<timelineBusyUntil);
+  }
+  function shouldDelaySync(){
+    return timelineBusy() || isTyping() || now()<Number(window.__sasshyLocalEditQuietUntil||0);
+  }
+  function wrapSyncFlush(){
+    const old=window.sasshySyncFlush;
+    if(typeof old!=='function' || old.__v7127StableFlush) return false;
+    const wrapped=function(reason){
+      if(shouldDelaySync()){
+        markCfgDirty();
+        clearTimeout(syncTimer);
+        syncTimer=setTimeout(()=>wrapped(reason||'安定化後の同期'),1200);
+        return false;
+      }
+      return old.apply(this,arguments);
+    };
+    wrapped.__v7127StableFlush=true;
+    window.sasshySyncFlush=wrapped;
+    return true;
+  }
+  function holdScroll(){
+    if(!scrollLock) return;
+    const x=window.scrollX||window.pageXOffset||0;
+    const y=window.scrollY||window.pageYOffset||0;
+    if(Math.abs(x-scrollLock.x)>1 || Math.abs(y-scrollLock.y)>1) window.scrollTo(scrollLock.x,scrollLock.y);
+    scrollFrame=requestAnimationFrame(holdScroll);
+  }
+  function startScrollLock(){
+    stopScrollLock();
+    scrollLock={x:window.scrollX||window.pageXOffset||0,y:window.scrollY||window.pageYOffset||0};
+    document.documentElement.classList.add('v7127-timeline-lock');
+    document.body.classList.add('v7127-timeline-lock');
+    scrollFrame=requestAnimationFrame(holdScroll);
+  }
+  function stopScrollLock(){
+    scrollLock=null;
+    if(scrollFrame) cancelAnimationFrame(scrollFrame);
+    scrollFrame=0;
+    document.documentElement.classList.remove('v7127-timeline-lock');
+    document.body.classList.remove('v7127-timeline-lock');
+  }
+  function beginTimeline(e){
+    const card=e.target && e.target.closest && e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)');
+    if(!card) return;
+    if(e.target.closest('.v66-tl-del,.v7111-time-btn,.sched-undone-btn')) return;
+    timelinePointer={id:e.pointerId,startX:e.clientX||0,startY:e.clientY||0,moved:false};
+    window.__v7127TimelineBusy=true;
+    timelineBusyUntil=now()+1500;
+    startScrollLock();
+    snapshot('タイムライン編集前');
+  }
+  function moveTimeline(e){
+    if(!timelinePointer || (timelinePointer.id!==undefined && e.pointerId!==timelinePointer.id)) return;
+    const dx=Math.abs((e.clientX||0)-timelinePointer.startX);
+    const dy=Math.abs((e.clientY||0)-timelinePointer.startY);
+    if(dx>4 || dy>4){
+      timelinePointer.moved=true;
+      window.__sasshyTimelineDragClickBlockUntil=Math.max(Number(window.__sasshyTimelineDragClickBlockUntil||0),now()+1600);
+      timelineBusyUntil=now()+2000;
+    }
+  }
+  function endTimeline(){
+    if(!timelinePointer) return;
+    if(timelinePointer.moved){
+      window.__sasshyTimelineDragClickBlockUntil=Math.max(Number(window.__sasshyTimelineDragClickBlockUntil||0),now()+1600);
+      window.__sasshyTimelineEditQuietUntil=Math.max(Number(window.__sasshyTimelineEditQuietUntil||0),now()+3200);
+    }
+    timelinePointer=null;
+    timelineBusyUntil=now()+1200;
+    setTimeout(()=>{
+      window.__v7127TimelineBusy=false;
+      stopScrollLock();
+      flushDeferredRenders();
+      try{ if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush('タイムライン編集後'); }catch(e){}
+    },900);
+  }
+  function installTimelineListeners(){
+    if(timelineListenersInstalled) return;
+    timelineListenersInstalled=true;
+    window.addEventListener('pointerdown',beginTimeline,true);
+    window.addEventListener('pointermove',moveTimeline,{capture:true,passive:true});
+    window.addEventListener('pointerup',endTimeline,true);
+    window.addEventListener('pointercancel',endTimeline,true);
+    window.addEventListener('blur',()=>{timelinePointer=null;window.__v7127TimelineBusy=false;stopScrollLock();},true);
+    document.addEventListener('click',e=>{
+      if(now()<Number(window.__sasshyTimelineDragClickBlockUntil||0)){
+        const card=e.target.closest && e.target.closest('#schedBody .sched-task[data-id]:not(.gcal)');
+        if(card && !e.target.closest('.v66-tl-del,.v7111-time-btn,.sched-undone-btn')){
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        }
+      }
+    },true);
+  }
+  function restoreScrollAfter(sx, sy){
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const x=window.scrollX||window.pageXOffset||0;
+      const y=window.scrollY||window.pageYOffset||0;
+      if(Math.abs(x-sx)>2 || Math.abs(y-sy)>2) window.scrollTo(sx,sy);
+    }));
+  }
+  function wrapRender(name){
+    const old=window[name];
+    if(typeof old!=='function' || old.__v7127RenderGuard) return false;
+    const wrapped=function(){
+      if(timelineBusy()){
+        deferredRenders.set(name,{ctx:this,args:Array.prototype.slice.call(arguments)});
+        clearTimeout(renderTimer);
+        renderTimer=setTimeout(flushDeferredRenders,350);
+        return;
+      }
+      const sx=window.scrollX||window.pageXOffset||0;
+      const sy=window.scrollY||window.pageYOffset||0;
+      const r=old.apply(this,arguments);
+      if(now()<Number(window.__sasshyTimelineEditQuietUntil||0)+1200) restoreScrollAfter(sx,sy);
+      return r;
+    };
+    wrapped.__v7127RenderGuard=true;
+    window[name]=wrapped;
+    return true;
+  }
+  function flushDeferredRenders(){
+    if(timelineBusy()){
+      clearTimeout(renderTimer);
+      renderTimer=setTimeout(flushDeferredRenders,350);
+      return;
+    }
+    const items=[...deferredRenders.entries()];
+    deferredRenders.clear();
+    items.forEach(([name,item])=>{
+      const fn=window[name];
+      if(typeof fn==='function') fn.apply(item.ctx,item.args);
+    });
+  }
+  function wrapRenders(){
+    ['renderSchedule','renderTasks','renderTimeline','renderWeekQ','renderMonth'].forEach(wrapRender);
+  }
+
+  function ensureDayAddButton(){
+    const hdr=document.getElementById('schedHdrDay');
+    if(!hdr || document.getElementById('v7127DayAdd')) return;
+    const btn=document.createElement('button');
+    btn.id='v7127DayAdd';
+    btn.className='v7127-day-add';
+    btn.type='button';
+    btn.textContent='+ 追加';
+    btn.title='この日のタイムラインにタスクを追加';
+    btn.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const date=(typeof questViewDate!=='undefined' && questViewDate) ? questViewDate : (typeof todayKey==='function'?todayKey():'');
+      if(typeof openTaskModal==='function') openTaskModal('',date);
+    });
+    hdr.appendChild(btn);
+  }
+  function ensureStatusBadge(){
+    const note=document.getElementById('v716SafeSyncNote') || document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!note || document.getElementById('v7127SyncBadge')) return;
+    const badge=document.createElement('div');
+    badge.id='v7127SyncBadge';
+    badge.className='v7127-sync-badge';
+    badge.textContent='v71.27 削除復活防止・ドラッグ安定化 ON';
+    note.appendChild(badge);
+  }
+  function installAll(){
+    installStorageDeleteGuard();
+    installDeleteListeners();
+    wrapDeleteApis();
+    wrapSyncFlush();
+    wrapRenders();
+    ensureDayAddButton();
+    ensureStatusBadge();
+  }
+  window.sasshyV7127RecordDeletedTask=recordDeletedTask;
+  window.sasshyV7127ApplyTombstones=function(){
+    if(!ok()) return false;
+    applyTombstones(S);
+    saveDirect();
+    refreshLight();
+    return true;
+  };
+  window.sasshyV7127StabilityStatus=function(){
+    return {version:VERSION,tombstones:ok()&&Array.isArray(S.taskDeleteTombstones)?S.taskDeleteTombstones.length:0,busy:timelineBusy()};
+  };
+  installAll();
+  setTimeout(installAll,800);
+  setInterval(installAll,3500);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(()=>{installAll();flushDeferredRenders();},200); });
 })();
 </script>
 
