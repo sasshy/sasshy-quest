@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.28').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.29').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.28';
+  const VERSION='v71.29';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22587,7 +22587,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
 
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
-  const VERSION='v71.28';
+  const VERSION='v71.29';
   let deleteIntentUntil=0;
   let syncTimer=0;
   let renderTimer=0;
@@ -22982,7 +22982,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     const badge=document.createElement('div');
     badge.id='v7127SyncBadge';
     badge.className='v7127-sync-badge';
-    badge.textContent='v71.28 同期診断・削除復活防止 ON';
+    badge.textContent='v71.29 ローカル移行・同期診断 ON';
     note.appendChild(badge);
   }
   function installAll(){
@@ -23355,6 +23355,298 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     if(act==='copy-sql') copyText(sqlText(),'Supabase SQL');
   },true);
   setTimeout(ensureTools,1600);
+  setInterval(ensureTools,3500);
+})();
+</script>
+
+<style id="v7129-origin-migration-style">
+/* v71.29: move local file:// data to the HTTPS app before Supabase sync */
+.v7129-origin-warning{
+  margin-top:8px;
+  border:1px solid rgba(217,119,6,.38);
+  background:rgba(217,119,6,.075);
+  color:var(--text2);
+  border-radius:10px;
+  padding:8px 9px;
+  font-size:11px;
+  font-weight:850;
+  line-height:1.5;
+}
+.v7129-transfer{
+  margin-top:8px;
+  border:1px solid rgba(15,23,42,.14);
+  background:var(--surface2);
+  border-radius:10px;
+  padding:8px;
+  display:grid;
+  gap:7px;
+}
+.v7129-transfer-title{
+  font-size:11.5px;
+  font-weight:950;
+  color:var(--text);
+}
+.v7129-transfer-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.v7129-transfer-actions button,
+.v7129-transfer-file{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:9px;
+  min-height:34px;
+  padding:7px 9px;
+  font:inherit;
+  font-size:11.5px;
+  font-weight:950;
+  cursor:pointer;
+}
+.v7129-transfer-actions button.primary{
+  border-color:var(--text);
+  background:var(--text);
+  color:var(--surface);
+}
+.v7129-transfer-result{
+  display:none;
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:9px;
+  padding:8px;
+  color:var(--text2);
+  font-size:11px;
+  line-height:1.55;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.v7129-transfer-result.show{display:block;}
+.v7129-transfer-result.good{
+  border-color:rgba(16,166,116,.35);
+  background:rgba(16,166,116,.06);
+}
+.v7129-transfer-result.bad{
+  border-color:rgba(220,38,38,.35);
+  background:rgba(220,38,38,.055);
+}
+.v7129-import-box{
+  display:none;
+  gap:7px;
+}
+.v7129-import-box.show{display:grid;}
+.v7129-import-box textarea{
+  width:100%;
+  min-height:150px;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:9px;
+  padding:8px;
+  font-family:'SF Mono','JetBrains Mono',monospace;
+  font-size:11px;
+  resize:vertical;
+}
+</style>
+
+<script id="v7129-origin-migration-script">
+/* ===== v71.29: transfer file:// localStorage data to HTTPS origin ===== */
+(function(){
+  if(window.__v7129OriginMigration) return;
+  window.__v7129OriginMigration=true;
+
+  const STATE_KEY='sasshy_quest_v5';
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const PAYLOAD_TYPE='sasshy-quest-state-transfer';
+  const VERSION='v71.29';
+
+  function parse(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return v;}
+  }
+  function stateNow(){
+    if(typeof S!=='undefined' && S && typeof S==='object') return clone(S);
+    return parse(localStorage.getItem(STATE_KEY),{});
+  }
+  function cfgNow(){
+    return parse(localStorage.getItem(CFG_KEY),{});
+  }
+  function counts(state){
+    state=state||{};
+    const tasks=Array.isArray(state.tasks)?state.tasks:[];
+    const memos=Array.isArray(state.memos)?state.memos:[];
+    return {tasks:tasks.length,open:tasks.filter(t=>t&&!t.done).length,memos:memos.length};
+  }
+  function countText(c){
+    return 'タスク'+c.tasks+'件 / 未完了'+c.open+'件 / メモ'+c.memos+'件';
+  }
+  function payload(includeCfg){
+    const state=stateNow();
+    const c=counts(state);
+    const cfg=cfgNow();
+    const out={
+      type:PAYLOAD_TYPE,
+      version:VERSION,
+      exportedAt:new Date().toISOString(),
+      href:location.href,
+      counts:c,
+      state:state
+    };
+    if(includeCfg){
+      out.cfg={
+        url:String(cfg.url||''),
+        anonKey:String(cfg.anonKey||''),
+        syncKey:String(cfg.syncKey||''),
+        enabled:false
+      };
+    }
+    return out;
+  }
+  function setResult(text, kind){
+    const box=document.getElementById('v7129TransferResult');
+    if(!box) return;
+    box.textContent=text;
+    box.classList.add('show');
+    box.classList.toggle('good',kind==='good');
+    box.classList.toggle('bad',kind==='bad');
+  }
+  function showManualCopy(text){
+    const importBox=document.getElementById('v7129ImportBox');
+    const area=document.getElementById('v7129ImportText');
+    if(importBox && area){
+      importBox.classList.add('show');
+      area.value=text;
+      area.focus();
+      area.select();
+    }
+  }
+  async function copyTransfer(includeCfg){
+    const p=payload(includeCfg);
+    const text=JSON.stringify(p);
+    try{
+      await navigator.clipboard.writeText(text);
+      setResult('移行データをコピーしました。\n次に https://sasshy.github.io/sasshy-quest/ をMacで開いて「貼り付けから復元」を押してください。\n'+countText(p.counts),'good');
+    }catch(e){
+      showManualCopy(text);
+      setResult('自動コピーできなかったので、下の欄を全選択しました。手動でコピーしてください。\n'+countText(p.counts),'bad');
+    }
+  }
+  function downloadTransfer(includeCfg){
+    const p=payload(includeCfg);
+    const text=JSON.stringify(p,null,2);
+    const blob=new Blob([text],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='sasshy-quest-transfer-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1200);
+    setResult('移行ファイルを保存しました。\nGitHub版で「移行ファイル読込」から選んでください。\n'+countText(p.counts),'good');
+  }
+  function refreshApp(){
+    try{if(typeof applyTheme==='function') applyTheme();}catch(e){}
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderPool==='function') renderPool();}catch(e){}
+    try{if(typeof renderRoutine==='function') renderRoutine();}catch(e){}
+    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    try{if(typeof updateRunningBadge==='function') updateRunningBadge();}catch(e){}
+    try{if(typeof renderQuestCoach==='function') renderQuestCoach();}catch(e){}
+    try{if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo(true);}catch(e){}
+  }
+  function applyTransferText(text){
+    const p=parse(String(text||'').trim(),null);
+    if(!p || p.type!==PAYLOAD_TYPE || !p.state || typeof p.state!=='object'){
+      setResult('読み込みできません。SASSHY QUESTの移行データではなさそうです。','bad');
+      return false;
+    }
+    const c=counts(p.state);
+    const msg='この端末の状態を移行データで置き換えます。\n\n'+
+      countText(c)+'\n\n実行前の状態は復元履歴に保存します。';
+    if(!confirm(msg)) return false;
+    try{if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot('移行読込前');}catch(e){}
+    try{
+      localStorage.setItem(STATE_KEY,JSON.stringify(p.state));
+      if(p.cfg && (p.cfg.url || p.cfg.anonKey || p.cfg.syncKey)){
+        const old=cfgNow();
+        const next=Object.assign({},old,p.cfg,{enabled:false,dirty:true,localUpdatedAt:Date.now(),lastSyncAt:0});
+        localStorage.setItem(CFG_KEY,JSON.stringify(next));
+      }
+      if(typeof S!=='undefined' && S){
+        Object.keys(S).forEach(k=>delete S[k]);
+        Object.assign(S,clone(p.state));
+      }
+      refreshApp();
+      setResult('移行データを読み込みました。\n'+countText(c)+'\n次に「この端末でクラウド初期化」を押してください。','good');
+      return true;
+    }catch(e){
+      setResult('読み込みに失敗しました: '+(e&&e.message?e.message:e),'bad');
+      return false;
+    }
+  }
+  function importFromTextarea(){
+    const area=document.getElementById('v7129ImportText');
+    applyTransferText(area&&area.value);
+  }
+  function showImportBox(){
+    const box=document.getElementById('v7129ImportBox');
+    const area=document.getElementById('v7129ImportText');
+    if(box) box.classList.add('show');
+    if(area) setTimeout(()=>area.focus(),0);
+  }
+  function ensureTools(){
+    const body=document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!body || document.getElementById('v7129TransferTools')) return false;
+    const isFile=location.protocol==='file:';
+    const box=document.createElement('div');
+    box.id='v7129TransferTools';
+    box.className='v7129-transfer';
+    box.innerHTML=
+      (isFile?'<div class="v7129-origin-warning">この画面は file:// で開いています。Supabase同期は失敗しやすいので、まずGitHub版へデータ移行してください。</div>':'')+
+      '<div class="v7129-transfer-title">Macローカル版 → GitHub版 移行</div>'+
+      '<div class="v7129-transfer-actions">'+
+        '<button type="button" class="primary" data-v7129-transfer="copy">移行JSONをコピー</button>'+
+        '<button type="button" data-v7129-transfer="copy-cfg">同期設定込みでコピー</button>'+
+        '<button type="button" data-v7129-transfer="download">移行ファイル保存</button>'+
+        '<button type="button" data-v7129-transfer="show-import">貼り付けから復元</button>'+
+        '<label class="v7129-transfer-file">移行ファイル読込<input id="v7129TransferFile" type="file" accept="application/json,.json" hidden></label>'+
+      '</div>'+
+      '<div class="v7129-import-box" id="v7129ImportBox">'+
+        '<textarea id="v7129ImportText" placeholder="Macローカル版でコピーした移行JSONをここに貼る"></textarea>'+
+        '<div class="v7129-transfer-actions"><button type="button" class="primary" data-v7129-transfer="import">貼り付け内容を復元</button></div>'+
+      '</div>'+
+      '<div class="v7129-transfer-result" id="v7129TransferResult"></div>';
+    body.appendChild(box);
+    const file=document.getElementById('v7129TransferFile');
+    if(file){
+      file.addEventListener('change',()=>{
+        const f=file.files&&file.files[0];
+        if(!f) return;
+        const r=new FileReader();
+        r.onload=()=>applyTransferText(String(r.result||''));
+        r.onerror=()=>setResult('ファイルを読めませんでした','bad');
+        r.readAsText(f);
+      });
+    }
+    return true;
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest&&e.target.closest('[data-v7129-transfer]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const act=btn.dataset.v7129Transfer;
+    if(act==='copy') copyTransfer(false);
+    if(act==='copy-cfg') copyTransfer(true);
+    if(act==='download') downloadTransfer(false);
+    if(act==='show-import') showImportBox();
+    if(act==='import') importFromTextarea();
+  },true);
+  setTimeout(ensureTools,1700);
   setInterval(ensureTools,3500);
 })();
 </script>
