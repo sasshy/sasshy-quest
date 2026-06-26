@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.27').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.28').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.27';
+  const VERSION='v71.28';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22587,7 +22587,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
 
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
-  const VERSION='v71.27';
+  const VERSION='v71.28';
   let deleteIntentUntil=0;
   let syncTimer=0;
   let renderTimer=0;
@@ -22982,7 +22982,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     const badge=document.createElement('div');
     badge.id='v7127SyncBadge';
     badge.className='v7127-sync-badge';
-    badge.textContent='v71.27 削除復活防止・ドラッグ安定化 ON';
+    badge.textContent='v71.28 同期診断・削除復活防止 ON';
     note.appendChild(badge);
   }
   function installAll(){
@@ -23009,6 +23009,353 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   setTimeout(installAll,800);
   setInterval(installAll,3500);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(()=>{installAll();flushDeferredRenders();},200); });
+})();
+</script>
+
+<style id="v7128-sync-diagnostics-style">
+/* v71.28: visible sync diagnostics */
+.v7128-sync-tools{
+  margin-top:8px;
+  border:1px solid rgba(59,130,246,.25);
+  background:rgba(59,130,246,.055);
+  border-radius:10px;
+  padding:8px;
+  display:grid;
+  gap:7px;
+}
+.v7128-sync-tool-title{
+  color:var(--text);
+  font-size:11.5px;
+  font-weight:950;
+}
+.v7128-sync-tool-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.v7128-sync-tool-actions button{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:9px;
+  min-height:34px;
+  padding:7px 9px;
+  font:inherit;
+  font-size:11.5px;
+  font-weight:950;
+  cursor:pointer;
+}
+.v7128-sync-tool-actions button.primary{
+  border-color:var(--text);
+  background:var(--text);
+  color:var(--surface);
+}
+.v7128-sync-tool-actions button.warn{
+  border-color:rgba(217,119,6,.45);
+  color:var(--orange);
+}
+.v7128-sync-result{
+  display:none;
+  border:1px solid var(--border);
+  background:var(--surface);
+  border-radius:9px;
+  padding:8px;
+  color:var(--text2);
+  font-size:11px;
+  line-height:1.55;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.v7128-sync-result.show{display:block;}
+.v7128-sync-result.ok{
+  border-color:rgba(16,166,116,.35);
+  background:rgba(16,166,116,.06);
+}
+.v7128-sync-result.bad{
+  border-color:rgba(220,38,38,.35);
+  background:rgba(220,38,38,.055);
+}
+</style>
+
+<script id="v7128-sync-diagnostics-script">
+/* ===== v71.28: Supabase sync diagnostics and one-device initialization ===== */
+(function(){
+  if(window.__v7128SyncDiagnostics) return;
+  window.__v7128SyncDiagnostics=true;
+
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const STATE_KEY='sasshy_quest_v5';
+  const SAFE_SUFFIX='__safe_v716';
+  const TABLE='/rest/v1/app_state';
+  let running=false;
+
+  function parse(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function cleanUrl(v){
+    return String(v||'')
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/\/rest\/v1\/?$/,'')
+      .replace(/\/+$/,'');
+  }
+  function cleanKey(v){
+    return String(v||'')
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/^bearer\s+/i,'')
+      .replace(/\s+/g,'');
+  }
+  function loadCfg(){
+    return Object.assign({enabled:false,url:'',anonKey:'',syncKey:'',dirty:false,localUpdatedAt:0,remoteUpdatedAt:0,lastSyncAt:0},parse(localStorage.getItem(CFG_KEY),{}));
+  }
+  function saveCfg(cfg){
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch(e){}
+    try{if(typeof renderPanel==='function') renderPanel();}catch(e){}
+  }
+  function mask(v){
+    v=String(v||'');
+    if(!v) return '未入力';
+    if(v.length<12) return v[0]+'***'+v.slice(-1);
+    return v.slice(0,8)+'...'+v.slice(-5);
+  }
+  function safeKey(key){
+    key=String(key||'').trim();
+    return key && !key.endsWith(SAFE_SUFFIX) ? key+SAFE_SUFFIX : key;
+  }
+  function apiBase(cfg){
+    return cleanUrl(cfg.url)+TABLE;
+  }
+  function looksLikeJwt(key){
+    return String(key||'').split('.').length===3;
+  }
+  function authModes(cfg){
+    const key=cleanKey(cfg.anonKey);
+    const base={apikey:key,'Content-Type':'application/json'};
+    const modes=[];
+    if(looksLikeJwt(key)) modes.push({name:'legacy anon JWT',headers:Object.assign({},base,{Authorization:'Bearer '+key})});
+    else modes.push({name:'publishable apikey',headers:base});
+    modes.push({name:'apikey + bearer fallback',headers:Object.assign({},base,{Authorization:'Bearer '+key})});
+    modes.push({name:'apikey only fallback',headers:base});
+    const seen=new Set();
+    return modes.filter(m=>{
+      const sig=JSON.stringify(m.headers);
+      if(seen.has(sig)) return false;
+      seen.add(sig);
+      return true;
+    });
+  }
+  function cfgProblem(cfg){
+    if(!cleanUrl(cfg.url)) return 'Supabase URL が未入力です';
+    if(!/^https:\/\/[^/]+\.supabase\.co$/i.test(cleanUrl(cfg.url))) return 'Supabase URL が https://xxxx.supabase.co の形ではありません';
+    if(!cleanKey(cfg.anonKey)) return 'API key が未入力です';
+    if(/^sb_secret_/i.test(cleanKey(cfg.anonKey))) return 'secret key はブラウザでは使えません。publishable key か anon public key を使ってください';
+    if(!String(cfg.syncKey||'').trim()) return '同期キーが未入力です';
+    return '';
+  }
+  function request(method,url,headers,body){
+    return new Promise(resolve=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open(method,url,true);
+      xhr.timeout=16000;
+      Object.entries(headers||{}).forEach(([k,v])=>{try{xhr.setRequestHeader(k,v);}catch(e){}});
+      xhr.onload=()=>resolve({ok:xhr.status>=200&&xhr.status<300,status:xhr.status,text:xhr.responseText||'',url});
+      xhr.onerror=()=>resolve({ok:false,status:0,text:'ネットワーク/CORSエラー',url});
+      xhr.ontimeout=()=>resolve({ok:false,status:0,text:'タイムアウト',url});
+      xhr.send(body||null);
+    });
+  }
+  function stateSummary(){
+    const state=(typeof S!=='undefined' && S) ? S : parse(localStorage.getItem(STATE_KEY),{});
+    const tasks=Array.isArray(state.tasks)?state.tasks:[];
+    const memos=Array.isArray(state.memos)?state.memos:[];
+    return 'この端末: タスク'+tasks.length+'件 / 未完了'+tasks.filter(t=>t&&!t.done).length+'件 / メモ'+memos.length+'件';
+  }
+  function currentState(){
+    let state=(typeof S!=='undefined' && S) ? S : parse(localStorage.getItem(STATE_KEY),{});
+    try{return JSON.parse(JSON.stringify(state||{}));}
+    catch(e){return state||{};}
+  }
+  function setResult(text, kind){
+    const box=document.getElementById('v7128SyncResult');
+    if(box){
+      box.textContent=text;
+      box.classList.add('show');
+      box.classList.toggle('ok',kind==='ok');
+      box.classList.toggle('bad',kind==='bad');
+    }
+    const st=document.getElementById('v716SafeSyncStatus') || document.getElementById('v40SyncStatus');
+    if(st) st.textContent=text.split('\n')[0].slice(0,120);
+  }
+  function describeHttp(res){
+    let body=String(res.text||'').replace(/\s+/g,' ').trim();
+    if(body.length>240) body=body.slice(0,240)+'...';
+    if(res.status===0) return '通信不可: '+body;
+    if(res.status===401 || res.status===403) return '権限NG '+res.status+': '+body;
+    if(res.status===404) return 'テーブルが見つからない可能性 '+res.status+': '+body;
+    if(res.status>=400) return 'HTTP '+res.status+': '+body;
+    return 'HTTP '+res.status+(body?' '+body:'');
+  }
+  function sqlText(){
+    return [
+      '-- SASSHY QUEST sync table',
+      'create table if not exists public.app_state (',
+      '  sync_key text primary key,',
+      '  data jsonb not null,',
+      '  updated_at timestamptz not null default now()',
+      ');',
+      '',
+      'alter table public.app_state enable row level security;',
+      '',
+      'drop policy if exists "sasshy app_state read" on public.app_state;',
+      'drop policy if exists "sasshy app_state insert" on public.app_state;',
+      'drop policy if exists "sasshy app_state update" on public.app_state;',
+      '',
+      'create policy "sasshy app_state read"',
+      'on public.app_state for select',
+      'to anon',
+      'using (true);',
+      '',
+      'create policy "sasshy app_state insert"',
+      'on public.app_state for insert',
+      'to anon',
+      'with check (true);',
+      '',
+      'create policy "sasshy app_state update"',
+      'on public.app_state for update',
+      'to anon',
+      'using (true)',
+      'with check (true);'
+    ].join('\n');
+  }
+  async function copyText(text, label){
+    try{
+      await navigator.clipboard.writeText(text);
+      setResult(label+'をコピーしました', 'ok');
+    }catch(e){
+      setResult(label+'のコピーに失敗しました。手動でコピーしてください。\n\n'+text, 'bad');
+    }
+  }
+  async function diagnose(){
+    if(running) return;
+    running=true;
+    const cfg=loadCfg();
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    cfg.syncKey=String(cfg.syncKey||'').trim();
+    saveCfg(cfg);
+    const problem=cfgProblem(cfg);
+    if(problem){
+      setResult('診断停止: '+problem+'\n'+stateSummary(), 'bad');
+      running=false;
+      return;
+    }
+    setResult('同期診断中...', '');
+    const base=apiBase(cfg);
+    const key=safeKey(cfg.syncKey);
+    const url=base+'?sync_key=eq.'+encodeURIComponent(key)+'&select=sync_key,updated_at,data&limit=1';
+    let lines=[
+      '同期診断',
+      'URL: '+cfg.url,
+      'API key: '+mask(cfg.anonKey),
+      '同期キー: '+mask(cfg.syncKey),
+      'クラウド行: '+mask(key),
+      stateSummary()
+    ];
+    let okRead=false;
+    for(const mode of authModes(cfg)){
+      const res=await request('GET',url,mode.headers);
+      if(res.ok){
+        okRead=true;
+        let rows=[];
+        try{rows=JSON.parse(res.text||'[]');}catch(e){}
+        lines.push('読込OK ('+mode.name+') / クラウド '+(Array.isArray(rows)&&rows.length?'作成済み':'未作成'));
+        setResult(lines.join('\n'), 'ok');
+        running=false;
+        return;
+      }
+      lines.push('読込NG ('+mode.name+'): '+describeHttp(res));
+    }
+    if(!okRead){
+      lines.push('');
+      lines.push('対処: Supabase の app_state テーブルと RLS policy を確認してください。「Supabase SQLをコピー」して SQL Editor で実行すると直る可能性が高いです。');
+      setResult(lines.join('\n'), 'bad');
+    }
+    running=false;
+  }
+  async function initializeCloud(){
+    if(running) return;
+    const cfg=loadCfg();
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    cfg.syncKey=String(cfg.syncKey||'').trim();
+    saveCfg(cfg);
+    const problem=cfgProblem(cfg);
+    if(problem){
+      setResult('初期化停止: '+problem, 'bad');
+      return;
+    }
+    const ok=confirm('この端末の現在データをクラウドの安全同期先に保存します。\n\n'+stateSummary()+'\n\nMacを正としてiPhoneへ渡したい時だけ押してください。');
+    if(!ok) return;
+    running=true;
+    setResult('クラウド初期化中...', '');
+    try{ if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot('クラウド初期化前'); }catch(e){}
+    const base=apiBase(cfg);
+    const body=JSON.stringify({sync_key:safeKey(cfg.syncKey),data:currentState(),updated_at:new Date().toISOString()});
+    const lines=['クラウド初期化',stateSummary()];
+    for(const mode of authModes(cfg)){
+      const res=await request('POST',base,Object.assign({},mode.headers,{Prefer:'resolution=merge-duplicates,return=minimal'}),body);
+      if(res.ok){
+        const ms=Date.now();
+        cfg.enabled=true;
+        cfg.dirty=false;
+        cfg.localUpdatedAt=ms;
+        cfg.remoteUpdatedAt=ms;
+        cfg.lastSyncAt=ms;
+        saveCfg(cfg);
+        setResult(lines.concat(['保存OK ('+mode.name+')','次はiPhoneで同じ3項目を入れて「安全取込する」を押してください。']).join('\n'), 'ok');
+        running=false;
+        return;
+      }
+      lines.push('保存NG ('+mode.name+'): '+describeHttp(res));
+    }
+    lines.push('');
+    lines.push('対処: 「Supabase SQLをコピー」を押し、Supabase SQL Editorで実行してからもう一度試してください。');
+    setResult(lines.join('\n'), 'bad');
+    running=false;
+  }
+  function ensureTools(){
+    const body=document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!body || document.getElementById('v7128SyncTools')) return false;
+    const box=document.createElement('div');
+    box.id='v7128SyncTools';
+    box.className='v7128-sync-tools';
+    box.innerHTML=
+      '<div class="v7128-sync-tool-title">同期トラブル診断</div>'+
+      '<div class="v7128-sync-tool-actions">'+
+        '<button type="button" class="primary" data-v7128-sync="diagnose">同期診断</button>'+
+        '<button type="button" class="warn" data-v7128-sync="init">この端末でクラウド初期化</button>'+
+        '<button type="button" data-v7128-sync="copy-sql">Supabase SQLをコピー</button>'+
+      '</div>'+
+      '<div class="v7128-sync-result" id="v7128SyncResult"></div>';
+    body.appendChild(box);
+    return true;
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest&&e.target.closest('[data-v7128-sync]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const act=btn.dataset.v7128Sync;
+    if(act==='diagnose') diagnose();
+    if(act==='init') initializeCloud();
+    if(act==='copy-sql') copyText(sqlText(),'Supabase SQL');
+  },true);
+  setTimeout(ensureTools,1600);
+  setInterval(ensureTools,3500);
 })();
 </script>
 
