@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.29').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.30').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.29';
+  const VERSION='v71.30';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22587,7 +22587,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
 
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
-  const VERSION='v71.29';
+  const VERSION='v71.30';
   let deleteIntentUntil=0;
   let syncTimer=0;
   let renderTimer=0;
@@ -22982,7 +22982,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     const badge=document.createElement('div');
     badge.id='v7127SyncBadge';
     badge.className='v7127-sync-badge';
-    badge.textContent='v71.29 ローカル移行・同期診断 ON';
+    badge.textContent='v71.30 同期URL診断・安全取込ガード ON';
     note.appendChild(badge);
   }
   function installAll(){
@@ -23458,7 +23458,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   const STATE_KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const PAYLOAD_TYPE='sasshy-quest-state-transfer';
-  const VERSION='v71.29';
+  const VERSION='v71.30';
 
   function parse(raw, fallback){
     try{return raw?JSON.parse(raw):fallback;}
@@ -23648,6 +23648,432 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   },true);
   setTimeout(ensureTools,1700);
   setInterval(ensureTools,3500);
+})();
+</script>
+
+<style id="v7130-sync-url-guard-style">
+.v7130-sync-hint{
+  margin-top:10px;
+  border:1px solid rgba(220,80,60,.28);
+  background:rgba(220,80,60,.06);
+  color:#9f2f24;
+  border-radius:10px;
+  padding:10px 12px;
+  font-size:13px;
+  font-weight:850;
+  line-height:1.55;
+}
+.v7128-sync-tool-actions [data-v7130-sync]{
+  appearance:none;
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--text);
+  border-radius:12px;
+  padding:10px 14px;
+  font-weight:900;
+  cursor:pointer;
+}
+</style>
+
+<script id="v7130-sync-url-guard-script">
+/* ===== v71.30: clearer Supabase URL errors + pull cannot create stale cloud ===== */
+(function(){
+  if(window.__v7130SyncUrlGuard) return;
+  window.__v7130SyncUrlGuard=true;
+
+  const KEY='sasshy_quest_v5';
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const TABLE='/rest/v1/app_state';
+  const SAFE_SUFFIX='__safe_v716';
+  const COUNTERS=new Set(['exp','level','totalKills','routineCombo']);
+  let syncing=false;
+
+  function parse(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return v;}
+  }
+  function cleanUrl(v){
+    return String(v||'')
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/^SUPABASE_URL\s*=\s*/i,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/\/rest\/v1\/?$/,'')
+      .replace(/\/+$/,'');
+  }
+  function cleanKey(v){
+    return String(v||'')
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/^(?:apikey|api\s*key|anon\s*key|authorization)\s*[:=]\s*/i,'')
+      .trim()
+      .replace(/^bearer\s+/i,'')
+      .replace(/\s+/g,'');
+  }
+  function loadCfg(){
+    return Object.assign({enabled:false,url:'',anonKey:'',syncKey:'',dirty:false,localUpdatedAt:0,remoteUpdatedAt:0,lastSyncAt:0},parse(localStorage.getItem(CFG_KEY),{}));
+  }
+  function saveCfg(cfg){
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch(e){}
+    try{if(typeof renderPanel==='function') renderPanel();}catch(e){}
+  }
+  function status(text, bad){
+    const msg=String(text||'');
+    const st=document.getElementById('v40SyncStatus');
+    if(st) st.textContent=(loadCfg().enabled?'ON ':'OFF ')+msg;
+    const safe=document.getElementById('v716SafeSyncStatus');
+    if(safe) safe.textContent=msg;
+    const result=document.getElementById('v7128SyncResult');
+    if(result && bad){
+      result.textContent=msg;
+      result.classList.add('show','bad');
+      result.classList.remove('ok');
+    }
+    try{if(typeof toast==='function') toast(msg);}catch(e){}
+  }
+  function cfgProblem(cfg){
+    if(!cleanUrl(cfg.url)) return 'Supabase URL が未入力です';
+    if(!/^https:\/\/[^/]+\.supabase\.co$/i.test(cleanUrl(cfg.url))) return 'Supabase URL が https://xxxx.supabase.co の形ではありません';
+    if(!cleanKey(cfg.anonKey)) return 'API key が未入力です';
+    if(/^sb_secret_/i.test(cleanKey(cfg.anonKey))) return 'secret key はブラウザ同期に使えません。publishable key か anon public key を入れてください';
+    if(!String(cfg.syncKey||'').trim()) return '同期キーが未入力です';
+    return '';
+  }
+  function apiBase(cfg){return cleanUrl(cfg.url)+TABLE;}
+  function looksLikeJwt(key){return String(key||'').split('.').length===3;}
+  function authModes(cfg){
+    const key=cleanKey(cfg.anonKey);
+    const base={apikey:key,'Content-Type':'application/json'};
+    const modes=looksLikeJwt(key)
+      ? [{name:'legacy anon JWT',headers:Object.assign({},base,{Authorization:'Bearer '+key})}]
+      : [{name:'publishable apikey',headers:base}];
+    modes.push({name:'apikey + bearer fallback',headers:Object.assign({},base,{Authorization:'Bearer '+key})});
+    modes.push({name:'apikey only fallback',headers:base});
+    const seen=new Set();
+    return modes.filter(m=>{
+      const sig=JSON.stringify(m.headers);
+      if(seen.has(sig)) return false;
+      seen.add(sig);
+      return true;
+    });
+  }
+  function request(method,url,headers,body){
+    return new Promise(resolve=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open(method,url,true);
+      xhr.timeout=16000;
+      Object.entries(headers||{}).forEach(([k,v])=>{try{xhr.setRequestHeader(k,v);}catch(e){}});
+      xhr.onload=()=>resolve({ok:xhr.status>=200&&xhr.status<300,status:xhr.status,text:xhr.responseText||'',url});
+      xhr.onerror=()=>resolve({ok:false,status:0,text:'ネットワーク/CORSエラー',url});
+      xhr.ontimeout=()=>resolve({ok:false,status:0,text:'タイムアウト',url});
+      xhr.send(body||null);
+    });
+  }
+  function describe(res){
+    const raw=String(res&&res.text||'').replace(/\s+/g,' ').trim();
+    if(!res || res.status===0){
+      return 'Supabase URLに接続できません。URLのコピー間違い、Supabaseプロジェクト停止/削除、またはCORS設定の可能性があります。Dashboardの Project URL をコピーし直してください。';
+    }
+    if(res.status===401 || res.status===403) return 'Supabase権限NG '+res.status+'。API key または app_state のRLS policyを確認してください。'+(raw?' '+raw.slice(0,120):'');
+    if(res.status===404) return 'app_state テーブルが見つかりません。Supabase SQLをコピーしてSQL Editorで実行してください。';
+    return 'Supabase通信NG '+res.status+(raw?' '+raw.slice(0,160):'');
+  }
+  function safeKey(key){
+    key=String(key||'').trim();
+    return key && !key.endsWith(SAFE_SUFFIX) ? key+SAFE_SUFFIX : key;
+  }
+  function localState(){
+    if(typeof S!=='undefined' && S && typeof S==='object') return clone(S);
+    return clone(parse(localStorage.getItem(KEY),{}));
+  }
+  function dateMs(v){
+    if(typeof v==='number' && Number.isFinite(v)) return v;
+    if(typeof v==='string'){
+      const n=Number(v);
+      if(Number.isFinite(n) && n>1000000000) return n;
+      const t=Date.parse(v);
+      if(Number.isFinite(t)) return t;
+    }
+    return 0;
+  }
+  function itemStamp(x){
+    if(!x || typeof x!=='object') return 0;
+    return Math.max(
+      dateMs(x.updatedAt),dateMs(x.updated),dateMs(x.v45TouchedAt),
+      dateMs(x.v7118TimelineEditedAt),dateMs(x.v7119CrossDayAt),
+      dateMs(x.v7124LocalCreateAt),dateMs(x.v7127TouchedAt),
+      dateMs(x.completedAt),dateMs(x.doneAt),dateMs(x.undoneAt),
+      dateMs(x.pausedAt),dateMs(x.taskedAt),dateMs(x.createdAt),
+      dateMs(x.created),dateMs(x.endedAt),dateMs(x.startedAt),
+      dateMs(x.ts),dateMs(x.remindAt),dateMs(x.deletedAt)
+    );
+  }
+  function rowKey(x, path){
+    if(x && typeof x==='object'){
+      if(x.id!=null && x.id!=='') return 'id:'+String(x.id);
+      if((path==='memoCategories' || String(path).endsWith('.memoCategories')) && x.name) return 'name:'+String(x.name);
+    }
+    try{return 'json:'+JSON.stringify(x);}
+    catch(e){return 'raw:'+String(x);}
+  }
+  function mergeItem(local, remote, path){
+    if(!local || typeof local!=='object' || Array.isArray(local)) return clone(local!==undefined?local:remote);
+    if(!remote || typeof remote!=='object' || Array.isArray(remote)) return clone(local);
+    const preferLocal=itemStamp(local)>=itemStamp(remote);
+    const win=preferLocal?local:remote;
+    const lose=preferLocal?remote:local;
+    const out=Object.assign({},clone(lose),clone(win));
+    if(Array.isArray(local.subs) || Array.isArray(remote.subs)) out.subs=mergeArray(local.subs||[],remote.subs||[],path+'.subs');
+    return out;
+  }
+  function mergeArray(local, remote, path){
+    const out=[];
+    const index=new Map();
+    function add(x, side){
+      const key=rowKey(x,path);
+      if(!index.has(key)){
+        index.set(key,out.length);
+        out.push(clone(x));
+        return;
+      }
+      const i=index.get(key);
+      out[i]=side==='local' ? mergeItem(x,out[i],path) : mergeItem(out[i],x,path);
+    }
+    (Array.isArray(local)?local:[]).forEach(x=>add(x,'local'));
+    (Array.isArray(remote)?remote:[]).forEach(x=>add(x,'remote'));
+    return out;
+  }
+  function isPlainObject(v){return !!v && typeof v==='object' && !Array.isArray(v);}
+  function mergeObject(local, remote, path){
+    const out=isPlainObject(remote)?clone(remote):{};
+    Object.keys(isPlainObject(local)?local:{}).forEach(k=>{
+      const lv=local[k], rv=out[k], p=path?path+'.'+k:k;
+      if(Array.isArray(lv) || Array.isArray(rv)) out[k]=mergeArray(lv||[],rv||[],p);
+      else if(isPlainObject(lv) || isPlainObject(rv)) out[k]=mergeObject(lv||{},rv||{},p);
+      else if(COUNTERS.has(k) && Number.isFinite(Number(lv)) && Number.isFinite(Number(rv))) out[k]=Math.max(Number(lv),Number(rv));
+      else if(lv!==undefined) out[k]=clone(lv);
+    });
+    return out;
+  }
+  function hasOpenRunning(state,id){
+    if(!state || !id) return false;
+    const task=(state.tasks||[]).find(t=>t&&t.id===id&&!t.done);
+    const session=(state.sessions||[]).find(s=>s&&s.taskId===id&&!s.endedAt);
+    return !!(task&&session);
+  }
+  function taskDeleteMap(state){
+    const map=new Map();
+    (state&&Array.isArray(state.taskDeleteTombstones)?state.taskDeleteTombstones:[]).forEach(x=>{
+      if(!x || !x.id) return;
+      const at=dateMs(x.deletedAt)||dateMs(x.ts);
+      if(at>(map.get(String(x.id))||0)) map.set(String(x.id),at);
+    });
+    return map;
+  }
+  function applyTaskDeletes(state){
+    if(!state || !Array.isArray(state.tasks)) return state;
+    const deleted=taskDeleteMap(state);
+    if(!deleted.size) return state;
+    state.tasks=state.tasks.filter(t=>{
+      if(!t || !t.id) return true;
+      const deletedAt=deleted.get(String(t.id))||0;
+      return !deletedAt || itemStamp(t)>deletedAt;
+    });
+    return state;
+  }
+  function mergeState(local, remote){
+    local=isPlainObject(local)?local:{};
+    remote=isPlainObject(remote)?remote:{};
+    const out=mergeObject(local,remote,'');
+    Object.keys(remote).concat(Object.keys(local)).forEach(k=>{
+      const lv=local[k], rv=remote[k];
+      if(Array.isArray(lv) || Array.isArray(rv)) out[k]=mergeArray(lv||[],rv||[],k);
+      else if(COUNTERS.has(k) && Number.isFinite(Number(lv)) && Number.isFinite(Number(rv))) out[k]=Math.max(Number(lv),Number(rv));
+    });
+    if(hasOpenRunning(local,local.runningTaskId)) out.runningTaskId=local.runningTaskId;
+    else if(hasOpenRunning(remote,remote.runningTaskId)) out.runningTaskId=remote.runningTaskId;
+    else out.runningTaskId=null;
+    return applyTaskDeletes(out);
+  }
+  function refreshApp(){
+    try{if(typeof applyTheme==='function') applyTheme();}catch(e){}
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderPool==='function') renderPool();}catch(e){}
+    try{if(typeof renderRoutine==='function') renderRoutine();}catch(e){}
+    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    try{if(typeof updateRunningBadge==='function') updateRunningBadge();}catch(e){}
+    try{if(typeof renderQuestCoach==='function') renderQuestCoach();}catch(e){}
+    try{if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo(true);}catch(e){}
+  }
+  function saveStateDirect(state){
+    if(!state || typeof state!=='object') return;
+    try{if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot('安全同期取込前');}catch(e){}
+    try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}
+    if(typeof S!=='undefined' && S){
+      Object.keys(S).forEach(k=>delete S[k]);
+      Object.assign(S,clone(state));
+    }
+    const saver=window.__v40OriginalSave || window.save;
+    try{if(typeof saver==='function') saver();}catch(e){}
+    refreshApp();
+  }
+  async function readKey(base, key, modes){
+    const url=base+'?sync_key=eq.'+encodeURIComponent(key)+'&select=sync_key,data,updated_at&limit=1';
+    const failures=[];
+    for(const mode of modes){
+      const res=await request('GET',url,mode.headers);
+      if(res.ok){
+        let rows=[];
+        try{rows=JSON.parse(res.text||'[]');}catch(e){}
+        return {row:Array.isArray(rows)&&rows[0]?rows[0]:null,mode:mode.name};
+      }
+      failures.push(res);
+      if(res.status===0) break;
+    }
+    throw new Error(describe(failures[0]));
+  }
+  async function readPreferred(base, syncKey, modes){
+    const sk=safeKey(syncKey);
+    const safe=await readKey(base,sk,modes);
+    if(safe.row) return safe;
+    if(sk===syncKey) return safe;
+    const legacy=await readKey(base,syncKey,modes);
+    return legacy.row ? legacy : safe;
+  }
+  async function writeRemote(base, cfg, state, modes){
+    const updated=new Date().toISOString();
+    const body=JSON.stringify({sync_key:safeKey(cfg.syncKey),data:state,updated_at:updated});
+    const failures=[];
+    for(const mode of modes){
+      const res=await request('POST',base,Object.assign({},mode.headers,{Prefer:'resolution=merge-duplicates,return=minimal'}),body);
+      if(res.ok) return {updated,mode:mode.name};
+      failures.push(res);
+      if(res.status===0) break;
+    }
+    throw new Error(describe(failures[0]));
+  }
+  function finishCfg(cfg, updated){
+    const ms=Date.parse(updated)||Date.now();
+    cfg.enabled=true;
+    cfg.localUpdatedAt=ms;
+    cfg.remoteUpdatedAt=ms;
+    cfg.lastSyncAt=Date.now();
+    cfg.dirty=false;
+    saveCfg(cfg);
+  }
+  async function xhrSafeSync(reason){
+    if(syncing) return false;
+    const cfg=loadCfg();
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    cfg.syncKey=String(cfg.syncKey||'').trim();
+    saveCfg(cfg);
+    const problem=cfgProblem(cfg);
+    if(problem){status(problem,true);return false;}
+    const pullOnly=/取込/.test(String(reason||''));
+    syncing=true;
+    status('安全同期中...');
+    try{
+      const base=apiBase(cfg);
+      const modes=authModes(cfg);
+      const remote=await readPreferred(base,cfg.syncKey,modes);
+      if(pullOnly && !remote.row){
+        status('クラウド未作成です。Mac側で「安全同期する」または「この端末でクラウド初期化」を先に押してください。iPhoneの古いデータは保存しませんでした。',true);
+        return false;
+      }
+      const merged=mergeState(localState(),remote.row&&remote.row.data);
+      saveStateDirect(merged);
+      const write=await writeRemote(base,cfg,merged,modes);
+      finishCfg(cfg,write.updated);
+      status((reason||'安全同期')+' 済み '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}));
+      return true;
+    }catch(e){
+      status('安全同期停止: '+(e&&e.message?e.message:e),true);
+      return false;
+    }finally{
+      syncing=false;
+    }
+  }
+  async function checkUrl(){
+    const cfg=loadCfg();
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    cfg.syncKey=String(cfg.syncKey||'').trim();
+    saveCfg(cfg);
+    const problem=cfgProblem(cfg);
+    if(problem){status('URL確認停止: '+problem,true);return;}
+    status('Supabase URL確認中...');
+    const url=apiBase(cfg)+'?sync_key=eq.'+encodeURIComponent(safeKey(cfg.syncKey))+'&select=sync_key&limit=1';
+    const mode=authModes(cfg)[0];
+    const res=await request('GET',url,mode.headers);
+    if(res.ok){
+      status('Supabase URL接続OK。同期先に到達できています。');
+      const box=document.getElementById('v7128SyncResult');
+      if(box){
+        box.textContent='Supabase URL接続OK\n次はMac側で「安全同期する」または「この端末でクラウド初期化」、iPhone側で「安全取込する」を試してください。';
+        box.classList.add('show','ok');
+        box.classList.remove('bad');
+      }
+      return;
+    }
+    status('Supabase URL確認NG: '+describe(res),true);
+  }
+  function installHint(){
+    const body=document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!body) return false;
+    const tools=document.getElementById('v7128SyncTools');
+    const actions=tools&&tools.querySelector('.v7128-sync-tool-actions');
+    if(actions && !actions.querySelector('[data-v7130-sync="check-url"]')){
+      const btn=document.createElement('button');
+      btn.type='button';
+      btn.dataset.v7130Sync='check-url';
+      btn.textContent='Supabase URL確認';
+      actions.appendChild(btn);
+    }
+    if(!document.getElementById('v7130SyncHint')){
+      const hint=document.createElement('div');
+      hint.id='v7130SyncHint';
+      hint.className='v7130-sync-hint';
+      hint.textContent='Failed to fetch が出る時は、同期キーより先に Supabase URL が存在するか確認してください。Dashboard の Project URL を丸ごとコピーし直すのが一番確実です。';
+      body.appendChild(hint);
+    }
+    return true;
+  }
+  window.addEventListener('click',e=>{
+    const btn=e.target.closest&&e.target.closest('[data-v40-sync="push"],[data-v40-sync="pull"]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    xhrSafeSync(btn.dataset.v40Sync==='pull'?'安全取込':'安全同期');
+  },true);
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest&&e.target.closest('[data-v7130-sync]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(btn.dataset.v7130Sync==='check-url') checkUrl();
+  },true);
+  const oldFlush=window.sasshySyncFlush;
+  window.sasshySafeSyncNow=xhrSafeSync;
+  window.sasshySyncFlush=function(reason){
+    const cfg=loadCfg();
+    if(!cfg.enabled) return;
+    return xhrSafeSync(reason||'自動安全同期');
+  };
+  if(oldFlush && oldFlush.__v7127StableFlush) window.sasshySyncFlush.__v7127StableFlush=true;
+  setTimeout(installHint,1800);
+  setInterval(installHint,3500);
 })();
 </script>
 
