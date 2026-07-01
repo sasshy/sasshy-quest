@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.30').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.31').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.30';
+  const VERSION='v71.31';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22587,7 +22587,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
 
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
-  const VERSION='v71.30';
+  const VERSION='v71.31';
   let deleteIntentUntil=0;
   let syncTimer=0;
   let renderTimer=0;
@@ -22982,7 +22982,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     const badge=document.createElement('div');
     badge.id='v7127SyncBadge';
     badge.className='v7127-sync-badge';
-    badge.textContent='v71.30 同期URL診断・安全取込ガード ON';
+    badge.textContent='v71.31 完了日固定・週月ドラッグ補強 ON';
     note.appendChild(badge);
   }
   function installAll(){
@@ -23458,7 +23458,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   const STATE_KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const PAYLOAD_TYPE='sasshy-quest-state-transfer';
-  const VERSION='v71.30';
+  const VERSION='v71.31';
 
   function parse(raw, fallback){
     try{return raw?JSON.parse(raw):fallback;}
@@ -24074,6 +24074,422 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   if(oldFlush && oldFlush.__v7127StableFlush) window.sasshySyncFlush.__v7127StableFlush=true;
   setTimeout(installHint,1800);
   setInterval(installHint,3500);
+})();
+</script>
+
+<style id="v7131-completed-date-and-crossview-drag-style">
+#weekViewContainer .wk-task[data-id],
+#monthViewContainer .mn-task[data-id]{
+  cursor:grab !important;
+  -webkit-user-select:none;
+  user-select:none;
+}
+#weekViewContainer .wk-day-col.v7131-drop,
+#monthViewContainer .mn-day.v7131-drop,
+#weekViewContainer .wk-header-row > div.v7131-drop{
+  outline:3px solid var(--green) !important;
+  outline-offset:-3px !important;
+  background:rgba(16,166,116,.12) !important;
+}
+.v7131-drag-ghost{
+  position:fixed;
+  z-index:2147483000;
+  pointer-events:none;
+  max-width:min(320px,70vw);
+  padding:8px 10px;
+  border-radius:10px;
+  background:#111;
+  color:#fff;
+  box-shadow:0 12px 28px rgba(0,0,0,.35);
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  opacity:0;
+  transform:translate(12px,12px);
+}
+.v7131-drag-ghost.show{opacity:1;}
+.v7131-drag-source{opacity:.45 !important;}
+.v7131-nav-flash{
+  box-shadow:0 0 0 3px rgba(16,166,116,.22) !important;
+}
+</style>
+
+<script id="v7131-completed-date-and-crossview-drag-script">
+/* ===== v71.31: completed tasks keep edited date + robust week/month drag ===== */
+(function(){
+  if(window.__v7131CompletedDateAndDrag) return;
+  window.__v7131CompletedDateAndDrag=true;
+
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  let drag=null;
+  let dragBlockClickUntil=0;
+  let lastNavAt=0;
+
+  function ok(){return typeof S!=='undefined' && S && Array.isArray(S.tasks);}
+  function pad(n){return String(n).padStart(2,'0');}
+  function today(){return typeof todayKey==='function'?todayKey():new Date().toISOString().slice(0,10);}
+  function escText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function byId(id){return ok()?(S.tasks||[]).find(t=>t&&String(t.id)===String(id)):null;}
+  function isDateKey(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''));}
+  function dateObj(key){
+    const d=new Date(String(key||today())+'T00:00:00');
+    return Number.isNaN(d.getTime()) ? new Date(today()+'T00:00:00') : d;
+  }
+  function dateKey(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+  function addDays(key,n){const d=dateObj(key); d.setDate(d.getDate()+n); return dateKey(d);}
+  function hmToMinLocal(hm){
+    const m=String(hm||'').match(/^(\d{1,2}):(\d{2})$/);
+    return m?Math.max(0,Math.min(1439,Number(m[1])*60+Number(m[2]))):null;
+  }
+  function minToHmLocal(min){
+    const n=((Number(min)||0)%(24*60)+24*60)%(24*60);
+    return pad(Math.floor(n/60))+':'+pad(n%60);
+  }
+  function timeOnDateMs(day, hm, fallbackMs){
+    const base=dateObj(day);
+    let min=hmToMinLocal(hm);
+    if(min===null && fallbackMs){
+      const f=new Date(Number(fallbackMs));
+      if(!Number.isNaN(f.getTime())) min=f.getHours()*60+f.getMinutes();
+    }
+    if(min===null) min=17*60;
+    base.setHours(Math.floor(min/60),min%60,0,0);
+    return base.getTime();
+  }
+  function completedSessions(id){
+    return (S.sessions||[]).filter(s=>s&&String(s.taskId)===String(id)&&s.completed);
+  }
+  function latestCompletedSession(id){
+    return completedSessions(id).sort((a,b)=>(Number(b.updatedAt)||Number(b.endedAt)||Number(b.startedAt)||0)-(Number(a.updatedAt)||Number(a.endedAt)||Number(a.startedAt)||0))[0]||null;
+  }
+  function saveDirect(){
+    const saver=window.__v40OriginalSave||window.save;
+    try{if(typeof saver==='function') saver();}catch(e){}
+  }
+  function markDirty(reason){
+    try{
+      const cfg=JSON.parse(localStorage.getItem(CFG_KEY)||'{}');
+      if(cfg&&cfg.enabled){
+        cfg.dirty=true;
+        cfg.localUpdatedAt=Math.max(Date.now(),Number(cfg.localUpdatedAt||0)+1,Number(cfg.remoteUpdatedAt||0)+1);
+        localStorage.setItem(CFG_KEY,JSON.stringify(cfg));
+        setTimeout(()=>{try{if(typeof window.sasshySyncFlush==='function') window.sasshySyncFlush(reason||'日付変更同期');}catch(e){}},1200);
+      }
+    }catch(e){}
+  }
+  function refreshViews(){
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderPool==='function') renderPool();}catch(e){}
+    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+    try{if(typeof renderWeekQ==='function' && typeof questCurrentView!=='undefined' && questCurrentView==='week') renderWeekQ();}catch(e){}
+    try{if(typeof renderMonth==='function' && typeof questCurrentView!=='undefined' && questCurrentView==='month') renderMonth();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    try{if(typeof updateRunningBadge==='function') updateRunningBadge();}catch(e){}
+    try{if(typeof renderPanel==='function') renderPanel();}catch(e){}
+  }
+  function markManual(t, reason){
+    if(!t) return;
+    const now=Date.now();
+    t.updatedAt=new Date(now).toISOString();
+    t.v45TouchedAt=now;
+    t.v7131ManualDateAt=now;
+    t.v7131DateReason=reason||'manual';
+    t.v34ManualTodayDate=t.scheduledDate||'';
+    t.v34UserRequestedToday=true;
+    t.adhdReview='';
+    t.adhdHiddenGenerated=false;
+  }
+  function reconcileCompletedDate(id, reason){
+    if(!ok()) return false;
+    const t=byId(id);
+    if(!t || !t.done) return false;
+    const target=isDateKey(t.scheduledDate) ? t.scheduledDate : '';
+    if(!target) return false;
+    const duration=Math.max(1,Number(t.planMin)||Number(t.actualMin)||30);
+    let sessions=completedSessions(t.id);
+    if(!sessions.length){
+      const start=timeOnDateMs(target,t.startTime,null);
+      const s={id:(typeof uid==='function'?uid():'sess-v7131-'+Date.now()),taskId:t.id,title:t.title||'',rank:t.rank||'zako',startedAt:start,endedAt:start+duration*60000,completed:true,date:target,updatedAt:Date.now(),v7131ReconciledAt:Date.now()};
+      S.sessions=S.sessions||[];
+      S.sessions.push(s);
+      sessions=[s];
+    }
+    const latest=latestCompletedSession(t.id)||sessions[0];
+    const fallbackStart=latest&&latest.startedAt;
+    const start=timeOnDateMs(target,t.startTime,fallbackStart);
+    const end=start+duration*60000;
+    let changed=false;
+    sessions.forEach(s=>{
+      const before=[s.date,s.startedAt,s.endedAt,s.title,s.rank].join('|');
+      s.date=target;
+      s.startedAt=start;
+      s.endedAt=end;
+      s.title=t.title||s.title||'';
+      s.rank=t.rank||s.rank||'zako';
+      s.completed=true;
+      s.updatedAt=Date.now();
+      s.v7131ReconciledAt=s.updatedAt;
+      const after=[s.date,s.startedAt,s.endedAt,s.title,s.rank].join('|');
+      if(before!==after) changed=true;
+    });
+    const min=hmToMinLocal(t.startTime);
+    if(t.startTime && min!==null) t.actualEndTime=minToHmLocal(min+duration);
+    t.actualMin=duration;
+    markManual(t,reason||'completed-date');
+    return changed;
+  }
+  window.sasshyV7131ReconcileCompletedDate=reconcileCompletedDate;
+
+  function wrapCompletion(name){
+    const old=window[name];
+    if(typeof old!=='function' || old.__v7131CompletedDate) return;
+    const wrapped=function(id){
+      const t=byId(id);
+      const snap=t?{date:t.scheduledDate||'',time:t.startTime||'',min:t.planMin||0}:null;
+      const result=old.apply(this,arguments);
+      const after=byId(id);
+      if(after && snap){
+        if(snap.date && !after.scheduledDate) after.scheduledDate=snap.date;
+        if(snap.time && !after.startTime) after.startTime=snap.time;
+        if(snap.min && !after.planMin) after.planMin=snap.min;
+        if(after.done && after.scheduledDate){
+          reconcileCompletedDate(id,name);
+          saveDirect();
+        }
+      }
+      return result;
+    };
+    wrapped.__v7131CompletedDate=true;
+    window[name]=wrapped;
+  }
+  wrapCompletion('finishTask');
+  wrapCompletion('sasshyCompleteTaskNow');
+
+  if(typeof window.syncCompletedSession==='function' && !window.syncCompletedSession.__v7131CompletedDate){
+    const oldSync=window.syncCompletedSession;
+    window.syncCompletedSession=function(id){
+      const r=oldSync.apply(this,arguments);
+      if(reconcileCompletedDate(id,'syncCompletedSession')) saveDirect();
+      return r;
+    };
+    window.syncCompletedSession.__v7131CompletedDate=true;
+  }
+
+  if(typeof window.applyDetailFieldsToCurrentTask==='function' && !window.applyDetailFieldsToCurrentTask.__v7131CompletedDate){
+    const oldApply=window.applyDetailFieldsToCurrentTask;
+    window.applyDetailFieldsToCurrentTask=function(){
+      const id=typeof currentDetailId!=='undefined'?currentDetailId:null;
+      const before=byId(id);
+      const beforeDate=before&&before.scheduledDate||'';
+      const t=oldApply.apply(this,arguments);
+      if(t && t.done && (t.scheduledDate||'')!==beforeDate){
+        markManual(t,'detail-date');
+        reconcileCompletedDate(t.id,'detail-date');
+      }
+      return t;
+    };
+    window.applyDetailFieldsToCurrentTask.__v7131CompletedDate=true;
+  }
+
+  document.addEventListener('change',e=>{
+    if(!e.target || e.target.id!=='qtdDate') return;
+    const id=typeof currentDetailId!=='undefined'?currentDetailId:null;
+    const t=byId(id);
+    if(t && t.done){
+      const v=e.target.value;
+      if(v) t.scheduledDate=v;
+      else delete t.scheduledDate;
+      if(v){
+        markManual(t,'detail-date-change');
+        reconcileCompletedDate(t.id,'detail-date-change');
+        saveDirect();
+        markDirty('完了済み日付変更');
+      }
+    }
+  },true);
+
+  document.addEventListener('click',e=>{
+    if(!e.target || !e.target.closest('#qtdSaveBtn')) return;
+    const id=typeof currentDetailId!=='undefined'?currentDetailId:null;
+    setTimeout(()=>{
+      if(reconcileCompletedDate(id,'detail-save')){
+        saveDirect();
+        markDirty('完了済み日付保存');
+        refreshViews();
+      }
+    },80);
+  },true);
+
+  function taskFromTarget(target){
+    const wk=target&&target.closest&&target.closest('#weekViewContainer .wk-task[data-id]');
+    if(wk) return {type:'week',el:wk,id:wk.dataset.id};
+    const mn=target&&target.closest&&target.closest('#monthViewContainer .mn-task[data-id]');
+    if(mn) return {type:'month',el:mn,id:mn.dataset.id};
+    return null;
+  }
+  function ghost(){
+    let g=document.getElementById('v7131DragGhost');
+    if(!g){
+      g=document.createElement('div');
+      g.id='v7131DragGhost';
+      g.className='v7131-drag-ghost';
+      document.body.appendChild(g);
+    }
+    return g;
+  }
+  function showGhost(text,x,y){
+    const g=ghost();
+    g.textContent=text||'タスク移動';
+    g.style.left=x+'px';
+    g.style.top=y+'px';
+    g.classList.add('show');
+  }
+  function hideGhost(){
+    const g=document.getElementById('v7131DragGhost');
+    if(g) g.classList.remove('show');
+  }
+  function clearDrops(){
+    document.querySelectorAll('.v7131-drop,.v7131-nav-flash').forEach(el=>el.classList.remove('v7131-drop','v7131-nav-flash'));
+  }
+  function targetAt(x,y,type){
+    const el=document.elementFromPoint(x,y);
+    if(!el) return null;
+    if(type==='week'){
+      return el.closest('.wk-day-col[data-date]') || el.closest('.wk-header-row > div[data-date]');
+    }
+    return el.closest('.mn-day[data-date]');
+  }
+  function navByDrag(type, x, y){
+    const now=Date.now();
+    if(now-lastNavAt<850) return false;
+    const el=document.elementFromPoint(x,y);
+    let btn=null;
+    if(type==='week'){
+      const box=document.getElementById('weekViewContainer');
+      const rect=box&&box.getBoundingClientRect();
+      if(el&&el.closest('#wkPrevQ')) btn=document.getElementById('wkPrevQ');
+      else if(el&&el.closest('#wkNextQ')) btn=document.getElementById('wkNextQ');
+      else if(rect&&x<rect.left+42) btn=document.getElementById('wkPrevQ');
+      else if(rect&&x>rect.right-42) btn=document.getElementById('wkNextQ');
+    }else if(type==='month'){
+      const box=document.getElementById('monthViewContainer');
+      const rect=box&&box.getBoundingClientRect();
+      if(el&&el.closest('#mnPrev')) btn=document.getElementById('mnPrev');
+      else if(el&&el.closest('#mnNext')) btn=document.getElementById('mnNext');
+      else if(rect&&x<rect.left+42) btn=document.getElementById('mnPrev');
+      else if(rect&&x>rect.right-42) btn=document.getElementById('mnNext');
+    }
+    if(btn){
+      lastNavAt=now;
+      btn.classList.add('v7131-nav-flash');
+      btn.click();
+      setTimeout(()=>btn.classList.remove('v7131-nav-flash'),500);
+      return true;
+    }
+    return false;
+  }
+  function startDrag(e, hit){
+    if(!ok() || (e.button!==undefined && e.button!==0)) return;
+    const t=byId(hit.id);
+    if(!t) return;
+    drag={type:hit.type,el:hit.el,id:String(t.id),task:t,startX:e.clientX,startY:e.clientY,pointerId:e.pointerId,moved:false,lastTarget:null};
+    try{hit.el.setPointerCapture(e.pointerId);}catch(err){}
+    window.__v7131BoardDragging=true;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }
+  function moveDrag(e){
+    if(!drag || (drag.pointerId!==undefined && e.pointerId!==drag.pointerId)) return;
+    const dx=e.clientX-drag.startX;
+    const dy=e.clientY-drag.startY;
+    if(!drag.moved && (Math.abs(dx)>7 || Math.abs(dy)>7)){
+      drag.moved=true;
+      drag.el.classList.add('v7131-drag-source');
+    }
+    if(!drag.moved) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    navByDrag(drag.type,e.clientX,e.clientY);
+    clearDrops();
+    const target=targetAt(e.clientX,e.clientY,drag.type);
+    if(target){
+      target.classList.add('v7131-drop');
+      drag.lastTarget=target;
+    }
+    showGhost(drag.task.title||'(無題)',e.clientX,e.clientY);
+  }
+  function commitDrop(e){
+    if(!drag || (e&&drag.pointerId!==undefined && e.pointerId!==drag.pointerId)) return;
+    const data=drag;
+    drag=null;
+    window.__v7131BoardDragging=false;
+    hideGhost();
+    data.el.classList.remove('v7131-drag-source');
+    clearDrops();
+    if(e){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+    if(!data.moved){
+      if(typeof openTaskDetail==='function') openTaskDetail(data.id);
+      dragBlockClickUntil=Date.now()+500;
+      return;
+    }
+    const target=(e&&targetAt(e.clientX,e.clientY,data.type)) || data.lastTarget;
+    if(!target || !target.dataset.date) return;
+    const t=byId(data.id);
+    if(!t) return;
+    const newDate=target.dataset.date;
+    t.scheduledDate=newDate;
+    if(data.type==='week'){
+      const col=target.closest('.wk-day-col[data-date]') || Array.from(document.querySelectorAll('#weekViewContainer .wk-day-col[data-date]')).find(x=>x.dataset.date===newDate);
+      if(col){
+        const rect=col.getBoundingClientRect();
+        const y=Math.max(0,Math.min(rect.height,e.clientY-rect.top));
+        const ppm=rect.height/(24*60);
+        const total=Math.round((y/Math.max(ppm,.1))/15)*15;
+        t.startTime=minToHmLocal(Math.max(0,Math.min(23*60+45,total)));
+      }
+    }
+    markManual(t,data.type+'-drag');
+    reconcileCompletedDate(t.id,data.type+'-drag');
+    saveDirect();
+    markDirty(data.type==='week'?'週ビュー移動':'月ビュー移動');
+    refreshViews();
+    dragBlockClickUntil=Date.now()+900;
+  }
+
+  window.addEventListener('pointerdown',e=>{
+    const hit=taskFromTarget(e.target);
+    if(hit) startDrag(e,hit);
+  },true);
+  window.addEventListener('pointermove',moveDrag,{capture:true,passive:false});
+  window.addEventListener('pointerup',commitDrop,true);
+  window.addEventListener('pointercancel',commitDrop,true);
+  window.addEventListener('click',e=>{
+    if(Date.now()<dragBlockClickUntil && e.target&&e.target.closest&&e.target.closest('#weekViewContainer .wk-task[data-id],#monthViewContainer .mn-task[data-id]')){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+  },true);
+  window.addEventListener('blur',()=>{
+    drag=null;
+    window.__v7131BoardDragging=false;
+    hideGhost();
+    clearDrops();
+  },true);
+
+  setTimeout(()=>{
+    (S.tasks||[]).forEach(t=>{
+      if(t&&t.done&&t.scheduledDate) reconcileCompletedDate(t.id,'startup-check');
+    });
+  },1200);
 })();
 </script>
 
