@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.31').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.32').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.31';
+  const VERSION='v71.32';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22587,7 +22587,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
 
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
-  const VERSION='v71.31';
+  const VERSION='v71.32';
   let deleteIntentUntil=0;
   let syncTimer=0;
   let renderTimer=0;
@@ -22982,7 +22982,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     const badge=document.createElement('div');
     badge.id='v7127SyncBadge';
     badge.className='v7127-sync-badge';
-    badge.textContent='v71.31 完了日固定・週月ドラッグ補強 ON';
+    badge.textContent='v71.32 同期手動救出ルート ON';
     note.appendChild(badge);
   }
   function installAll(){
@@ -23458,7 +23458,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   const STATE_KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const PAYLOAD_TYPE='sasshy-quest-state-transfer';
-  const VERSION='v71.31';
+  const VERSION='v71.32';
 
   function parse(raw, fallback){
     try{return raw?JSON.parse(raw):fallback;}
@@ -24490,6 +24490,357 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
       if(t&&t.done&&t.scheduledDate) reconcileCompletedDate(t.id,'startup-check');
     });
   },1200);
+})();
+</script>
+
+<style id="v7132-sync-rescue-style">
+.v7132-sync-rescue{
+  margin-top:12px;
+  border:1px solid rgba(16,166,116,.32);
+  background:rgba(16,166,116,.06);
+  border-radius:14px;
+  padding:12px;
+}
+.v7132-sync-rescue-title{
+  font-weight:950;
+  font-size:14px;
+  margin-bottom:8px;
+}
+.v7132-sync-rescue-note{
+  color:var(--text2);
+  font-size:12.5px;
+  line-height:1.55;
+  margin-bottom:10px;
+}
+.v7132-sync-rescue-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.v7132-sync-rescue-actions button{
+  appearance:none;
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--text);
+  border-radius:12px;
+  padding:10px 12px;
+  font-weight:950;
+  cursor:pointer;
+}
+.v7132-sync-rescue-actions button.primary{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+.v7132-sync-rescue-actions button.danger{
+  border-color:rgba(220,80,60,.5);
+  color:#b13b2d;
+}
+.v7132-sync-rescue-result{
+  display:none;
+  margin-top:10px;
+  white-space:pre-wrap;
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:10px;
+  padding:10px;
+  color:var(--text2);
+  font-size:12px;
+  line-height:1.5;
+  max-height:240px;
+  overflow:auto;
+}
+.v7132-sync-rescue-result.show{display:block;}
+.v7132-sync-rescue-result.ok{border-color:rgba(16,166,116,.45);background:rgba(16,166,116,.05);color:#08724f;}
+.v7132-sync-rescue-result.bad{border-color:rgba(220,80,60,.45);background:rgba(220,80,60,.05);color:#9f2f24;}
+</style>
+
+<script id="v7132-sync-rescue-script">
+/* ===== v71.32: manual cloud rescue route for Mac/iPhone sync ===== */
+(function(){
+  if(window.__v7132SyncRescue) return;
+  window.__v7132SyncRescue=true;
+
+  const KEY='sasshy_quest_v5';
+  const CFG_KEY='sasshy_quest_supabase_sync_v1';
+  const TABLE='/rest/v1/app_state';
+  const SAFE_SUFFIX='__safe_v716';
+  let busy=false;
+
+  function parse(raw, fallback){
+    try{return raw?JSON.parse(raw):fallback;}
+    catch(e){return fallback;}
+  }
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return v;}
+  }
+  function cleanUrl(v){
+    return String(v||'')
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/^SUPABASE_URL\s*=\s*/i,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/\/rest\/v1\/?$/,'')
+      .replace(/\/+$/,'');
+  }
+  function cleanKey(v){
+    return String(v||'')
+      .replace(/[\u200B-\u200D\uFEFF]/g,'')
+      .trim()
+      .replace(/^['"`]|['"`]$/g,'')
+      .replace(/^(?:apikey|api\s*key|anon\s*key|authorization)\s*[:=]\s*/i,'')
+      .trim()
+      .replace(/^bearer\s+/i,'')
+      .replace(/^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*/i,'')
+      .replace(/^SUPABASE_(?:ANON|PUBLISHABLE)_KEY\s*=\s*/i,'')
+      .replace(/\s+/g,'');
+  }
+  function loadCfg(){
+    return Object.assign({enabled:false,url:'',anonKey:'',syncKey:'',dirty:false,localUpdatedAt:0,remoteUpdatedAt:0,lastSyncAt:0},parse(localStorage.getItem(CFG_KEY),{}));
+  }
+  function saveCfg(cfg){
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    cfg.syncKey=String(cfg.syncKey||'').trim();
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch(e){}
+    try{if(typeof renderPanel==='function') renderPanel();}catch(e){}
+  }
+  function looksLikeJwt(key){return String(key||'').split('.').length===3;}
+  function authHeaders(cfg){
+    const key=cleanKey(cfg.anonKey);
+    const h={apikey:key,'Content-Type':'application/json'};
+    if(looksLikeJwt(key)) h.Authorization='Bearer '+key;
+    return h;
+  }
+  function cfgProblem(cfg){
+    if(!cleanUrl(cfg.url)) return 'Supabase URL が未入力です';
+    if(!/^https:\/\/[^/]+\.supabase\.co$/i.test(cleanUrl(cfg.url))) return 'Supabase URL が https://xxxx.supabase.co の形ではありません';
+    if(!cleanKey(cfg.anonKey)) return 'API key が未入力です';
+    if(/^sb_secret_/i.test(cleanKey(cfg.anonKey))) return 'secret key は使えません。Publishable key を入れてください';
+    if(!String(cfg.syncKey||'').trim()) return '同期キーが未入力です';
+    return '';
+  }
+  function safeKey(key){
+    key=String(key||'').trim();
+    return key && !key.endsWith(SAFE_SUFFIX) ? key+SAFE_SUFFIX : key;
+  }
+  function apiBase(cfg){return cleanUrl(cfg.url)+TABLE;}
+  function request(method,url,headers,body){
+    return new Promise(resolve=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open(method,url,true);
+      xhr.timeout=18000;
+      Object.entries(headers||{}).forEach(([k,v])=>{try{xhr.setRequestHeader(k,v);}catch(e){}});
+      xhr.onload=()=>resolve({ok:xhr.status>=200&&xhr.status<300,status:xhr.status,text:xhr.responseText||'',url});
+      xhr.onerror=()=>resolve({ok:false,status:0,text:'ネットワーク/CORSエラー',url});
+      xhr.ontimeout=()=>resolve({ok:false,status:0,text:'タイムアウト',url});
+      xhr.send(body||null);
+    });
+  }
+  function result(text, kind){
+    const box=document.getElementById('v7132SyncRescueResult') || document.getElementById('v7128SyncResult');
+    if(box){
+      box.textContent=String(text||'');
+      box.classList.add('show');
+      box.classList.toggle('ok',kind==='ok');
+      box.classList.toggle('bad',kind==='bad');
+    }
+    const st=document.getElementById('v40SyncStatus');
+    if(st) st.textContent=(loadCfg().enabled?'ON ':'OFF ')+String(text||'').split('\n')[0].slice(0,110);
+  }
+  function describe(res){
+    const raw=String(res&&res.text||'').replace(/\s+/g,' ').trim();
+    if(!res || res.status===0) return '通信不可: '+(raw||'Supabaseに接続できません');
+    if(res.status===401 || res.status===403) return '権限NG '+res.status+': '+(raw||'API key/RLS policyを確認');
+    if(res.status===404) return '404: app_state テーブルがありません。Supabase SQLを実行してください';
+    return 'HTTP '+res.status+': '+(raw||'');
+  }
+  function currentState(){
+    const state=(typeof S!=='undefined'&&S)?S:parse(localStorage.getItem(KEY),{});
+    return clone(state||{});
+  }
+  function summaryOf(state){
+    state=state||{};
+    const tasks=Array.isArray(state.tasks)?state.tasks:[];
+    const memos=Array.isArray(state.memos)?state.memos:[];
+    const open=tasks.filter(t=>t&&!t.done).length;
+    const done=tasks.filter(t=>t&&t.done).length;
+    const dated=tasks.filter(t=>t&&t.scheduledDate).length;
+    return 'タスク'+tasks.length+'件 / 未完了'+open+'件 / 完了'+done+'件 / 日付あり'+dated+'件 / メモ'+memos.length+'件';
+  }
+  function refreshApp(){
+    try{if(typeof applyTheme==='function') applyTheme();}catch(e){}
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderPool==='function') renderPool();}catch(e){}
+    try{if(typeof renderRoutine==='function') renderRoutine();}catch(e){}
+    try{if(typeof renderSchedule==='function') renderSchedule();}catch(e){}
+    try{if(typeof renderWeekQ==='function' && typeof questCurrentView!=='undefined' && questCurrentView==='week') renderWeekQ();}catch(e){}
+    try{if(typeof renderMonth==='function' && typeof questCurrentView!=='undefined' && questCurrentView==='month') renderMonth();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    try{if(typeof updateRunningBadge==='function') updateRunningBadge();}catch(e){}
+    try{if(typeof renderQuestCoach==='function') renderQuestCoach();}catch(e){}
+    try{if(typeof window.v712RerenderMemo==='function') window.v712RerenderMemo(true);}catch(e){}
+    try{if(typeof renderPanel==='function') renderPanel();}catch(e){}
+  }
+  async function readCloud(cfg){
+    const key=safeKey(cfg.syncKey);
+    const url=apiBase(cfg)+'?sync_key=eq.'+encodeURIComponent(key)+'&select=sync_key,updated_at,data&limit=1';
+    const res=await request('GET',url,authHeaders(cfg));
+    if(!res.ok) throw new Error(describe(res));
+    let rows=[];
+    try{rows=JSON.parse(res.text||'[]');}catch(e){}
+    return Array.isArray(rows)&&rows[0]?rows[0]:null;
+  }
+  async function writeCloud(cfg,state){
+    const updated=new Date().toISOString();
+    const body=JSON.stringify({sync_key:safeKey(cfg.syncKey),data:state,updated_at:updated});
+    const res=await request('POST',apiBase(cfg),Object.assign({},authHeaders(cfg),{Prefer:'resolution=merge-duplicates,return=minimal'}),body);
+    if(!res.ok) throw new Error(describe(res));
+    return updated;
+  }
+  function finishCfg(cfg, updated){
+    const ms=Date.parse(updated)||Date.now();
+    cfg.enabled=true;
+    cfg.dirty=false;
+    cfg.localUpdatedAt=ms;
+    cfg.remoteUpdatedAt=ms;
+    cfg.lastSyncAt=Date.now();
+    saveCfg(cfg);
+  }
+  function normalizedCfg(){
+    const cfg=loadCfg();
+    cfg.url=cleanUrl(cfg.url);
+    cfg.anonKey=cleanKey(cfg.anonKey);
+    cfg.syncKey=String(cfg.syncKey||'').trim();
+    saveCfg(cfg);
+    const problem=cfgProblem(cfg);
+    if(problem) throw new Error(problem);
+    return cfg;
+  }
+  async function copyText(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+  async function copyReport(){
+    if(busy) return;
+    busy=true;
+    try{
+      const cfg=normalizedCfg();
+      const lines=[
+        'SASSHY QUEST 同期レポート',
+        '画面URL: '+location.href,
+        '表示: '+(document.getElementById('v7127SyncBadge')?.textContent||'不明'),
+        'Supabase URL: '+cfg.url,
+        'API key: '+(cfg.anonKey?cfg.anonKey.slice(0,10)+'...'+cfg.anonKey.slice(-6):'未入力'),
+        '同期キー: '+(cfg.syncKey?cfg.syncKey.slice(0,10)+'...'+cfg.syncKey.slice(-6):'未入力'),
+        'クラウド行: '+safeKey(cfg.syncKey),
+        'この端末: '+summaryOf(currentState())
+      ];
+      try{
+        const row=await readCloud(cfg);
+        if(row&&row.data){
+          lines.push('クラウド読込: OK');
+          lines.push('クラウド更新: '+(row.updated_at||'不明'));
+          lines.push('クラウド内容: '+summaryOf(row.data));
+        }else{
+          lines.push('クラウド読込: OK / まだ保存なし');
+        }
+      }catch(e){
+        lines.push('クラウド読込: NG / '+(e&&e.message?e.message:e));
+      }
+      const text=lines.join('\n');
+      const copied=await copyText(text);
+      result((copied?'同期レポートをコピーしました。\n':'コピーできないので、この内容を送ってください。\n')+text,copied?'ok':'bad');
+    }catch(e){
+      result('同期レポート停止: '+(e&&e.message?e.message:e),'bad');
+    }finally{
+      busy=false;
+    }
+  }
+  async function saveThisDevice(){
+    if(busy) return;
+    let cfg;
+    try{cfg=normalizedCfg();}catch(e){result('保存停止: '+e.message,'bad');return;}
+    const state=currentState();
+    const msg='この端末の状態をクラウドへ保存します。\n\n'+summaryOf(state)+'\n\nMac側の正しいデータが見えている時だけ押してください。';
+    if(!confirm(msg)) return;
+    busy=true;
+    try{
+      try{if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot('クラウドへ正データ保存前');}catch(e){}
+      const updated=await writeCloud(cfg,state);
+      finishCfg(cfg,updated);
+      result('クラウド保存OK\n'+summaryOf(state)+'\n\n次はiPhoneで「クラウドをそのまま読込」を押してください。','ok');
+    }catch(e){
+      result('クラウド保存NG: '+(e&&e.message?e.message:e),'bad');
+    }finally{
+      busy=false;
+    }
+  }
+  async function loadCloudDirect(){
+    if(busy) return;
+    let cfg;
+    try{cfg=normalizedCfg();}catch(e){result('読込停止: '+e.message,'bad');return;}
+    busy=true;
+    try{
+      const row=await readCloud(cfg);
+      if(!row||!row.data){
+        result('クラウドにまだデータがありません。\n先にMac側で「この端末を正としてクラウド保存」を押してください。','bad');
+        return;
+      }
+      const msg='クラウドの状態をこの端末へ読み込みます。\n\nクラウド: '+summaryOf(row.data)+'\nこの端末: '+summaryOf(currentState())+'\n\n実行前の状態は復元履歴に保存します。';
+      if(!confirm(msg)) return;
+      try{if(typeof window.sasshyV714Snapshot==='function') window.sasshyV714Snapshot('クラウド直接読込前');}catch(e){}
+      localStorage.setItem(KEY,JSON.stringify(row.data));
+      if(typeof S!=='undefined'&&S){
+        Object.keys(S).forEach(k=>delete S[k]);
+        Object.assign(S,clone(row.data));
+      }
+      finishCfg(cfg,row.updated_at||new Date().toISOString());
+      refreshApp();
+      result('クラウド読込OK\n'+summaryOf(row.data),'ok');
+    }catch(e){
+      result('クラウド読込NG: '+(e&&e.message?e.message:e),'bad');
+    }finally{
+      busy=false;
+    }
+  }
+  function ensureTools(){
+    const body=document.querySelector('#v40SyncPanel .v40-sync-body');
+    if(!body || document.getElementById('v7132SyncRescue')) return false;
+    const box=document.createElement('div');
+    box.id='v7132SyncRescue';
+    box.className='v7132-sync-rescue';
+    box.innerHTML=
+      '<div class="v7132-sync-rescue-title">同期が噛み合わない時の手動救出</div>'+
+      '<div class="v7132-sync-rescue-note">自動同期で合わない時は、Macで「この端末を正としてクラウド保存」→ iPhoneで「クラウドをそのまま読込」の順に使います。どちらも実行前に復元履歴を残します。</div>'+
+      '<div class="v7132-sync-rescue-actions">'+
+        '<button type="button" data-v7132-sync="report">同期レポートコピー</button>'+
+        '<button type="button" class="primary" data-v7132-sync="save-this">この端末を正としてクラウド保存</button>'+
+        '<button type="button" class="danger" data-v7132-sync="load-cloud">クラウドをそのまま読込</button>'+
+      '</div>'+
+      '<div class="v7132-sync-rescue-result" id="v7132SyncRescueResult"></div>';
+    body.appendChild(box);
+    return true;
+  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest&&e.target.closest('[data-v7132-sync]');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const act=btn.dataset.v7132Sync;
+    if(act==='report') copyReport();
+    if(act==='save-this') saveThisDevice();
+    if(act==='load-cloud') loadCloudDirect();
+  },true);
+  setTimeout(ensureTools,1800);
+  setInterval(ensureTools,3500);
 })();
 </script>
 
