@@ -9120,7 +9120,7 @@ body.v35-timeline-drag .sched-task.resizing .sched-resize-handle::before{
 (function(){
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js?v=71.32').then(reg=>reg.update()).catch(()=>{});
+      navigator.serviceWorker.register('./sw.js?v=71.33').then(reg=>reg.update()).catch(()=>{});
     });
   }
 })();
@@ -17152,7 +17152,7 @@ body.v714-history-open .v714-history-overlay{display:flex;}
   if(window.__v714SyncHistoryGuard) return;
   window.__v714SyncHistoryGuard=true;
 
-  const VERSION='v71.32';
+  const VERSION='v71.33';
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const HIST_KEY='sasshy_quest_history_v714';
@@ -22587,7 +22587,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
 
   const KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
-  const VERSION='v71.32';
+  const VERSION='v71.33';
   let deleteIntentUntil=0;
   let syncTimer=0;
   let renderTimer=0;
@@ -22982,7 +22982,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
     const badge=document.createElement('div');
     badge.id='v7127SyncBadge';
     badge.className='v7127-sync-badge';
-    badge.textContent='v71.32 同期手動救出ルート ON';
+    badge.textContent='v71.33 同期手動救出ルート ON';
     note.appendChild(badge);
   }
   function installAll(){
@@ -23458,7 +23458,7 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   const STATE_KEY='sasshy_quest_v5';
   const CFG_KEY='sasshy_quest_supabase_sync_v1';
   const PAYLOAD_TYPE='sasshy-quest-state-transfer';
-  const VERSION='v71.32';
+  const VERSION='v71.33';
 
   function parse(raw, fallback){
     try{return raw?JSON.parse(raw):fallback;}
@@ -24841,6 +24841,423 @@ body.v7127-timeline-lock #schedBody .sched-task:not(.gcal){
   },true);
   setTimeout(ensureTools,1800);
   setInterval(ensureTools,3500);
+})();
+</script>
+
+<style id="v7133-gcal-visible-style">
+/* ===== v71.33: visible Google Calendar status and manual refresh ===== */
+.v7133-gcal-dock{
+  border:1px solid rgba(59,130,246,.28);
+  background:linear-gradient(180deg,rgba(239,246,255,.95),rgba(255,255,255,.98));
+  border-radius:12px;
+  padding:12px;
+  margin:0 0 14px;
+  box-shadow:var(--shadow-xs);
+}
+.v7133-gcal-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.v7133-gcal-title{
+  font-size:15px;
+  font-weight:950;
+  color:var(--text);
+  line-height:1.25;
+}
+.v7133-gcal-sub{
+  margin-top:3px;
+  font-size:11.5px;
+  color:var(--text2);
+  line-height:1.45;
+}
+.v7133-gcal-pill{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid rgba(59,130,246,.28);
+  background:#fff;
+  border-radius:999px;
+  padding:3px 8px;
+  font-size:11px;
+  font-weight:900;
+  color:#2563eb;
+  white-space:nowrap;
+}
+.v7133-gcal-pill.off{
+  border-color:var(--border);
+  color:var(--text3);
+}
+.v7133-gcal-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.v7133-gcal-row input{
+  flex:1 1 360px;
+  min-width:220px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface);
+  color:var(--text);
+  padding:10px 11px;
+  font:inherit;
+  font-size:13px;
+}
+.v7133-gcal-dock button{
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--text);
+  border-radius:10px;
+  padding:9px 12px;
+  font:inherit;
+  font-size:12px;
+  font-weight:950;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.v7133-gcal-dock button.primary{
+  background:var(--text);
+  color:var(--surface);
+  border-color:var(--text);
+}
+.v7133-gcal-dock button.danger{
+  color:var(--red);
+  border-color:rgba(220,38,38,.35);
+}
+.v7133-gcal-stats{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin:10px 0 0;
+}
+.v7133-gcal-stat{
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.86);
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:11.5px;
+  font-weight:850;
+  color:var(--text2);
+}
+.v7133-gcal-result{
+  display:none;
+  margin-top:9px;
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:10px;
+  padding:9px 10px;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.5;
+  color:var(--text2);
+  white-space:pre-wrap;
+}
+.v7133-gcal-result.show{display:block;}
+.v7133-gcal-result.ok{
+  border-color:rgba(16,166,116,.35);
+  background:rgba(16,166,116,.08);
+  color:var(--green);
+}
+.v7133-gcal-result.bad{
+  border-color:rgba(220,38,38,.34);
+  background:rgba(220,38,38,.07);
+  color:var(--red);
+}
+.v7133-gcal-help{
+  margin-top:9px;
+  border-top:1px dashed rgba(148,163,184,.45);
+  padding-top:8px;
+}
+.v7133-gcal-help summary{
+  cursor:pointer;
+  font-size:12px;
+  font-weight:950;
+  color:var(--text2);
+}
+.v7133-gcal-help-body{
+  margin-top:8px;
+  font-size:12px;
+  line-height:1.65;
+  color:var(--text2);
+}
+body.v7133-show-full-gcal #p-gcal{
+  display:block !important;
+}
+body.v7133-show-full-gcal .base-jump a[href="#p-gcal"]{
+  display:inline-flex !important;
+}
+@media(max-width:620px){
+  .v7133-gcal-dock{border-radius:10px;padding:10px;}
+  .v7133-gcal-head{display:block;}
+  .v7133-gcal-pill{margin-top:8px;}
+  .v7133-gcal-row{gap:6px;}
+  .v7133-gcal-row input{flex-basis:100%;min-width:0;}
+  .v7133-gcal-dock button{flex:1 1 auto;}
+}
+</style>
+
+<script id="v7133-gcal-visible-script">
+/* ===== v71.33: bring Google Calendar settings/status back into view ===== */
+(function(){
+  if(window.__v7133GcalVisible) return;
+  window.__v7133GcalVisible=true;
+
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function hasState(){
+    return typeof S!=='undefined' && S && typeof S==='object';
+  }
+  function setupGcal(){
+    if(typeof ensureGcal==='function'){
+      try{ensureGcal();}catch(e){}
+    }else if(hasState()){
+      S.gcal=S.gcal&&typeof S.gcal==='object'?S.gcal:{feedUrl:'',events:[],lastSync:0,lastError:''};
+      S.gcal.events=Array.isArray(S.gcal.events)?S.gcal.events:[];
+    }
+    return hasState() && S.gcal;
+  }
+  function dateKeyFromOffset(offset){
+    const d=new Date();
+    d.setHours(0,0,0,0);
+    d.setDate(d.getDate()+offset);
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,'0');
+    const day=String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+day;
+  }
+  function formatLast(ts){
+    if(!ts) return '最終更新なし';
+    try{return new Date(ts).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}
+    catch(e){return '最終更新あり';}
+  }
+  function eventStats(){
+    const g=setupGcal();
+    const events=(g&&Array.isArray(g.events))?g.events:[];
+    const today=dateKeyFromOffset(0);
+    const nextKeys=new Set();
+    for(let i=0;i<7;i++) nextKeys.add(dateKeyFromOffset(i));
+    let todayCount=0;
+    let weekCount=0;
+    events.forEach(function(e){
+      if(!e) return;
+      if(e.date===today) todayCount++;
+      if(nextKeys.has(e.date)) weekCount++;
+    });
+    return {total:events.length,today:todayCount,week:weekCount};
+  }
+  function originalInput(){
+    return document.getElementById('gcalFeedUrl');
+  }
+  function dockInput(){
+    return document.getElementById('v7133GcalUrl');
+  }
+  function syncInputsFromState(){
+    const g=setupGcal();
+    const url=(g&&g.feedUrl)||'';
+    const old=originalInput();
+    const dock=dockInput();
+    if(old && document.activeElement!==old) old.value=url;
+    if(dock && document.activeElement!==dock) dock.value=url;
+  }
+  function setResult(text, kind){
+    const el=document.getElementById('v7133GcalResult');
+    if(!el) return;
+    el.textContent=String(text||'');
+    el.classList.toggle('show',!!text);
+    el.classList.toggle('ok',kind==='ok');
+    el.classList.toggle('bad',kind==='bad');
+  }
+  function renderDock(){
+    const g=setupGcal();
+    if(!g) return;
+    syncInputsFromState();
+    const url=String(g.feedUrl||'').trim();
+    const stats=eventStats();
+    const auto=document.getElementById('v7133GcalAuto');
+    const count=document.getElementById('v7133GcalCount');
+    const last=document.getElementById('v7133GcalLast');
+    const range=document.getElementById('v7133GcalRange');
+    const err=document.getElementById('v7133GcalError');
+    if(auto){
+      auto.textContent=url?'自動更新 ON':'URL未設定';
+      auto.classList.toggle('off',!url);
+    }
+    if(count) count.textContent='読み込み済み '+stats.total+'件';
+    if(range) range.textContent='今日 '+stats.today+'件 / 7日 '+stats.week+'件';
+    if(last) last.textContent=formatLast(g.lastSync||0);
+    if(err){
+      const msg=String(g.lastError||'').trim();
+      err.textContent=msg?('エラー: '+msg):'エラーなし';
+      err.classList.toggle('bad',!!msg);
+    }
+  }
+  function ensureDock(){
+    const base=document.getElementById('p-base');
+    if(!base) return false;
+    let box=document.getElementById('v7133GcalDock');
+    if(!box){
+      box=document.createElement('section');
+      box.id='v7133GcalDock';
+      box.className='v7133-gcal-dock';
+      box.innerHTML=
+        '<div class="v7133-gcal-head">'+
+          '<div>'+
+            '<div class="v7133-gcal-title">Googleカレンダー予定</div>'+
+            '<div class="v7133-gcal-sub">Apps Script URLを保存している時だけ、起動時・画面復帰時・約10分ごとに読み込みます。Googleカレンダーへは書き込みません。</div>'+
+          '</div>'+
+          '<span class="v7133-gcal-pill off" id="v7133GcalAuto">確認中</span>'+
+        '</div>'+
+        '<div class="v7133-gcal-row">'+
+          '<input id="v7133GcalUrl" type="text" autocomplete="off" placeholder="Apps Script Web App URL（.../exec?token=...）">'+
+          '<button type="button" data-v7133-gcal="save">URL保存</button>'+
+          '<button type="button" class="primary" data-v7133-gcal="refresh">今すぐ更新</button>'+
+        '</div>'+
+        '<div class="v7133-gcal-stats">'+
+          '<span class="v7133-gcal-stat" id="v7133GcalCount">読み込み済み 0件</span>'+
+          '<span class="v7133-gcal-stat" id="v7133GcalRange">今日 0件 / 7日 0件</span>'+
+          '<span class="v7133-gcal-stat" id="v7133GcalLast">最終更新なし</span>'+
+          '<span class="v7133-gcal-stat" id="v7133GcalError">エラーなし</span>'+
+        '</div>'+
+        '<div class="v7133-gcal-result" id="v7133GcalResult"></div>'+
+        '<details class="v7133-gcal-help">'+
+          '<summary>うまく入らない時</summary>'+
+          '<div class="v7133-gcal-help-body">'+
+            'Googleアカウントにログインしているだけでは読み込めません。Apps Scriptの /exec?token=... URLが必要です。予定は日/週/月ビューに表示され、通常タスクとは別扱いです。'+
+            '<div class="v7133-gcal-row" style="margin-top:8px;">'+
+              '<button type="button" data-v7133-gcal="copy">状態コピー</button>'+
+              '<button type="button" data-v7133-gcal="full">詳細設定を開く</button>'+
+              '<button type="button" class="danger" data-v7133-gcal="clear">読み込み予定を消す</button>'+
+            '</div>'+
+          '</div>'+
+        '</details>';
+      const hero=base.querySelector('.base-hero');
+      if(hero && hero.parentNode) hero.parentNode.insertBefore(box, hero.nextSibling);
+      else base.insertBefore(box, base.firstChild);
+    }
+    renderDock();
+    return true;
+  }
+  function saveUrl(){
+    const g=setupGcal();
+    if(!g) return;
+    const url=String(dockInput()?.value||'').trim();
+    g.feedUrl=url;
+    g.lastError='';
+    syncInputsFromState();
+    try{if(typeof save==='function') save();}catch(e){}
+    try{if(typeof renderGcalSettings==='function') renderGcalSettings();}catch(e){}
+    renderDock();
+    setResult(url?'GoogleカレンダーURLを保存しました。自動更新の対象になります。':'GoogleカレンダーURLを空にしました。自動更新は止まります。','ok');
+  }
+  async function refreshNow(){
+    const g=setupGcal();
+    if(!g) return;
+    const url=String(dockInput()?.value||g.feedUrl||'').trim();
+    if(!url){
+      setResult('URLが未設定です。Apps Script Web App URLを入れてください。','bad');
+      return;
+    }
+    g.feedUrl=url;
+    syncInputsFromState();
+    try{if(typeof save==='function') save();}catch(e){}
+    if(typeof loadGcalFromUrl!=='function'){
+      setResult('Googleカレンダー読み込み関数が見つかりません。ページを再読み込みしてください。','bad');
+      return;
+    }
+    setResult('Googleカレンダーを読み込み中です...','');
+    try{
+      await Promise.resolve(loadGcalFromUrl(false));
+      renderDock();
+      const msg=String((S.gcal&&S.gcal.lastError)||'').trim();
+      if(msg) setResult(msg,'bad');
+      else{
+        const stats=eventStats();
+        setResult('更新OK: '+stats.total+'件読み込みました。今日 '+stats.today+'件 / 7日 '+stats.week+'件','ok');
+      }
+    }catch(e){
+      setResult('読み込み失敗: '+(e&&e.message?e.message:e),'bad');
+    }
+  }
+  function clearEvents(){
+    const g=setupGcal();
+    if(!g) return;
+    if(!confirm('読み込んだGoogleカレンダー予定だけ消します。URL設定は残します。')) return;
+    g.events=[];
+    g.lastSync=0;
+    g.lastError='';
+    try{if(typeof save==='function') save();}catch(e){}
+    try{if(typeof renderGcalSettings==='function') renderGcalSettings();}catch(e){}
+    try{if(typeof renderTasks==='function') renderTasks();}catch(e){}
+    try{if(typeof renderTimeline==='function') renderTimeline();}catch(e){}
+    renderDock();
+    setResult('読み込み済み予定を消しました。URLは残っています。','ok');
+  }
+  async function copyStatus(){
+    const g=setupGcal();
+    if(!g) return;
+    const stats=eventStats();
+    const text=[
+      'SASSHY QUEST Google Calendar状態',
+      'URL設定: '+(String(g.feedUrl||'').trim()?'あり':'なし'),
+      '読み込み済み: '+stats.total+'件',
+      '今日: '+stats.today+'件',
+      '7日以内: '+stats.week+'件',
+      '最終更新: '+formatLast(g.lastSync||0),
+      'エラー: '+(g.lastError||'なし'),
+      '画面URL: '+location.href
+    ].join('\n');
+    try{
+      await navigator.clipboard.writeText(text);
+      setResult('Googleカレンダー状態をコピーしました。','ok');
+    }catch(e){
+      setResult(text,'bad');
+    }
+  }
+  function showFullSettings(){
+    document.body.classList.add('v7133-show-full-gcal');
+    const panel=document.getElementById('p-gcal');
+    if(panel){
+      try{panel.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){panel.scrollIntoView();}
+    }
+    setResult('下に詳細設定を表示しました。Apps ScriptコードやICS貼り付けはそちらから使えます。','ok');
+  }
+
+  document.addEventListener('click',function(e){
+    const btn=e.target.closest&&e.target.closest('[data-v7133-gcal]');
+    if(!btn) return;
+    e.preventDefault();
+    const act=btn.dataset.v7133Gcal;
+    if(act==='save') saveUrl();
+    if(act==='refresh') refreshNow();
+    if(act==='clear') clearEvents();
+    if(act==='copy') copyStatus();
+    if(act==='full') showFullSettings();
+  },true);
+  document.addEventListener('change',function(e){
+    if(e.target && e.target.id==='v7133GcalUrl') saveUrl();
+  },true);
+
+  const oldRender=window.renderGcalSettings;
+  if(typeof oldRender==='function' && !oldRender.__v7133Wrapped){
+    const wrapped=function(){
+      const ret=oldRender.apply(this,arguments);
+      setTimeout(renderDock,0);
+      return ret;
+    };
+    wrapped.__v7133Wrapped=true;
+    window.renderGcalSettings=wrapped;
+  }
+  setTimeout(ensureDock,900);
+  setInterval(ensureDock,3500);
 })();
 </script>
 
