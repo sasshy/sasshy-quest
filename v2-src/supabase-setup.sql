@@ -1,7 +1,7 @@
 -- SASSHY v2: record-by-record sync.
 -- Run this once in Supabase SQL Editor. It does not touch the old app_state table.
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists public.sasshy_v2_records (
   workspace_hash text not null,
@@ -42,7 +42,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_hash text := encode(digest(p_sync_key, 'sha256'), 'hex');
+  v_hash text := encode(extensions.digest(p_sync_key, 'sha256'), 'hex');
   v_old public.sasshy_v2_records%rowtype;
 begin
   if length(p_sync_key) < 12 then
@@ -81,7 +81,7 @@ set search_path = public
 as $$
   select *
   from public.sasshy_v2_records
-  where workspace_hash = encode(digest(p_sync_key, 'sha256'), 'hex')
+  where workspace_hash = encode(extensions.digest(p_sync_key, 'sha256'), 'hex')
   order by updated_at asc;
 $$;
 
