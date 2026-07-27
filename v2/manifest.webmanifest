@@ -1,0 +1,19 @@
+{
+  "name": "SASSHY v2",
+  "short_name": "SASSHY",
+  "description": "予定と集中をひとつにつなぐタスクツール",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8f8f6",
+  "theme_color": "#f8f8f6",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
