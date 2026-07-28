@@ -195,6 +195,25 @@ export async function updateSession(id: string, changes: Partial<FocusSession>, 
   return result;
 }
 
+export async function pauseFocusSession(id: string, label = 'タイマーを一時停止'): Promise<FocusSession | null> {
+  const session = await db.sessions.get(id);
+  if (!session || session.status !== 'running') return session || null;
+  return updateSession(id, { status: 'paused', pausedAt: nowIso() }, label);
+}
+
+export async function resumeFocusSession(id: string): Promise<FocusSession | null> {
+  const session = await db.sessions.get(id);
+  if (!session || session.status !== 'paused') return session || null;
+  const pausedSec = session.pausedAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(session.pausedAt).getTime()) / 1000))
+    : 0;
+  return updateSession(id, {
+    status: 'running',
+    pausedAt: null,
+    pausedTotalSec: session.pausedTotalSec + pausedSec,
+  }, 'タイマーを再開');
+}
+
 export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<Pick<Memo, 'category' | 'pinned' | 'reminderAt' | 'source' | 'legacyId'>>, source: HistoryEntry['source'] = 'local'): Promise<Memo> {
   const at = nowIso();
   const deviceId = await getDeviceId();

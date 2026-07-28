@@ -18,6 +18,20 @@ export function announcementText(seconds: number): string {
   return `${seconds}秒`;
 }
 
+export function remainingStatusText(seconds: number): string {
+  if (seconds <= 0) return `予定を${Math.abs(seconds)}秒超過しています`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `残り${rest}秒です`;
+  return `残り${minutes}分${rest ? `${rest}秒` : ''}です`;
+}
+
+export function stopVoice(): void {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  activeUtterances.clear();
+}
+
 export function speakVoice(text: string, config: VoiceConfig): boolean {
   if (!config.enabled || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return false;
   const utterance = new SpeechSynthesisUtterance(text);

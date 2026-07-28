@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
-import { completeTask, createTask, restoreTask, softDeleteTask, startFocusSession, updateTask } from './store';
+import {
+  completeTask, createTask, pauseFocusSession, restoreTask, resumeFocusSession,
+  softDeleteTask, startFocusSession, updateTask,
+} from './store';
 import type { Task } from './types';
 
 beforeEach(async () => {
@@ -62,5 +65,18 @@ describe('record safe mutations', () => {
     expect(session.plannedMin).toBe(15);
     expect((await db.tasks.get(task.id))?.scheduledDate).toBe('2026-07-21');
     expect((await db.sessions.get(session.id))?.status).toBe('running');
+  });
+
+  it('keeps an interrupted timer available for resume', async () => {
+    const task = await createTask({ title: '中断して戻るタイマー', estimateMin: 25 });
+    const session = await startFocusSession(task, 25);
+
+    await pauseFocusSession(session.id, '作業を中断');
+    expect((await db.sessions.get(session.id))?.status).toBe('paused');
+    expect((await db.sessions.get(session.id))?.endedAt).toBeNull();
+
+    await resumeFocusSession(session.id);
+    expect((await db.sessions.get(session.id))?.status).toBe('running');
+    expect((await db.tasks.get(task.id))?.status).toBe('active');
   });
 });

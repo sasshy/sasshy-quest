@@ -16,8 +16,8 @@ import {
 import { db } from './db';
 import {
   cloneForExport, compactDate, completeTask, createMemo, createTask, restoreHistoryEntry,
-  restoreTask, softDeleteTask, startFocusSession, taskStart, todayKey, updateMemo, updateSession,
-  updateTask,
+  pauseFocusSession, restoreTask, resumeFocusSession, softDeleteTask, startFocusSession,
+  taskStart, todayKey, updateMemo, updateSession, updateTask,
 } from './store';
 import {
   getSyncConfig, getSyncState, saveSyncConfig, setInteractionActive, startAutoSync,
@@ -26,7 +26,7 @@ import {
 import { importLegacy, legacySummary, type LegacySummary } from './legacy';
 import { emptyGoogleCalendar, getGoogleCalendarConfig, refreshGoogleCalendar, saveGoogleCalendarConfig } from './google-calendar';
 import type { FocusSession, GoogleCalendarConfig, HistoryEntry, Memo, SyncConfig, Task, TaskHorizon, VoiceConfig } from './types';
-import { announcementText, announcementThresholds, speakVoice } from './voice';
+import { announcementText, announcementThresholds, remainingStatusText, speakVoice, stopVoice } from './voice';
 import setupSql from '../supabase-setup.sql?raw';
 
 type Page = 'today' | 'calendar' | 'inbox' | 'later' | 'memos' | 'history' | 'settings';
@@ -504,10 +504,13 @@ function TimerDock({ session, task, voice, onClose }: { session: FocusSession; t
     if ('wakeLock' in navigator && session.status === 'running') (navigator as Navigator & { wakeLock: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock.request('screen').then((value) => { lock = value; }).catch(() => undefined);
     return () => { lock?.release().catch(() => undefined); };
   }, [session.status]);
-  const start = new Date(session.startedAt).getTime();
-  const pauseExtra = paused && session.pausedAt ? Math.max(0, now - new Date(session.pausedAt).getTime()) : 0;
-  const elapsedSec = Math.max(0, Math.floor((now - start - session.pausedTotalSec * 1000 - pauseExtra) / 1000));
-  const remainingSec = session.plannedMin * 60 - elapsedSec;
+  const remainingAt = (at: number) => {
+    const start = new Date(session.startedAt).getTime();
+    const pauseExtra = paused && session.pausedAt ? Math.max(0, at - new Date(session.pausedAt).getTime()) : 0;
+    const elapsedSec = Math.max(0, Math.floor((at - start - session.pausedTotalSec * 1000 - pauseExtra) / 1000));
+    return session.plannedMin * 60 - elapsedSec;
+  };
+  const remainingSec = remainingAt(now);
   useEffect(() => {
     if (!voice.enabled || paused || remainingSec < 0) { previous.current = remainingSec; return; }
     for (const threshold of announcementThresholds(voice, session.plannedMin)) {
@@ -521,18 +524,42 @@ function TimerDock({ session, task, voice, onClose }: { session: FocusSession; t
     }
     previous.current = remainingSec;
   }, [remainingSec, paused, voice]);
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopVoice();
+        previous.current = null;
+        return;
+      }
+      const current = remainingAt(Date.now());
+      setNow(Date.now());
+      previous.current = current;
+      if (!paused && voice.enabled) speakVoice(`タイマーに戻りました。${remainingStatusText(current)}`, voice);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [paused, session.startedAt, session.pausedAt, session.pausedTotalSec, session.plannedMin, voice]);
   const display = Math.abs(remainingSec);
   const time = `${String(Math.floor(display / 60)).padStart(2, '0')}:${String(display % 60).padStart(2, '0')}`;
   const pauseToggle = async () => {
     if (paused) {
-      const added = session.pausedAt ? Math.floor((Date.now() - new Date(session.pausedAt).getTime()) / 1000) : 0;
-      await updateSession(session.id, { status: 'running', pausedAt: null, pausedTotalSec: session.pausedTotalSec + added }, 'タイマーを再開');
-    } else await updateSession(session.id, { status: 'paused', pausedAt: new Date().toISOString() }, 'タイマーを一時停止');
+      const resumed = await resumeFocusSession(session.id);
+      if (resumed && voice.enabled) speakVoice(`タイマーを再開します。${remainingStatusText(remainingAt(Date.now()))}`, voice);
+    } else {
+      await pauseFocusSession(session.id);
+      stopVoice();
+    }
   };
   const finish = async (complete: boolean) => {
-    await updateSession(session.id, { status: complete ? 'completed' : 'interrupted', endedAt: new Date().toISOString(), pausedAt: null }, complete ? '作業を完了' : '作業を中断');
-    if (complete && task) await completeTask(task.id, true);
-    else if (task && task.status === 'active') await updateTask(task.id, { status: task.scheduledDate ? 'planned' : 'inbox' }, 'タスクを中断');
+    if (!complete) {
+      await pauseFocusSession(session.id, '作業を中断');
+      stopVoice();
+      syncNow().catch(() => undefined);
+      onClose();
+      return;
+    }
+    await updateSession(session.id, { status: 'completed', endedAt: new Date().toISOString(), pausedAt: null }, '作業を完了');
+    if (task) await completeTask(task.id, true);
     syncNow().catch(() => undefined); onClose();
   };
   return <div className="timer-dock"><div className="timer-title"><span className="live-dot" /><div><span>{remainingSec < 0 ? '予定を超過' : paused ? '一時停止' : '集中しています'}</span><strong>{session.taskTitle}</strong></div><IconButton label="小さくする" onClick={onClose}><X size={19} /></IconButton></div><button className="timer-display" type="button" onClick={pauseToggle}><span>{remainingSec < 0 ? '+' : ''}{time}</span><small>{paused ? '押して再開' : '押して一時停止'}</small></button><div className="timer-controls"><IconButton label={paused ? '再開' : '一時停止'} onClick={pauseToggle}>{paused ? <Play size={21} /> : <Pause size={21} />}</IconButton><button className="button secondary" type="button" onClick={() => updateSession(session.id, { plannedMin: session.plannedMin + 5 }, '5分延長')}>+5分</button><button className="button secondary" type="button" onClick={() => finish(false)}><Square size={16} />中断</button><button className="button complete" type="button" onClick={() => finish(true)}><Check size={17} />完了</button></div></div>;
@@ -560,13 +587,30 @@ function App() {
     if (due.length && Notification.permission === 'granted') due.forEach((memo) => { new Notification(memo.title || 'SASSHYメモ', { body: memo.body || '設定した時刻になりました' }); sessionStorage.setItem(`memo-notified-${memo.id}`, '1'); });
   }, [memos]);
   const startTimer = async (task: Task) => {
+    if (activeSession?.taskId === task.id) {
+      if (activeSession.status === 'paused') await resumeFocusSession(activeSession.id);
+      setTimerVisible(true);
+      if (voice?.enabled) speakVoice(activeSession.status === 'paused' ? '中断していたタイマーを再開します' : '実行中のタイマーに戻ります', voice);
+      syncNow().catch(() => undefined);
+      return;
+    }
     if (voice?.enabled) speakVoice(`${task.estimateMin}分タイマーを開始します`, voice);
     await startFocusSession(task, task.estimateMin);
     setTimerVisible(true);
     syncNow().catch(() => undefined);
   };
+  const reopenTimer = async () => {
+    setTimerVisible(true);
+    if (!activeSession || !voice?.enabled) return;
+    if (activeSession.status === 'paused') {
+      await resumeFocusSession(activeSession.id);
+      speakVoice('中断していたタイマーを再開します', voice);
+    } else {
+      speakVoice('タイマー画面に戻りました', voice);
+    }
+  };
   const navItems: { id: Page; icon: ReactNode }[] = [{ id: 'today', icon: <Sparkles /> }, { id: 'calendar', icon: <CalendarDays /> }, { id: 'inbox', icon: <Inbox /> }, { id: 'later', icon: <Clock3 /> }, { id: 'memos', icon: <MessageSquareText /> }, { id: 'history', icon: <History /> }, { id: 'settings', icon: <Settings /> }];
-  return <div className="app-shell"><aside className={`sidebar${menuOpen ? ' open' : ''}`}><div className="brand"><span className="brand-mark">S</span><div><strong>SASSHY</strong><span>予定と集中</span></div></div><nav>{navItems.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMenuOpen(false); }}>{item.icon}<span>{PAGE_LABEL[item.id]}</span>{item.id === 'inbox' && <small>{tasks.filter((task) => !task.deletedAt && !task.scheduledDate && task.status !== 'done' && task.horizon === 'now').length}</small>}</button>)}</nav><div className={`sync-indicator ${syncState.phase}`}><span>{syncState.phase === 'error' || syncState.phase === 'offline' ? <CloudOff size={16} /> : <Cloud size={16} />}</span><div><strong>{syncState.message.split('・')[0]}</strong><small>{syncState.message.split('・').slice(1).join('・') || '端末に保存します'}</small></div></div></aside><main className="main-area"><header className="topbar"><IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></IconButton><div><span>{PAGE_LABEL[page]}</span><strong>{page === 'today' ? new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()) : 'SASSHY v2'}</strong></div><button className={`top-sync ${syncState.phase}`} type="button" onClick={() => syncNow(true).catch(() => undefined)} title={syncState.message}>{syncState.phase === 'syncing' ? <TimerReset size={17} /> : syncState.phase === 'error' ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{syncState.phase === 'ok' ? '保存済み' : syncState.phase === 'syncing' ? '同期中' : '端末保存'}</span></button></header><div className="view-frame">{page === 'today' && <TodayPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'calendar' && <CalendarPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'inbox' && <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'later' && <LaterPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'memos' && <MemosPage memos={memos} onTaskCreated={(task) => { setPage('inbox'); setEditing(task); }} />}{page === 'history' && <HistoryPage history={history} tasks={tasks} />}{page === 'settings' && <SettingsPage tasks={tasks} memos={memos} sessions={sessions} />}</div></main>{editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onStart={startTimer} />}{activeSession && voice && timerVisible && <TimerDock session={activeSession} task={activeTask} voice={voice} onClose={() => setTimerVisible(false)} />}{activeSession && !timerVisible && <button className="timer-reopen" type="button" onClick={() => setTimerVisible(true)} title="タイマーを表示"><Volume2 size={20} /><span>{activeSession.taskTitle}</span></button>}<nav className="mobile-nav">{navItems.slice(0, 5).map((item) => <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}>{item.icon}<span>{PAGE_LABEL[item.id]}</span></button>)}<button type="button" onClick={() => setMenuOpen(true)}><MoreHorizontal /><span>その他</span></button></nav>{menuOpen && mobile && <button className="menu-scrim" type="button" aria-label="メニューを閉じる" onClick={() => setMenuOpen(false)} />}</div>;
+  return <div className="app-shell"><aside className={`sidebar${menuOpen ? ' open' : ''}`}><div className="brand"><span className="brand-mark">S</span><div><strong>SASSHY</strong><span>予定と集中</span></div></div><nav>{navItems.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMenuOpen(false); }}>{item.icon}<span>{PAGE_LABEL[item.id]}</span>{item.id === 'inbox' && <small>{tasks.filter((task) => !task.deletedAt && !task.scheduledDate && task.status !== 'done' && task.horizon === 'now').length}</small>}</button>)}</nav><div className={`sync-indicator ${syncState.phase}`}><span>{syncState.phase === 'error' || syncState.phase === 'offline' ? <CloudOff size={16} /> : <Cloud size={16} />}</span><div><strong>{syncState.message.split('・')[0]}</strong><small>{syncState.message.split('・').slice(1).join('・') || '端末に保存します'}</small></div></div></aside><main className="main-area"><header className="topbar"><IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></IconButton><div><span>{PAGE_LABEL[page]}</span><strong>{page === 'today' ? new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()) : 'SASSHY v2'}</strong></div><button className={`top-sync ${syncState.phase}`} type="button" onClick={() => syncNow(true).catch(() => undefined)} title={syncState.message}>{syncState.phase === 'syncing' ? <TimerReset size={17} /> : syncState.phase === 'error' ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{syncState.phase === 'ok' ? '保存済み' : syncState.phase === 'syncing' ? '同期中' : '端末保存'}</span></button></header><div className="view-frame">{page === 'today' && <TodayPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'calendar' && <CalendarPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'inbox' && <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'later' && <LaterPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'memos' && <MemosPage memos={memos} onTaskCreated={(task) => { setPage('inbox'); setEditing(task); }} />}{page === 'history' && <HistoryPage history={history} tasks={tasks} />}{page === 'settings' && <SettingsPage tasks={tasks} memos={memos} sessions={sessions} />}</div></main>{editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onStart={startTimer} />}{activeSession && voice && timerVisible && <TimerDock session={activeSession} task={activeTask} voice={voice} onClose={() => setTimerVisible(false)} />}{activeSession && !timerVisible && <button className="timer-reopen" type="button" onClick={reopenTimer} title={activeSession.status === 'paused' ? 'タイマーを再開' : 'タイマーを表示'}><Volume2 size={20} /><span>{activeSession.status === 'paused' ? '中断中・押して再開：' + activeSession.taskTitle : activeSession.taskTitle}</span></button>}<nav className="mobile-nav">{navItems.slice(0, 5).map((item) => <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}>{item.icon}<span>{PAGE_LABEL[item.id]}</span></button>)}<button type="button" onClick={() => setMenuOpen(true)}><MoreHorizontal /><span>その他</span></button></nav>{menuOpen && mobile && <button className="menu-scrim" type="button" aria-label="メニューを閉じる" onClick={() => setMenuOpen(false)} />}</div>;
 }
 
 export default App;

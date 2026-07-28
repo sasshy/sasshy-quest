@@ -1,4 +1,4 @@
-const CACHE = 'sasshy-v2-2.0.2';
+const CACHE = 'sasshy-v2-2.0.3';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './manifest.webmanifest', './icon.svg'])));

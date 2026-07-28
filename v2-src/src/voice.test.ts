@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VoiceConfig } from './types';
-import { announcementText, announcementThresholds } from './voice';
+import { announcementText, announcementThresholds, remainingStatusText } from './voice';
 
 const config: VoiceConfig = {
   id: 'voice',
@@ -21,5 +21,11 @@ describe('voice countdown', () => {
     expect(announcementText(60)).toBe('残り1分です');
     expect(announcementText(30)).toBe('残り30秒です');
     expect(announcementText(5)).toBe('5秒');
+  });
+
+  it('reports the current time when returning to a timer', () => {
+    expect(remainingStatusText(125)).toBe('残り2分5秒です');
+    expect(remainingStatusText(30)).toBe('残り30秒です');
+    expect(remainingStatusText(-8)).toBe('予定を8秒超過しています');
   });
 });
