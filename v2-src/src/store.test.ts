@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
 import { completeTask, createTask, restoreTask, softDeleteTask, startFocusSession, updateTask } from './store';
+import type { Task } from './types';
 
 beforeEach(async () => {
   await db.open();
@@ -29,6 +30,18 @@ describe('record safe mutations', () => {
     expect(completed?.startMinute).toBe(600);
     expect(completed?.status).toBe('done');
     expect(completed?.completedAt).toBeTruthy();
+  });
+
+  it('keeps a changed date on a completed task and queues that exact record', async () => {
+    const task = await createTask({ title: '完了後に日付を直す', scheduledDate: '2026-07-28' });
+    await completeTask(task.id, true);
+    await updateTask(task.id, { scheduledDate: '2026-07-24' }, 'タスク詳細を更新');
+
+    const changed = await db.tasks.get(task.id);
+    const pending = await db.outbox.where('[entityType+entityId]').equals(['task', task.id]).first();
+    expect(changed?.scheduledDate).toBe('2026-07-24');
+    expect(changed?.status).toBe('done');
+    expect((pending?.payload as Task | undefined)?.scheduledDate).toBe('2026-07-24');
   });
 
   it('soft deletes and restores without losing the task', async () => {

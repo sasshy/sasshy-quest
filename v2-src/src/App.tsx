@@ -63,6 +63,14 @@ function formatDateLabel(value: string | null): string {
   return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(year, month - 1, day));
 }
 
+function shiftDate(value: string | null, amount: number): string {
+  const base = value || todayKey();
+  const [year, month, day] = base.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + amount);
+  return compactDate(date);
+}
+
 function formatStamp(value: string | null): string {
   if (!value) return 'まだ同期していません';
   return new Intl.DateTimeFormat('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -135,42 +143,58 @@ function TaskRow({ task, onEdit, onStart, compact = false }: { task: Task; onEdi
 
 function TaskEditor({ task, onClose, onStart }: { task: Task; onClose: () => void; onStart: (task: Task) => void }) {
   const [draft, setDraft] = useState(task);
+  const [saving, setSaving] = useState(false);
   const save = async () => {
-    await updateTask(task.id, {
-      title: draft.title.trim() || task.title,
-      notes: draft.notes,
-      horizon: draft.horizon,
-      scheduledDate: draft.scheduledDate,
-      startMinute: draft.startMinute,
-      estimateMin: Math.max(5, Number(draft.estimateMin) || 25),
-      durationMin: Math.max(5, Number(draft.durationMin) || Number(draft.estimateMin) || 25),
-      importance: draft.importance,
-      urgency: draft.urgency,
-    }, 'タスク詳細を更新');
-    onClose();
-    syncNow().catch(() => undefined);
+    if (saving) return;
+    setSaving(true);
+    try {
+      await updateTask(task.id, {
+        title: draft.title.trim() || task.title,
+        notes: draft.notes,
+        horizon: draft.horizon,
+        scheduledDate: draft.scheduledDate,
+        startMinute: draft.startMinute,
+        estimateMin: Math.max(5, Number(draft.estimateMin) || 25),
+        durationMin: Math.max(5, Number(draft.durationMin) || Number(draft.estimateMin) || 25),
+        importance: draft.importance,
+        urgency: draft.urgency,
+      }, 'タスク詳細を更新');
+      onClose();
+      syncNow().catch(() => undefined);
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="task-edit-title">
         <header><div><span className="eyebrow">TASK</span><h2 id="task-edit-title">タスクを編集</h2></div><IconButton label="閉じる" onClick={onClose}><X size={20} /></IconButton></header>
         <div className="form-stack">
-          <label><span>タイトル</span><input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} autoFocus /></label>
-          <label><span>メモ</span><textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} rows={4} /></label>
+          <label><span>タイトル</span><input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} /></label>
+          <label><span>メモ</span><textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} rows={4} /></label>
           <div className="form-grid">
-            <label><span>日付</span><input type="date" value={draft.scheduledDate || ''} onInput={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} onChange={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} /></label>
+            <div className="task-date-editor">
+              <label><span>日付</span><input type="date" aria-label="日付" value={draft.scheduledDate || ''} onInput={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} onChange={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} onBlur={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} /></label>
+              <div className="date-shortcuts" role="group" aria-label="日付の簡単変更">
+                <button type="button" onClick={() => setDraft((current) => ({ ...current, scheduledDate: shiftDate(current.scheduledDate, -1) }))}>前日</button>
+                <button type="button" onClick={() => setDraft((current) => ({ ...current, scheduledDate: todayKey() }))}>今日</button>
+                <button type="button" onClick={() => setDraft((current) => ({ ...current, scheduledDate: shiftDate(current.scheduledDate, 1) }))}>翌日</button>
+                <button type="button" onClick={() => setDraft((current) => ({ ...current, scheduledDate: null, startMinute: null }))}>日付なし</button>
+              </div>
+              <small>{draft.scheduledDate ? `選択中：${formatDateLabel(draft.scheduledDate)}` : '選択中：日付なし'}</small>
+            </div>
             <label><span>開始時刻</span><input type="time" value={formatMinute(draft.startMinute)} onInput={(event) => setDraft((current) => ({ ...current, startMinute: parseMinute(event.currentTarget.value) }))} onChange={(event) => setDraft((current) => ({ ...current, startMinute: parseMinute(event.currentTarget.value) }))} /></label>
-            <label><span>予定時間</span><input type="number" min="5" step="5" value={draft.estimateMin} onChange={(event) => setDraft({ ...draft, estimateMin: Number(event.target.value) })} /></label>
-            <label><span>置き場所</span><select value={draft.horizon} onChange={(event) => setDraft({ ...draft, horizon: event.target.value as TaskHorizon })}><option value="now">今やる</option><option value="someday">いつか</option><option value="wish">やりたい</option><option value="waiting">待ち</option></select></label>
-            <label><span>重要度</span><select value={draft.importance} onChange={(event) => setDraft({ ...draft, importance: Number(event.target.value) as 0 | 1 | 2 })}><option value="0">指定なし</option><option value="1">重要</option><option value="2">最重要</option></select></label>
-            <label><span>緊急度</span><select value={draft.urgency} onChange={(event) => setDraft({ ...draft, urgency: Number(event.target.value) as 0 | 1 | 2 })}><option value="0">指定なし</option><option value="1">緊急</option><option value="2">最緊急</option></select></label>
+            <label><span>予定時間</span><input type="number" min="5" step="5" value={draft.estimateMin} onChange={(event) => setDraft((current) => ({ ...current, estimateMin: Number(event.target.value) }))} /></label>
+            <label><span>置き場所</span><select value={draft.horizon} onChange={(event) => setDraft((current) => ({ ...current, horizon: event.target.value as TaskHorizon }))}><option value="now">今やる</option><option value="someday">いつか</option><option value="wish">やりたい</option><option value="waiting">待ち</option></select></label>
+            <label><span>重要度</span><select value={draft.importance} onChange={(event) => setDraft((current) => ({ ...current, importance: Number(event.target.value) as 0 | 1 | 2 }))}><option value="0">指定なし</option><option value="1">重要</option><option value="2">最重要</option></select></label>
+            <label><span>緊急度</span><select value={draft.urgency} onChange={(event) => setDraft((current) => ({ ...current, urgency: Number(event.target.value) as 0 | 1 | 2 }))}><option value="0">指定なし</option><option value="1">緊急</option><option value="2">最緊急</option></select></label>
           </div>
         </div>
         <footer className="modal-actions">
-          <button className="button danger-quiet" type="button" onClick={async () => { await softDeleteTask(task.id); onClose(); syncNow().catch(() => undefined); }}><Trash2 size={17} />ゴミ箱へ</button>
+          <button className="button danger-quiet" type="button" disabled={saving} onClick={async () => { await softDeleteTask(task.id); onClose(); syncNow().catch(() => undefined); }}><Trash2 size={17} />ゴミ箱へ</button>
           <span className="spacer" />
-          {task.status !== 'done' && <button className="button secondary" type="button" onClick={() => { onClose(); onStart(draft); }}><Play size={17} />タイマー</button>}
-          <button className="button primary" type="button" onClick={save}>保存</button>
+          {task.status !== 'done' && <button className="button secondary" type="button" disabled={saving} onClick={() => { onClose(); onStart(draft); }}><Play size={17} />タイマー</button>}
+          <button className="button primary" type="button" disabled={saving} onClick={save}>{saving ? '保存中…' : '保存'}</button>
         </footer>
       </section>
     </div>
