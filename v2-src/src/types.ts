@@ -99,6 +99,8 @@ export interface VoiceConfig {
   rate: number;
   volume: number;
   announcements: number[];
+  everyMinute: boolean;
+  finalCountdown: boolean;
 }
 
 export interface GoogleCalendarEvent {

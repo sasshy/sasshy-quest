@@ -67,6 +67,8 @@ export async function ensureDefaults(): Promise<void> {
       rate: 1,
       volume: 1,
       announcements: [30, 15, 10, 5, 3, 1],
+      everyMinute: true,
+      finalCountdown: true,
     });
   }
   if (!googleCalendar) {
