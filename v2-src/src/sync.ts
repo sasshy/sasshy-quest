@@ -10,6 +10,8 @@ export interface SyncState {
 
 let currentState: SyncState = { phase: 'idle', message: '端末に保存済み', at: null };
 let running: Promise<void> | null = null;
+let rerunRequested = false;
+let rerunForce = false;
 let interactionDepth = 0;
 const listeners = new Set<(state: SyncState) => void>();
 
@@ -59,15 +61,21 @@ async function responseError(response: Response): Promise<Error> {
 }
 
 async function rpc<T>(config: SyncConfig, name: string, body: Record<string, unknown>): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
   let response: Response;
   try {
     response = await fetch(`${cleanUrl(config.url)}/rest/v1/rpc/${name}`, {
       method: 'POST',
       headers: headers(config),
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch {
+    if (controller.signal.aborted) throw new Error('通信がタイムアウトしました。画面を開いたまま再同期します');
     throw new Error('通信できません。URL、API key、ネット接続を確認してください');
+  } finally {
+    window.clearTimeout(timeout);
   }
   if (!response.ok) throw await responseError(response);
   if (response.status === 204) return undefined as T;
@@ -149,9 +157,24 @@ async function performSync(force = false): Promise<void> {
 }
 
 export function syncNow(force = false): Promise<void> {
-  if (running) return running;
-  running = performSync(force).finally(() => { running = null; });
-  return running;
+  if (running) {
+    rerunRequested = true;
+    rerunForce ||= force;
+    return running;
+  }
+  const request = performSync(force);
+  running = request;
+  const finished = () => {
+    if (running !== request) return;
+    running = null;
+    if (!rerunRequested) return;
+    const forceNext = rerunForce;
+    rerunRequested = false;
+    rerunForce = false;
+    window.setTimeout(() => syncNow(forceNext).catch(() => undefined), 0);
+  };
+  void request.then(finished, finished);
+  return request;
 }
 
 export async function testSyncConnection(configInput?: Partial<SyncConfig>): Promise<number> {
@@ -163,15 +186,23 @@ export async function testSyncConnection(configInput?: Partial<SyncConfig>): Pro
 
 export function startAutoSync(): () => void {
   const trySync = () => { if (interactionDepth === 0) syncNow().catch(() => undefined); };
-  const interval = window.setInterval(trySync, 30_000);
-  const online = () => trySync();
-  const visible = () => { if (!document.hidden) trySync(); };
-  window.addEventListener('online', online);
+  const resume = () => {
+    if (document.hidden) return;
+    interactionDepth = 0;
+    trySync();
+  };
+  const interval = window.setInterval(trySync, 15_000);
+  window.addEventListener('online', resume);
+  window.addEventListener('focus', resume);
+  window.addEventListener('pageshow', resume);
+  const visible = () => { if (!document.hidden) resume(); };
   document.addEventListener('visibilitychange', visible);
-  window.setTimeout(trySync, 1_200);
+  window.setTimeout(resume, 300);
   return () => {
     window.clearInterval(interval);
-    window.removeEventListener('online', online);
+    window.removeEventListener('online', resume);
+    window.removeEventListener('focus', resume);
+    window.removeEventListener('pageshow', resume);
     document.removeEventListener('visibilitychange', visible);
   };
 }
