@@ -1,0 +1,128 @@
+openapi: 3.1.0
+info:
+  title: SASSHY Task Inbox
+  version: 1.0.0
+  description: SASSHYへ新しいタスクだけを安全に追加します。既存データの読取・変更・削除はできません。
+servers:
+  - url: https://zoxahzhxqbgswzyduiuq.supabase.co/functions/v1
+paths:
+  /sasshy-add-task:
+    post:
+      operationId: addSasshyTask
+      summary: SASSHYへタスクを1件追加
+      description: |
+        ユーザーが明確にタスク追加を依頼したときだけ実行してください。
+        今日・明日などの相対日付は、Asia/Tokyoの現在日付を基準にYYYY-MM-DDへ変換してください。
+        時刻が指定されていなければstart_timeを省略してください。
+        同じ会話内の同じ依頼を再試行するときは、必ず同じidempotency_keyを再利用してください。
+        idempotency_keyには依頼ごとに新しいUUIDを指定してください。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - idempotency_key
+                - title
+              properties:
+                idempotency_key:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  pattern: '^[A-Za-z0-9._:-]+$'
+                  description: 依頼ごとのUUID。同じ依頼の再試行では同じ値を使います。
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: 実行内容がすぐ分かる短いタスク名。
+                notes:
+                  type: string
+                  maxLength: 4000
+                  description: 補足、相手、品番、背景など。不要なら省略します。
+                scheduled_date:
+                  type: string
+                  format: date
+                  description: 予定日。YYYY-MM-DD形式。
+                start_time:
+                  type: string
+                  pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+                  description: 開始時刻。24時間制のHH:MM形式。予定日がある場合だけ指定できます。
+                duration_min:
+                  type: integer
+                  minimum: 5
+                  maximum: 720
+                  default: 25
+                  description: 所要時間（分）。指定がなければ25分。
+                importance:
+                  type: integer
+                  minimum: 0
+                  maximum: 2
+                  default: 0
+                  description: 重要度。0=通常、1=重要、2=最重要。
+                urgency:
+                  type: integer
+                  minimum: 0
+                  maximum: 2
+                  default: 0
+                  description: 緊急度。0=通常、1=急ぎ、2=至急。
+                horizon:
+                  type: string
+                  enum:
+                    - now
+                    - someday
+                    - wish
+                    - waiting
+                  default: now
+                  description: now=通常、someday=いつか、wish=やりたい、waiting=待ち。
+      responses:
+        '200':
+          description: 登録成功。同じ受付番号による再送ではduplicateがtrueになります。
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                  - task_id
+                  - title
+                  - duplicate
+                  - message
+                properties:
+                  ok:
+                    type: boolean
+                  task_id:
+                    type: string
+                  title:
+                    type: string
+                  scheduled_date:
+                    type:
+                      - string
+                      - 'null'
+                    format: date
+                  start_minute:
+                    type:
+                      - integer
+                      - 'null'
+                  duration_min:
+                    type: integer
+                  duplicate:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          description: 入力内容が不正
+        '401':
+          description: 追加専用キーが不正
+        '500':
+          description: 保存失敗
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API_KEY
