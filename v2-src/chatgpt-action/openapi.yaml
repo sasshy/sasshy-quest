@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: SASSHY Task Inbox
-  version: 1.0.0
-  description: SASSHYへ新しいタスクだけを安全に追加します。既存データの読取・変更・削除はできません。
+  title: SASSHY Task Manager
+  version: 2.0.0
+  description: SASSHYのタスクだけを安全に検索・追加・変更・完了・ゴミ箱移動・復元します。メモとタイマー履歴にはアクセスしません。
 servers:
   - url: https://zoxahzhxqbgswzyduiuq.supabase.co/functions/v1
 paths:
@@ -117,12 +117,298 @@ paths:
         '400':
           description: 入力内容が不正
         '401':
-          description: 追加専用キーが不正
+          description: タスク管理専用キーが不正
         '500':
           description: 保存失敗
+  /sasshy-add-task/search:
+    post:
+      operationId: searchSasshyTasks
+      summary: SASSHYのタスクを検索
+      description: |
+        変更・完了・削除・復元の前に必ずこの操作で対象を特定し、最新のrevisionを取得してください。
+        同名タスクが複数ある場合は、日付や時刻を示してユーザーに対象を確認してください。
+        検索結果のtask_idとrevisionは、続く1回の操作だけに使用してください。
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                query:
+                  type: string
+                  maxLength: 200
+                  description: タイトルまたはメモに含まれる検索語。省略すると日付・状態に合うタスクを返します。
+                from_date:
+                  type: string
+                  format: date
+                  description: この日以降。YYYY-MM-DD形式。
+                to_date:
+                  type: string
+                  format: date
+                  description: この日以前。YYYY-MM-DD形式。
+                status:
+                  type: string
+                  enum: [open, done, deleted, all]
+                  default: open
+                  description: open=未完了、done=完了済み、deleted=ゴミ箱、all=すべて。
+                include_deleted:
+                  type: boolean
+                  default: false
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 30
+      responses:
+        '200':
+          description: 検索成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSearchResult'
+        '401':
+          description: 専用キーが不正
+        '500':
+          description: 検索失敗
+  /sasshy-add-task/update:
+    post:
+      operationId: updateSasshyTask
+      summary: SASSHYのタスクを1件変更
+      description: |
+        searchSasshyTasksで取得したtask_idと最新revisionを使用してください。
+        複数件を一度に変更しないでください。日付を外す場合はscheduled_dateをnullにします。
+        別端末で変更済みの場合は409になり、再検索するまで更新できません。
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdateRequest'
+      responses:
+        '200':
+          description: 変更成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskMutationResult'
+        '400':
+          description: 入力内容が不正
+        '404':
+          description: タスクが見つからない
+        '409':
+          description: 別の端末で更新済み。再検索が必要。
+  /sasshy-add-task/complete:
+    post:
+      operationId: completeSasshyTask
+      summary: SASSHYのタスクを1件完了
+      description: searchSasshyTasksで取得したtask_idと最新revisionを使用します。予定日と時刻は変更しません。
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskReference'
+      responses:
+        '200':
+          description: 完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskMutationResult'
+        '409':
+          description: 別の端末で更新済み。再検索が必要。
+  /sasshy-add-task/reopen:
+    post:
+      operationId: reopenSasshyTask
+      summary: SASSHYのタスクの完了を取り消す
+      description: searchSasshyTasksで取得したtask_idと最新revisionを使用します。
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskReference'
+      responses:
+        '200':
+          description: 完了取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskMutationResult'
+        '409':
+          description: 別の端末で更新済み。再検索が必要。
+  /sasshy-add-task/delete:
+    post:
+      operationId: trashSasshyTask
+      summary: SASSHYのタスクを1件ゴミ箱へ移動
+      description: |
+        完全削除ではなく復元可能なゴミ箱移動です。
+        必ず直前にsearchSasshyTasksを実行し、タイトル・予定日・時刻をユーザーへ示して明示確認を得てください。
+        「消して」「削除して」という依頼だけでは実行せず、確認への肯定を待ってください。
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskReference'
+      responses:
+        '200':
+          description: ゴミ箱へ移動
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskMutationResult'
+        '409':
+          description: 別の端末で更新済み。再検索が必要。
+  /sasshy-add-task/restore:
+    post:
+      operationId: restoreSasshyTask
+      summary: ゴミ箱のSASSHYタスクを1件復元
+      description: status=deletedで検索して取得したtask_idと最新revisionを使用します。
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskReference'
+      responses:
+        '200':
+          description: 復元成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskMutationResult'
+        '409':
+          description: 別の端末で更新済み。再検索が必要。
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: API_KEY
+  schemas:
+    TaskReference:
+      type: object
+      additionalProperties: false
+      required: [task_id, revision]
+      properties:
+        task_id:
+          type: string
+          maxLength: 200
+        revision:
+          type: string
+          format: date-time
+          description: 直前の検索結果に含まれる更新番号。
+    TaskUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/TaskReference'
+        - type: object
+          required: [changes]
+          properties:
+            changes:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                notes:
+                  type: string
+                  maxLength: 4000
+                scheduled_date:
+                  type: [string, 'null']
+                  format: date
+                start_time:
+                  type: [string, 'null']
+                  pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+                duration_min:
+                  type: integer
+                  minimum: 5
+                  maximum: 720
+                importance:
+                  type: integer
+                  minimum: 0
+                  maximum: 2
+                urgency:
+                  type: integer
+                  minimum: 0
+                  maximum: 2
+                horizon:
+                  type: string
+                  enum: [now, someday, wish, waiting]
+    TaskSummary:
+      type: object
+      required: [id, title, status, revision]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+        horizon:
+          type: string
+        scheduled_date:
+          type: [string, 'null']
+          format: date
+        start_time:
+          type: [string, 'null']
+        duration_min:
+          type: integer
+        importance:
+          type: integer
+        urgency:
+          type: integer
+        completed_at:
+          type: [string, 'null']
+        deleted_at:
+          type: [string, 'null']
+        revision:
+          type: string
+          format: date-time
+    TaskSearchResult:
+      type: object
+      required: [ok, count, tasks]
+      properties:
+        ok:
+          type: boolean
+        count:
+          type: integer
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskSummary'
+    TaskMutationResult:
+      type: object
+      required: [ok, operation, task]
+      properties:
+        ok:
+          type: boolean
+        operation:
+          type: string
+        task:
+          $ref: '#/components/schemas/TaskSummary'

@@ -1,5 +1,12 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { parseTaskRequest, type AddTaskRequest } from './validation.ts';
+import {
+  parseTaskMutationRequest,
+  parseTaskSearchRequest,
+  type TaskMutationOperation,
+  type TaskMutationRequest,
+  type TaskSearchRequest,
+} from './management.ts';
 
 const allowedOrigins = new Set([
   'https://chatgpt.com',
@@ -28,6 +35,12 @@ function respond(request: Request, status: number, body: unknown): Response {
     status,
     headers: { ...jsonHeaders, ...corsHeaders(request) },
   });
+}
+
+function endpoint(request: Request): string {
+  const parts = new URL(request.url).pathname.split('/').filter(Boolean);
+  const functionIndex = parts.lastIndexOf('sasshy-add-task');
+  return functionIndex < 0 ? '' : parts.slice(functionIndex + 1).join('/');
 }
 
 async function tokenDigest(value: string): Promise<Uint8Array> {
@@ -66,36 +79,95 @@ Deno.serve(async (request: Request) => {
   const contentLength = Number(request.headers.get('Content-Length') || 0);
   if (contentLength > 16_384) return respond(request, 413, { error: '入力が大きすぎます' });
 
-  let input;
+  let body: unknown;
   try {
-    input = parseTaskRequest(await request.json() as AddTaskRequest);
+    body = await request.json();
   } catch (error) {
-    const message = error instanceof Error ? error.message : '入力を確認してください';
-    return respond(request, 400, { error: message });
+    return respond(request, 400, { error: '入力を確認してください' });
   }
 
   const client = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await client.rpc('sasshy_v2_ingest_task', {
-    p_sync_key: syncKey,
-    ...input,
-  });
+  const action = endpoint(request);
 
-  if (error) {
-    console.error('sasshy-add-task failed', error.code || 'unknown');
-    return respond(request, 500, { error: 'タスクを保存できませんでした。少し待って再試行してください' });
+  try {
+    if (action === 'search') {
+      const input = parseTaskSearchRequest(body as TaskSearchRequest);
+      const { data, error } = await client.rpc('sasshy_v2_action_search_tasks', {
+        p_sync_key: syncKey,
+        ...input,
+      });
+      if (error) throw error;
+      return respond(request, 200, data);
+    }
+
+    const mutationByEndpoint: Record<string, TaskMutationOperation> = {
+      update: 'update',
+      complete: 'complete',
+      reopen: 'reopen',
+      delete: 'delete',
+      restore: 'restore',
+    };
+    if (action in mutationByEndpoint) {
+      const input = parseTaskMutationRequest(
+        body as TaskMutationRequest,
+        mutationByEndpoint[action],
+      );
+      const { data, error } = await client.rpc('sasshy_v2_action_mutate_task', {
+        p_sync_key: syncKey,
+        ...input,
+      });
+      if (error) throw error;
+      return respond(request, 200, data);
+    }
+
+    if (action) return respond(request, 404, { error: '操作が見つかりません' });
+
+    const input = parseTaskRequest(body as AddTaskRequest);
+    const { data, error } = await client.rpc('sasshy_v2_ingest_task', {
+      p_sync_key: syncKey,
+      ...input,
+    });
+    if (error) throw error;
+
+    const task = data?.task;
+    return respond(request, 200, {
+      ok: true,
+      task_id: task?.id,
+      title: task?.title,
+      scheduled_date: task?.scheduledDate,
+      start_minute: task?.startMinute,
+      duration_min: task?.durationMin,
+      duplicate: Boolean(data?.duplicate),
+      message: data?.duplicate ? 'すでに同じ依頼を登録済みです' : 'SASSHYへ追加しました',
+    });
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : '';
+    console.error('sasshy task action failed');
+    if (message.includes('task was changed')) {
+      return respond(request, 409, {
+        error: '別の端末でタスクが更新されました。もう一度検索して最新内容を確認してください',
+      });
+    }
+    if (message.includes('task not found')) {
+      return respond(request, 404, { error: 'タスクが見つかりません' });
+    }
+    if (message.includes('cannot restore')) {
+      return respond(request, 400, { error: 'このタスクは削除されていません' });
+    }
+    if (message.includes('cannot mutate deleted')) {
+      return respond(request, 400, { error: '削除済みタスクです。先に復元してください' });
+    }
+    if (error instanceof Error && !('code' in error)) {
+      return respond(request, 400, { error: message || '入力を確認してください' });
+    }
+    return respond(request, 500, {
+      error: 'SASSHYを更新できませんでした。少し待って再試行してください',
+    });
   }
-
-  const task = data?.task;
-  return respond(request, 200, {
-    ok: true,
-    task_id: task?.id,
-    title: task?.title,
-    scheduled_date: task?.scheduledDate,
-    start_minute: task?.startMinute,
-    duration_min: task?.durationMin,
-    duplicate: Boolean(data?.duplicate),
-    message: data?.duplicate ? 'すでに同じ依頼を登録済みです' : 'SASSHYへ追加しました',
-  });
 });

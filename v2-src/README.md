@@ -23,12 +23,15 @@ pnpm build
 
 設定画面の「初期化SQLをコピー」または `supabase-setup.sql` をSupabase SQL Editorで一度実行します。旧版の `app_state` テーブルには触れません。
 
-## ChatGPTからタスク追加
+## ChatGPTからタスク管理
 
-`supabase/functions/sasshy-add-task` は、新しいタスクの追加だけを許可するEdge Functionです。既存タスクの読取・変更・削除は提供しません。
+`supabase/functions/sasshy-add-task` は、SASSHYのタスクだけを検索・追加・変更・完了・ゴミ箱移動・復元するEdge Functionです。
 
 - 同期キーとSupabaseのservice role keyはサーバー側だけに置く
-- ChatGPTには取り消し可能な追加専用キーだけを設定する
+- ChatGPTには取り消し可能なタスク管理専用キーだけを設定する
+- メモ、タイマー履歴、同期設定は公開しない
+- 変更前のrevision一致を必須にし、Mac/iPhone側の新しい変更を上書きしない
+- 削除は復元可能なゴミ箱移動だけに限定する
 - 受付番号で再送を判定し、同じ依頼を二重登録しない
 - タスク本文をログへ出力しない
 

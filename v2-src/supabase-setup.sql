@@ -248,3 +248,345 @@ revoke all on function public.sasshy_v2_ingest_task(
 grant execute on function public.sasshy_v2_ingest_task(
   text, text, text, text, text, date, integer, integer, integer, integer
 ) to service_role;
+
+-- ChatGPT管理用の検索。タスク以外（メモ・タイマー履歴）は返さない。
+create or replace function public.sasshy_v2_action_search_tasks(
+  p_sync_key text,
+  p_query text,
+  p_from_date date,
+  p_to_date date,
+  p_status text,
+  p_include_deleted boolean,
+  p_limit integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_hash text := encode(extensions.digest(p_sync_key, 'sha256'), 'hex');
+  v_tasks jsonb;
+begin
+  if length(p_sync_key) < 12 then
+    raise exception 'sync key must be at least 12 characters';
+  end if;
+  if p_status not in ('open', 'done', 'deleted', 'all') then
+    raise exception 'invalid status';
+  end if;
+  if p_limit < 1 or p_limit > 100 then
+    raise exception 'invalid limit';
+  end if;
+  if p_from_date is not null and p_to_date is not null and p_from_date > p_to_date then
+    raise exception 'invalid date range';
+  end if;
+
+  select coalesce(jsonb_agg(item order by sort_date asc nulls last, sort_minute asc, title asc), '[]'::jsonb)
+  into v_tasks
+  from (
+    select
+      jsonb_build_object(
+        'id', r.id,
+        'title', r.payload->>'title',
+        'notes', coalesce(r.payload->>'notes', ''),
+        'status', r.payload->>'status',
+        'horizon', r.payload->>'horizon',
+        'scheduled_date', r.payload->>'scheduledDate',
+        'start_time', case
+          when r.payload->>'startMinute' is null then null
+          else lpad(((r.payload->>'startMinute')::integer / 60)::text, 2, '0')
+            || ':' || lpad(((r.payload->>'startMinute')::integer % 60)::text, 2, '0')
+        end,
+        'duration_min', (r.payload->>'durationMin')::integer,
+        'importance', coalesce((r.payload->>'importance')::integer, 0),
+        'urgency', coalesce((r.payload->>'urgency')::integer, 0),
+        'completed_at', r.payload->>'completedAt',
+        'deleted_at', r.payload->>'deletedAt',
+        'revision', to_char(r.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+      ) as item,
+      r.payload->>'scheduledDate' as sort_date,
+      coalesce((r.payload->>'startMinute')::integer, 1440) as sort_minute,
+      r.payload->>'title' as title
+    from public.sasshy_v2_records r
+    where r.workspace_hash = v_hash
+      and r.record_type = 'task'
+      and (
+        p_status = 'all'
+        or (p_status = 'deleted' and r.deleted)
+        or (
+          p_status = 'done'
+          and not r.deleted
+          and r.payload->>'status' = 'done'
+        )
+        or (
+          p_status = 'open'
+          and not r.deleted
+          and coalesce(r.payload->>'status', '') not in ('done', 'archived')
+        )
+      )
+      and (p_include_deleted or p_status = 'deleted' or not r.deleted)
+      and (
+        coalesce(trim(p_query), '') = ''
+        or coalesce(r.payload->>'title', '') ilike '%' || trim(p_query) || '%'
+        or coalesce(r.payload->>'notes', '') ilike '%' || trim(p_query) || '%'
+      )
+      and (
+        p_from_date is null
+        or (
+          r.payload->>'scheduledDate' is not null
+          and (r.payload->>'scheduledDate')::date >= p_from_date
+        )
+      )
+      and (
+        p_to_date is null
+        or (
+          r.payload->>'scheduledDate' is not null
+          and (r.payload->>'scheduledDate')::date <= p_to_date
+        )
+      )
+    limit p_limit
+  ) matched;
+
+  return jsonb_build_object(
+    'ok', true,
+    'count', jsonb_array_length(v_tasks),
+    'tasks', v_tasks
+  );
+end;
+$$;
+
+revoke all on function public.sasshy_v2_action_search_tasks(
+  text, text, date, date, text, boolean, integer
+) from public, anon, authenticated;
+grant execute on function public.sasshy_v2_action_search_tasks(
+  text, text, date, date, text, boolean, integer
+) to service_role;
+
+-- ChatGPT管理用の単一タスク更新。revision一致を必須にして、端末側の新しい変更を上書きしない。
+create or replace function public.sasshy_v2_action_mutate_task(
+  p_sync_key text,
+  p_task_id text,
+  p_expected_updated_at timestamptz,
+  p_operation text,
+  p_patch jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_hash text := encode(extensions.digest(p_sync_key, 'sha256'), 'hex');
+  v_row public.sasshy_v2_records%rowtype;
+  v_payload jsonb;
+  v_now timestamptz := date_trunc('milliseconds', clock_timestamp());
+  v_deleted boolean;
+  v_invalid_key text;
+begin
+  if length(p_sync_key) < 12 then
+    raise exception 'sync key must be at least 12 characters';
+  end if;
+  if length(trim(p_task_id)) < 1 or length(p_task_id) > 200 then
+    raise exception 'invalid task id';
+  end if;
+  if p_operation not in ('update', 'complete', 'reopen', 'delete', 'restore') then
+    raise exception 'invalid operation';
+  end if;
+  if p_expected_updated_at is null then
+    raise exception 'revision is required';
+  end if;
+  if jsonb_typeof(coalesce(p_patch, '{}'::jsonb)) <> 'object' then
+    raise exception 'invalid patch';
+  end if;
+
+  select *
+  into v_row
+  from public.sasshy_v2_records
+  where workspace_hash = v_hash and record_type = 'task' and id = p_task_id
+  for update;
+
+  if not found then
+    raise exception 'task not found';
+  end if;
+  if v_row.updated_at is distinct from p_expected_updated_at then
+    raise exception 'task was changed since it was read';
+  end if;
+  if v_row.deleted and p_operation <> 'restore' then
+    raise exception 'cannot mutate deleted task';
+  end if;
+  if not v_row.deleted and p_operation = 'restore' then
+    raise exception 'cannot restore active task';
+  end if;
+
+  select key
+  into v_invalid_key
+  from jsonb_object_keys(coalesce(p_patch, '{}'::jsonb)) as key
+  where key not in (
+    'title',
+    'notes',
+    'scheduledDate',
+    'startMinute',
+    'durationMin',
+    'importance',
+    'urgency',
+    'horizon'
+  )
+  limit 1;
+  if v_invalid_key is not null then
+    raise exception 'invalid patch key';
+  end if;
+  if p_operation <> 'update' and p_patch <> '{}'::jsonb then
+    raise exception 'patch is only allowed for update';
+  end if;
+  if p_operation = 'update' and p_patch = '{}'::jsonb then
+    raise exception 'empty patch';
+  end if;
+
+  v_payload := v_row.payload;
+  v_deleted := v_row.deleted;
+
+  if p_operation = 'update' then
+    if p_patch ? 'title' and (
+      jsonb_typeof(p_patch->'title') <> 'string'
+      or length(trim(p_patch->>'title')) < 1
+      or length(trim(p_patch->>'title')) > 200
+    ) then
+      raise exception 'invalid title';
+    end if;
+    if p_patch ? 'notes' and (
+      jsonb_typeof(p_patch->'notes') <> 'string'
+      or length(p_patch->>'notes') > 4000
+    ) then
+      raise exception 'invalid notes';
+    end if;
+    if p_patch ? 'scheduledDate'
+      and jsonb_typeof(p_patch->'scheduledDate') <> 'null'
+      and (
+        jsonb_typeof(p_patch->'scheduledDate') <> 'string'
+        or (p_patch->>'scheduledDate') !~ '^\d{4}-\d{2}-\d{2}$'
+      ) then
+      raise exception 'invalid scheduled date';
+    end if;
+    if p_patch ? 'scheduledDate' and jsonb_typeof(p_patch->'scheduledDate') <> 'null' then
+      perform (p_patch->>'scheduledDate')::date;
+    end if;
+    if p_patch ? 'startMinute'
+      and jsonb_typeof(p_patch->'startMinute') <> 'null'
+      and (
+        jsonb_typeof(p_patch->'startMinute') <> 'number'
+        or (p_patch->>'startMinute')::integer not between 0 and 1439
+      ) then
+      raise exception 'invalid start minute';
+    end if;
+    if p_patch ? 'durationMin' and (
+      jsonb_typeof(p_patch->'durationMin') <> 'number'
+      or (p_patch->>'durationMin')::integer not between 5 and 720
+    ) then
+      raise exception 'invalid duration';
+    end if;
+    if p_patch ? 'importance' and (
+      jsonb_typeof(p_patch->'importance') <> 'number'
+      or (p_patch->>'importance')::integer not between 0 and 2
+    ) then
+      raise exception 'invalid importance';
+    end if;
+    if p_patch ? 'urgency' and (
+      jsonb_typeof(p_patch->'urgency') <> 'number'
+      or (p_patch->>'urgency')::integer not between 0 and 2
+    ) then
+      raise exception 'invalid urgency';
+    end if;
+    if p_patch ? 'horizon' and (
+      jsonb_typeof(p_patch->'horizon') <> 'string'
+      or p_patch->>'horizon' not in ('now', 'someday', 'wish', 'waiting')
+    ) then
+      raise exception 'invalid horizon';
+    end if;
+
+    v_payload := v_payload || p_patch;
+    if p_patch ? 'durationMin' then
+      v_payload := jsonb_set(v_payload, '{estimateMin}', p_patch->'durationMin', true);
+    end if;
+    if v_payload->>'scheduledDate' is null then
+      v_payload := jsonb_set(v_payload, '{startMinute}', 'null'::jsonb, true);
+    end if;
+    if coalesce(v_payload->>'status', '') not in ('done', 'active') then
+      v_payload := jsonb_set(
+        v_payload,
+        '{status}',
+        to_jsonb(case when v_payload->>'scheduledDate' is null then 'inbox' else 'planned' end),
+        true
+      );
+    end if;
+  elsif p_operation = 'complete' then
+    v_payload := v_payload || jsonb_build_object(
+      'status', 'done',
+      'completedAt', to_char(v_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    );
+  elsif p_operation = 'reopen' then
+    v_payload := v_payload || jsonb_build_object(
+      'status', case when v_payload->>'scheduledDate' is null then 'inbox' else 'planned' end,
+      'completedAt', null
+    );
+  elsif p_operation = 'delete' then
+    v_deleted := true;
+    v_payload := v_payload || jsonb_build_object(
+      'status', 'archived',
+      'deletedAt', to_char(v_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    );
+  elsif p_operation = 'restore' then
+    v_deleted := false;
+    v_payload := v_payload || jsonb_build_object(
+      'status', case
+        when v_payload->>'completedAt' is not null then 'done'
+        when v_payload->>'scheduledDate' is not null then 'planned'
+        else 'inbox'
+      end,
+      'deletedAt', null
+    );
+  end if;
+
+  v_payload := v_payload || jsonb_build_object(
+    'updatedAt', to_char(v_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+  );
+  v_payload := jsonb_set(
+    v_payload,
+    '{sync}',
+    coalesce(v_payload->'sync', '{}'::jsonb) || jsonb_build_object('deviceId', 'chatgpt-action'),
+    true
+  );
+
+  insert into public.sasshy_v2_history(workspace_hash, record_type, record_id, payload, deleted)
+  values(v_row.workspace_hash, v_row.record_type, v_row.id, v_row.payload, v_row.deleted);
+
+  update public.sasshy_v2_records
+  set payload = v_payload, deleted = v_deleted, updated_at = v_now
+  where workspace_hash = v_hash and record_type = 'task' and id = p_task_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'operation', p_operation,
+    'task', jsonb_build_object(
+      'id', p_task_id,
+      'title', v_payload->>'title',
+      'status', v_payload->>'status',
+      'scheduled_date', v_payload->>'scheduledDate',
+      'start_time', case
+        when v_payload->>'startMinute' is null then null
+        else lpad(((v_payload->>'startMinute')::integer / 60)::text, 2, '0')
+          || ':' || lpad(((v_payload->>'startMinute')::integer % 60)::text, 2, '0')
+      end,
+      'duration_min', (v_payload->>'durationMin')::integer,
+      'deleted_at', v_payload->>'deletedAt',
+      'revision', to_char(v_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+    )
+  );
+end;
+$$;
+
+revoke all on function public.sasshy_v2_action_mutate_task(
+  text, text, timestamptz, text, jsonb
+) from public, anon, authenticated;
+grant execute on function public.sasshy_v2_action_mutate_task(
+  text, text, timestamptz, text, jsonb
+) to service_role;
