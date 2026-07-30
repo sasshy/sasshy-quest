@@ -2,3 +2,6 @@ project_id = "zoxahzhxqbgswzyduiuq"
 
 [functions.sasshy-add-task]
 verify_jwt = false
+
+[functions.sasshy-push]
+verify_jwt = false

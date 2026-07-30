@@ -23,6 +23,19 @@ pnpm build
 
 設定画面の「初期化SQLをコピー」または `supabase-setup.sql` をSupabase SQL Editorで一度実行します。旧版の `app_state` テーブルには触れません。
 
+## iPhoneバックグラウンド通知
+
+v2.3では、ホーム画面へ追加したiPhone PWAへWeb Pushを送ります。
+
+- 時刻付きタスクの開始時刻
+- 実行中タイマーの予定終了時刻
+- メモの通知時刻
+- 購読情報は同期キーのSHA-256ハッシュ単位で分離する
+- VAPID秘密鍵と定期実行用キーはSupabase Secretsだけに保存する
+- `sasshy_v2_push_deliveries`で同じ通知の二重送信を防ぐ
+
+関連ファイルは `supabase/functions/sasshy-push`、`supabase-push-setup.sql`、`supabase-push-cron.example.sql` です。本番のEdge Function・Secrets・毎分Cronは設定済みです。
+
 ## ChatGPTからタスク管理
 
 `supabase/functions/sasshy-add-task` は、SASSHYのタスクだけを検索・追加・変更・完了・ゴミ箱移動・復元するEdge Functionです。

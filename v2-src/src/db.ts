@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { AppSetting, FocusSession, GoogleCalendarConfig, GoogleCalendarEvent, HistoryEntry, Memo, OutboxItem, Task } from './types';
+import type { AppSetting, FocusSession, GoogleCalendarConfig, GoogleCalendarEvent, HistoryEntry, Memo, OutboxItem, PushConfig, Task } from './types';
 
 export class SasshyDatabase extends Dexie {
   tasks!: EntityTable<Task, 'id'>;
@@ -42,7 +42,12 @@ export async function getDeviceId(): Promise<string> {
 }
 
 export async function ensureDefaults(): Promise<void> {
-  const [sync, voice, googleCalendar] = await Promise.all([db.settings.get('sync'), db.settings.get('voice'), db.settings.get('google-calendar')]);
+  const [sync, voice, push, googleCalendar] = await Promise.all([
+    db.settings.get('sync'),
+    db.settings.get('voice'),
+    db.settings.get('push'),
+    db.settings.get('google-calendar'),
+  ]);
   if (!sync) {
     let old: Partial<{ url: string; anonKey: string; syncKey: string }> = {};
     try {
@@ -70,6 +75,18 @@ export async function ensureDefaults(): Promise<void> {
       everyMinute: true,
       finalCountdown: true,
     });
+  }
+  if (!push) {
+    const initial: PushConfig = {
+      id: 'push',
+      enabled: false,
+      endpoint: '',
+      deviceName: '',
+      lastRegisteredAt: null,
+      lastTestAt: null,
+      lastError: '',
+    };
+    await db.settings.put(initial as unknown as AppSetting);
   }
   if (!googleCalendar) {
     let old: { feedUrl?: string; events?: Array<Record<string, unknown>>; lastSync?: number; lastError?: string } = {};

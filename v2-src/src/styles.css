@@ -306,6 +306,14 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .button-row { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-message { margin-top: 12px; padding: 9px 11px; border-radius: 5px; background: var(--blue-soft); color: #2c5f8d; font-size: 11px; }
 .settings-error { margin-top: 12px; padding: 9px 11px; border-radius: 5px; background: #fff1ee; color: #a83d32; font-size: 11px; line-height: 1.5; }
+.push-status { min-height: 64px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: #f5f5f3; display: flex; align-items: center; gap: 10px; }
+.push-status > span { width: 36px; height: 36px; border-radius: 50%; background: #dedfdd; color: #666b68; display: grid; place-items: center; flex: 0 0 auto; }
+.push-status > div { min-width: 0; display: grid; gap: 3px; }
+.push-status strong { font-size: 11px; }
+.push-status small { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.push-status.active { border-color: #9ed0b5; background: #eef8f2; }
+.push-status.active > span { background: var(--green); color: white; }
+.settings-hint { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.7; }
 .migration-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .migration-box > div { display: grid; gap: 4px; }
 .migration-box strong { font-size: 12px; }

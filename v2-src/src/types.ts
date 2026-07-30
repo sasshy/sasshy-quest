@@ -119,6 +119,16 @@ export interface VoiceConfig {
   finalCountdown: boolean;
 }
 
+export interface PushConfig {
+  id: 'push';
+  enabled: boolean;
+  endpoint: string;
+  deviceName: string;
+  lastRegisteredAt: string | null;
+  lastTestAt: string | null;
+  lastError: string;
+}
+
 export interface GoogleCalendarEvent {
   id: string;
   title: string;
