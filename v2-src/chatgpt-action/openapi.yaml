@@ -320,44 +320,50 @@ components:
           format: date-time
           description: 直前の検索結果に含まれる更新番号。
     TaskUpdateRequest:
-      allOf:
-        - $ref: '#/components/schemas/TaskReference'
-        - type: object
-          required: [changes]
+      type: object
+      additionalProperties: false
+      required: [task_id, revision, changes]
+      properties:
+        task_id:
+          type: string
+          maxLength: 200
+        revision:
+          type: string
+          format: date-time
+          description: 直前の検索結果に含まれる更新番号。
+        changes:
+          type: object
+          additionalProperties: false
+          minProperties: 1
           properties:
-            changes:
-              type: object
-              additionalProperties: false
-              minProperties: 1
-              properties:
-                title:
-                  type: string
-                  minLength: 1
-                  maxLength: 200
-                notes:
-                  type: string
-                  maxLength: 4000
-                scheduled_date:
-                  type: [string, 'null']
-                  format: date
-                start_time:
-                  type: [string, 'null']
-                  pattern: '^([01]\d|2[0-3]):[0-5]\d$'
-                duration_min:
-                  type: integer
-                  minimum: 5
-                  maximum: 720
-                importance:
-                  type: integer
-                  minimum: 0
-                  maximum: 2
-                urgency:
-                  type: integer
-                  minimum: 0
-                  maximum: 2
-                horizon:
-                  type: string
-                  enum: [now, someday, wish, waiting]
+            title:
+              type: string
+              minLength: 1
+              maxLength: 200
+            notes:
+              type: string
+              maxLength: 4000
+            scheduled_date:
+              type: [string, 'null']
+              format: date
+            start_time:
+              type: [string, 'null']
+              pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+            duration_min:
+              type: integer
+              minimum: 5
+              maximum: 720
+            importance:
+              type: integer
+              minimum: 0
+              maximum: 2
+            urgency:
+              type: integer
+              minimum: 0
+              maximum: 2
+            horizon:
+              type: string
+              enum: [now, someday, wish, waiting]
     TaskSummary:
       type: object
       required: [id, title, status, revision]
