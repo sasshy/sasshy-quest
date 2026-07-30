@@ -10,14 +10,16 @@ import jaLocale from '@fullcalendar/core/locales/ja';
 import {
   Archive, Bell, CalendarDays, Check, ChevronLeft, ChevronRight, CircleHelp, Clock3, Cloud,
   CloudOff, Download, History, Inbox, ListTodo, Menu, MessageSquareText, MoreHorizontal,
-  GripHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Sparkles,
+  GripHorizontal, Pause, Pencil, Play, Plus, Redo2, RotateCcw, Search, Settings, SlidersHorizontal, Sparkles,
   Square, TimerReset, Trash2, Upload, Volume2, X,
+  Undo2,
 } from 'lucide-react';
 import { db } from './db';
 import {
   cloneForExport, compactDate, completeTask, createMemo, createTask, restoreHistoryEntry,
-  pauseFocusSession, restoreTask, resumeFocusSession, softDeleteTask, startFocusSession,
-  taskStart, todayKey, updateMemo, updateSession, updateTask,
+  getUndoRedoState, pauseFocusSession, redoLatestTaskChange, restoreTask, resumeFocusSession,
+  softDeleteTask, startFocusSession, taskStart, todayKey, undoLatestTaskChange, updateMemo,
+  updateSession, updateTask,
 } from './store';
 import {
   getSyncConfig, getSyncState, saveSyncConfig, setInteractionActive, startAutoSync,
@@ -27,13 +29,14 @@ import { importLegacy, legacySummary, type LegacySummary } from './legacy';
 import { emptyGoogleCalendar, getGoogleCalendarConfig, refreshGoogleCalendar, saveGoogleCalendarConfig } from './google-calendar';
 import type { FocusSession, GoogleCalendarConfig, HistoryEntry, Memo, SyncConfig, Task, TaskHorizon, VoiceConfig } from './types';
 import { announcementText, announcementThresholds, remainingStatusText, speakVoice, stopVoice } from './voice';
+import { predictDuration, sessionDuration, taskActualDuration } from './insights';
 import setupSql from '../supabase-setup.sql?raw';
 
 type Page = 'today' | 'calendar' | 'inbox' | 'later' | 'memos' | 'history' | 'settings';
 type CalendarMode = 'day' | 'week' | 'month';
 
 const PAGE_LABEL: Record<Page, string> = {
-  today: '今日', calendar: 'カレンダー', inbox: '受信箱', later: 'あとで', memos: 'メモ', history: '履歴', settings: '設定',
+  today: '今日', calendar: 'カレンダー', inbox: '受信箱', later: 'あとで', memos: 'メモ', history: '復元', settings: '設定',
 };
 
 function useMobile(): boolean {
@@ -120,8 +123,18 @@ function PriorityMarks({ task }: { task: Task }) {
   return <span className="priority-marks">{task.importance > 0 && <span className="mark important">重要</span>}{task.urgency > 0 && <span className="mark urgent">緊急</span>}</span>;
 }
 
-function TaskRow({ task, onEdit, onStart, compact = false }: { task: Task; onEdit: (task: Task) => void; onStart: (task: Task) => void; compact?: boolean }) {
+function TaskRow({
+  task, onEdit, onStart, compact = false, actualMin, actualReliable = true,
+}: {
+  task: Task;
+  onEdit: (task: Task) => void;
+  onStart: (task: Task) => void;
+  compact?: boolean;
+  actualMin?: number;
+  actualReliable?: boolean;
+}) {
   const done = task.status === 'done';
+  const delta = actualMin === undefined ? null : actualMin - task.estimateMin;
   return (
     <div className={`task-row${done ? ' done' : ''}${compact ? ' compact' : ''}`}>
       <button className="task-check" type="button" aria-label={done ? '完了を取り消す' : '完了'} onClick={() => completeTask(task.id, !done).then(() => syncNow().catch(() => undefined))}>
@@ -132,19 +145,24 @@ function TaskRow({ task, onEdit, onStart, compact = false }: { task: Task; onEdi
         <span className="task-meta">
           {task.scheduledDate && <span>{formatDateLabel(task.scheduledDate)}</span>}
           {task.startMinute !== null && <span>{formatMinute(task.startMinute)}</span>}
-          <span>{task.estimateMin}分</span>
+          <span>予測 {task.estimateMin}分</span>
+          {actualMin !== undefined && <span className={`actual-chip${actualReliable ? '' : ' suspect'}`}>実績 {actualMin}分{delta ? `（${delta > 0 ? '+' : ''}${delta}分）` : ''}{actualReliable ? '' : '・要確認'}</span>}
           <PriorityMarks task={task} />
         </span>
       </button>
-      {!done && <IconButton label="音声タイマーを開始" onClick={() => onStart(task)}><Play size={18} /></IconButton>}
+      {done
+        ? <button className="task-reopen-action" type="button" onClick={() => completeTask(task.id, false).then(() => syncNow().catch(() => undefined))}><RotateCcw size={15} />完了取消</button>
+        : <IconButton label="音声タイマーを開始" onClick={() => onStart(task)}><Play size={18} /></IconButton>}
       <IconButton label="編集" onClick={() => onEdit(task)}><Pencil size={17} /></IconButton>
     </div>
   );
 }
 
-function TaskEditor({ task, onClose, onStart }: { task: Task; onClose: () => void; onStart: (task: Task) => void }) {
+function TaskEditor({ task, sessions, onClose, onStart }: { task: Task; sessions: FocusSession[]; onClose: () => void; onStart: (task: Task) => void }) {
   const [draft, setDraft] = useState(task);
   const [saving, setSaving] = useState(false);
+  const prediction = useMemo(() => predictDuration(draft.title, sessions, task.id), [draft.title, sessions, task.id]);
+  const actual = useMemo(() => taskActualDuration(task.id, sessions), [task.id, sessions]);
   const save = async () => {
     if (saving) return;
     setSaving(true);
@@ -190,9 +208,17 @@ function TaskEditor({ task, onClose, onStart }: { task: Task; onClose: () => voi
             <label><span>重要度</span><select value={draft.importance} onChange={(event) => setDraft((current) => ({ ...current, importance: Number(event.target.value) as 0 | 1 | 2 }))}><option value="0">指定なし</option><option value="1">重要</option><option value="2">最重要</option></select></label>
             <label><span>緊急度</span><select value={draft.urgency} onChange={(event) => setDraft((current) => ({ ...current, urgency: Number(event.target.value) as 0 | 1 | 2 }))}><option value="0">指定なし</option><option value="1">緊急</option><option value="2">最緊急</option></select></label>
           </div>
+          {(actual || prediction) && <div className="duration-insight">
+            <div>
+              {actual && <strong>今回の実績 {actual.activeMin}分{actual.reliable ? '' : '（押し忘れの可能性・予測から除外）'}</strong>}
+              {prediction && <span>次回予測 {prediction.predictedMin}分・過去{prediction.sampleSize}回の中央値{prediction.ignoredCount ? `（長すぎる記録${prediction.ignoredCount}件を除外）` : ''}</span>}
+            </div>
+            {prediction && prediction.predictedMin !== draft.estimateMin && <button type="button" onClick={() => setDraft((current) => ({ ...current, estimateMin: prediction.predictedMin, durationMin: prediction.predictedMin }))}>予測を使う</button>}
+          </div>}
         </div>
         <footer className="modal-actions">
           <button className="button danger-quiet" type="button" disabled={saving} onClick={async () => { await softDeleteTask(task.id); onClose(); syncNow().catch(() => undefined); }}><Trash2 size={17} />ゴミ箱へ</button>
+          {task.status === 'done' && <button className="button secondary" type="button" disabled={saving} onClick={async () => { await completeTask(task.id, false); onClose(); syncNow().catch(() => undefined); }}><RotateCcw size={16} />完了取消</button>}
           <span className="spacer" />
           {task.status !== 'done' && <button className="button secondary" type="button" disabled={saving} onClick={() => { onClose(); onStart(draft); }}><Play size={17} />タイマー</button>}
           <button className="button primary" type="button" disabled={saving} onClick={save}>{saving ? '保存中…' : '保存'}</button>
@@ -202,11 +228,14 @@ function TaskEditor({ task, onClose, onStart }: { task: Task; onClose: () => voi
   );
 }
 
-function TodayPage({ tasks, onEdit, onStart }: { tasks: Task[]; onEdit: (task: Task) => void; onStart: (task: Task) => void }) {
+function TodayPage({ tasks, sessions, onEdit, onStart }: { tasks: Task[]; sessions: FocusSession[]; onEdit: (task: Task) => void; onStart: (task: Task) => void }) {
   const today = todayKey();
   const due = tasks.filter((task) => !task.deletedAt && task.status !== 'done' && task.scheduledDate === today).sort((a, b) => (a.startMinute ?? 9999) - (b.startMinute ?? 9999));
   const overdue = tasks.filter((task) => !task.deletedAt && task.status !== 'done' && task.scheduledDate && task.scheduledDate < today).sort((a, b) => taskScore(b) - taskScore(a));
   const inbox = tasks.filter((task) => !task.deletedAt && task.status !== 'done' && !task.scheduledDate && task.horizon === 'now').sort((a, b) => taskScore(b) - taskScore(a));
+  const completedToday = tasks
+    .filter((task) => !task.deletedAt && task.status === 'done' && task.completedAt && compactDate(new Date(task.completedAt)) === today)
+    .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
   const focus = [...due, ...overdue, ...inbox][0];
   return (
     <div className="page-content today-page">
@@ -217,12 +246,13 @@ function TodayPage({ tasks, onEdit, onStart }: { tasks: Task[]; onEdit: (task: T
       </section>
       {overdue.length > 0 && <section className="task-section overdue-section"><header><div><span className="section-kicker">持ち越し</span><h2>過ぎた予定</h2></div><span>{overdue.length}件</span></header><div className="task-list">{overdue.map((task) => <TaskRow key={task.id} task={task} onEdit={onEdit} onStart={onStart} />)}</div></section>}
       <section className="task-section"><header><div><span className="section-kicker">TODAY</span><h2>今日の予定</h2></div><span>{due.length}件</span></header>{due.length ? <div className="task-list">{due.map((task) => <TaskRow key={task.id} task={task} onEdit={onEdit} onStart={onStart} />)}</div> : <EmptyState title="予定はまだありません" detail="上の入力欄から、今日やることを追加できます" />}</section>
+      {completedToday.length > 0 && <section className="task-section completed-section"><header><div><span className="section-kicker">DONE TODAY</span><h2>今日完了</h2><p>完了取消と、予測・実績の差をここで確認できます。</p></div><span>{completedToday.length}件</span></header><div className="task-list">{completedToday.map((task) => { const actual = taskActualDuration(task.id, sessions); return <TaskRow key={task.id} task={task} onEdit={onEdit} onStart={onStart} actualMin={actual?.activeMin} actualReliable={actual?.reliable} />; })}</div></section>}
       <section className="task-section"><header><div><span className="section-kicker">INBOX</span><h2>日付なし</h2></div><span>{inbox.length}件</span></header>{inbox.length ? <div className="task-list">{inbox.slice(0, 8).map((task) => <TaskRow key={task.id} task={task} onEdit={onEdit} onStart={onStart} compact />)}</div> : <EmptyState title="受信箱は空です" detail="思いつきを忘れず捕まえられています" />}</section>
     </div>
   );
 }
 
-function CalendarPage({ tasks, onEdit, onStart }: { tasks: Task[]; onEdit: (task: Task) => void; onStart: (task: Task) => void }) {
+function CalendarPage({ tasks, sessions, onEdit, onStart }: { tasks: Task[]; sessions: FocusSession[]; onEdit: (task: Task) => void; onStart: (task: Task) => void }) {
   const calendarRef = useRef<FullCalendar>(null);
   const backlogRef = useRef<HTMLDivElement>(null);
   const calendarSurfaceRef = useRef<HTMLElement>(null);
@@ -251,8 +281,51 @@ function CalendarPage({ tasks, onEdit, onStart }: { tasks: Task[]; onEdit: (task
       extendedProps: { taskId: task.id },
     };
   }), [tasks]);
+  const actualEvents = useMemo<EventInput[]>(() => {
+    const completedSessions: EventInput[] = sessions
+      .filter((session) => session.status === 'completed' && session.endedAt)
+      .flatMap((session) => {
+        const task = tasks.find((item) => item.id === session.taskId);
+        if (!task || task.deletedAt || !session.endedAt) return [];
+        const actual = sessionDuration(session);
+        if (!actual) return [];
+        const endedAt = new Date(session.endedAt);
+        const visibleMinutes = actual.reliable ? actual.wallMin : Math.min(60, Math.max(5, session.plannedMin));
+        const startedAt = actual.reliable ? new Date(session.startedAt) : new Date(endedAt.getTime() - visibleMinutes * 60_000);
+        return [{
+          id: `actual:${session.id}`,
+          title: `実績 ${actual.activeMin}分${actual.reliable ? '' : '・要確認'} · ${task.title}`,
+          start: startedAt,
+          end: endedAt,
+          allDay: false,
+          editable: false,
+          durationEditable: false,
+          classNames: ['actual-event', actual.reliable ? '' : 'is-suspect'].filter(Boolean),
+          extendedProps: { taskId: task.id, actualSession: true },
+        } satisfies EventInput];
+      });
+    const taskIdsWithSessions = new Set(sessions.filter((session) => session.status === 'completed').map((session) => session.taskId));
+    const manualCompletions = tasks
+      .filter((task) => !task.deletedAt && task.status === 'done' && task.completedAt && !taskIdsWithSessions.has(task.id))
+      .map((task) => {
+        const completedAt = new Date(task.completedAt!);
+        return {
+          id: `completion:${task.id}`,
+          title: `完了 · ${task.title}`,
+          start: new Date(completedAt.getTime() - 10 * 60_000),
+          end: completedAt,
+          allDay: false,
+          editable: false,
+          durationEditable: false,
+          classNames: ['manual-completion-event'],
+          extendedProps: { taskId: task.id, manualCompletion: true },
+        } satisfies EventInput;
+      });
+    return [...completedSessions, ...manualCompletions];
+  }, [sessions, tasks]);
   const calendarEvents = useMemo<EventInput[]>(() => [
     ...events,
+    ...actualEvents,
     ...(googleCalendar.enabled ? googleCalendar.events.map((event) => ({
       id: `google:${event.id}`,
       title: `${event.calendarName ? `${event.calendarName}・` : ''}${event.title}`,
@@ -265,7 +338,7 @@ function CalendarPage({ tasks, onEdit, onStart }: { tasks: Task[]; onEdit: (task
       borderColor: event.color || undefined,
       extendedProps: { googleCalendar: true },
     })) : []),
-  ], [events, googleCalendar]);
+  ], [actualEvents, events, googleCalendar]);
 
   useEffect(() => {
     const last = googleCalendar.lastSyncAt ? new Date(googleCalendar.lastSyncAt).getTime() : 0;
@@ -419,10 +492,12 @@ function CalendarPage({ tasks, onEdit, onStart }: { tasks: Task[]; onEdit: (task
             dateClick={(info: DateClickArg) => createTask({ title: '新しいタスク', scheduledDate: info.dateStr.slice(0, 10), startMinute: info.allDay ? null : info.date.getHours() * 60 + info.date.getMinutes() }).then(onEdit)}
             select={(info) => createTask({ title: '新しいタスク', scheduledDate: compactDate(info.start), startMinute: info.allDay ? null : info.start.getHours() * 60 + info.start.getMinutes(), durationMin: info.end ? Math.max(5, Math.round((info.end.getTime() - info.start.getTime()) / 60_000)) : 25 }).then(onEdit)}
             eventContent={(info) => {
-              const task = tasks.find((item) => item.id === info.event.id);
-              return <div className="calendar-event-content"><div className="calendar-event-copy">{info.timeText && <b>{info.timeText}</b>}<span>{info.event.title}</span></div>{task && !info.event.allDay && info.view.type.startsWith('timeGrid') && <span className="task-resize-grip" role="separator" aria-label={`${task.title}の時間を変更`} title="上下にドラッグして時間を変更" onPointerDown={(event) => beginDurationResize(event, task.id)}><GripHorizontal size={15} /></span>}</div>;
+              const taskId = info.event.extendedProps.taskId || info.event.id;
+              const task = tasks.find((item) => item.id === taskId);
+              const readOnlyActual = info.event.extendedProps.actualSession || info.event.extendedProps.manualCompletion;
+              return <div className="calendar-event-content"><div className="calendar-event-copy">{info.timeText && <b>{info.timeText}</b>}<span>{info.event.title}</span></div>{task && !readOnlyActual && !info.event.allDay && info.view.type.startsWith('timeGrid') && <span className="task-resize-grip" role="separator" aria-label={`${task.title}の時間を変更`} title="上下にドラッグして時間を変更" onPointerDown={(event) => beginDurationResize(event, task.id)}><GripHorizontal size={15} /></span>}</div>;
             }}
-            eventClick={(info: EventClickArg) => { if (Date.now() < ignoreEventClickUntil.current) return; const task = tasks.find((item) => item.id === info.event.id); if (task) onEdit(task); }}
+            eventClick={(info: EventClickArg) => { if (Date.now() < ignoreEventClickUntil.current) return; const taskId = info.event.extendedProps.taskId || info.event.id; const task = tasks.find((item) => item.id === taskId); if (task) onEdit(task); }}
             eventDragStart={(info) => { setInteractionActive(true); setDraggingTaskId(info.event.id); }}
             eventDragStop={finishEventDrag}
             eventResizeStart={() => setInteractionActive(true)}
@@ -465,8 +540,30 @@ function MemosPage({ memos, onTaskCreated }: { memos: Memo[]; onTaskCreated: (ta
 }
 
 function HistoryPage({ history, tasks }: { history: HistoryEntry[]; tasks: Task[] }) {
-  const trash = tasks.filter((task) => task.deletedAt);
-  return <div className="page-content history-page"><section className="task-section page-section"><header><div><span className="section-kicker">RECOVERY</span><h2>ゴミ箱</h2><p>削除したタスクもここから戻せます。</p></div><span>{trash.length}件</span></header>{trash.length ? <div className="trash-list">{trash.map((task) => <div key={task.id}><div><strong>{task.title}</strong><span>{formatStamp(task.deletedAt)}</span></div><button className="button secondary" type="button" onClick={() => restoreTask(task.id)}><RotateCcw size={16} />復元</button></div>)}</div> : <EmptyState title="ゴミ箱は空です" detail="削除操作でデータが即座に消えることはありません" />}</section><section className="task-section page-section"><header><div><span className="section-kicker">CHANGE LOG</span><h2>変更履歴</h2></div><span>最新{Math.min(history.length, 100)}件</span></header><div className="history-list">{history.slice(0, 100).map((entry) => <div key={entry.id}><div className="history-dot" /><div><strong>{entry.label}</strong><span>{formatStamp(entry.createdAt)}・{entry.source === 'remote' ? '他の端末' : entry.source === 'import' ? '旧版取込' : 'この端末'}</span></div>{entry.entityType === 'task' && entry.before ? <button type="button" onClick={() => restoreHistoryEntry(entry)}><RotateCcw size={16} />この前へ戻す</button> : null}</div>)}</div></section></div>;
+  const trash = tasks.filter((task) => task.deletedAt).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const completed = tasks.filter((task) => !task.deletedAt && task.status === 'done').sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || '')).slice(0, 30);
+  const restoreAndSync = async (action: () => Promise<unknown>) => {
+    await action();
+    syncNow().catch(() => undefined);
+  };
+  return (
+    <div className="page-content history-page">
+      <div className="recovery-column">
+        <section className="task-section page-section">
+          <header><div><span className="section-kicker">COMPLETED</span><h2>完了済み</h2><p>間違って完了したタスクを戻せます。</p></div><span>{completed.length}件</span></header>
+          {completed.length ? <div className="recovery-list">{completed.map((task) => <div key={task.id}><div><strong>{task.title}</strong><span>{formatStamp(task.completedAt)}</span></div><button className="button secondary" type="button" onClick={() => restoreAndSync(() => completeTask(task.id, false))}><RotateCcw size={16} />完了取消</button></div>)}</div> : <EmptyState title="完了済みはありません" detail="完了したタスクがここに並びます" />}
+        </section>
+        <section className="task-section page-section">
+          <header><div><span className="section-kicker">TRASH</span><h2>ゴミ箱</h2><p>削除したタスクもここから戻せます。</p></div><span>{trash.length}件</span></header>
+          {trash.length ? <div className="trash-list">{trash.map((task) => <div key={task.id}><div><strong>{task.title}</strong><span>{formatStamp(task.deletedAt)}</span></div><button className="button secondary" type="button" onClick={() => restoreAndSync(() => restoreTask(task.id))}><RotateCcw size={16} />復元</button></div>)}</div> : <EmptyState title="ゴミ箱は空です" detail="削除操作でデータが即座に消えることはありません" />}
+        </section>
+      </div>
+      <section className="task-section page-section">
+        <header><div><span className="section-kicker">CHANGE LOG</span><h2>変更履歴</h2><p>1件ずつ、変更前の状態へ戻せます。</p></div><span>最新{Math.min(history.length, 100)}件</span></header>
+        <div className="history-list">{history.slice(0, 100).map((entry) => <div key={entry.id}><div className="history-dot" /><div><strong>{entry.label}</strong><span>{formatStamp(entry.createdAt)}・{entry.source === 'remote' ? '他の端末' : entry.source === 'import' ? '旧版取込' : 'この端末'}</span></div>{entry.entityType === 'task' && entry.before ? <button type="button" onClick={() => restoreAndSync(() => restoreHistoryEntry(entry))}><RotateCcw size={16} />この前へ戻す</button> : null}</div>)}</div>
+      </section>
+    </div>
+  );
 }
 
 function SettingsPage({ tasks, memos, sessions }: { tasks: Task[]; memos: Memo[]; sessions: FocusSession[] }) {
@@ -571,12 +668,14 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [timerVisible, setTimerVisible] = useState(true);
+  const [actionMessage, setActionMessage] = useState('');
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
   const history = useLiveQuery(() => db.history.orderBy('createdAt').reverse().toArray(), [], []) || [];
   const voice = useLiveQuery(() => db.settings.get('voice') as Promise<VoiceConfig | undefined>, [], undefined);
+  const undoRedo = useLiveQuery(() => getUndoRedoState(), [], { id: 'undo-redo' as const, undo: [], redo: [] });
   const activeSession = sessions.filter((session) => session.status === 'running' || session.status === 'paused').sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
   const activeTask = activeSession ? tasks.find((task) => task.id === activeSession.taskId) : undefined;
   useEffect(() => startAutoSync(), []);
@@ -609,8 +708,14 @@ function App() {
       speakVoice('タイマー画面に戻りました', voice);
     }
   };
+  const runHistoryAction = async (kind: 'undo' | 'redo') => {
+    const result = kind === 'undo' ? await undoLatestTaskChange() : await redoLatestTaskChange();
+    setActionMessage(result || (kind === 'undo' ? '戻せる操作はありません' : 'やり直せる操作はありません'));
+    window.setTimeout(() => setActionMessage(''), 3200);
+    if (result && !result.startsWith('他の端末')) syncNow().catch(() => undefined);
+  };
   const navItems: { id: Page; icon: ReactNode }[] = [{ id: 'today', icon: <Sparkles /> }, { id: 'calendar', icon: <CalendarDays /> }, { id: 'inbox', icon: <Inbox /> }, { id: 'later', icon: <Clock3 /> }, { id: 'memos', icon: <MessageSquareText /> }, { id: 'history', icon: <History /> }, { id: 'settings', icon: <Settings /> }];
-  return <div className="app-shell"><aside className={`sidebar${menuOpen ? ' open' : ''}`}><div className="brand"><span className="brand-mark">S</span><div><strong>SASSHY</strong><span>予定と集中</span></div></div><nav>{navItems.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMenuOpen(false); }}>{item.icon}<span>{PAGE_LABEL[item.id]}</span>{item.id === 'inbox' && <small>{tasks.filter((task) => !task.deletedAt && !task.scheduledDate && task.status !== 'done' && task.horizon === 'now').length}</small>}</button>)}</nav><div className={`sync-indicator ${syncState.phase}`}><span>{syncState.phase === 'error' || syncState.phase === 'offline' ? <CloudOff size={16} /> : <Cloud size={16} />}</span><div><strong>{syncState.message.split('・')[0]}</strong><small>{syncState.message.split('・').slice(1).join('・') || '端末に保存します'}</small></div></div></aside><main className="main-area"><header className="topbar"><IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></IconButton><div><span>{PAGE_LABEL[page]}</span><strong>{page === 'today' ? new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()) : 'SASSHY v2'}</strong></div><button className={`top-sync ${syncState.phase}`} type="button" onClick={() => syncNow(true).catch(() => undefined)} title={syncState.message}>{syncState.phase === 'syncing' ? <TimerReset size={17} /> : syncState.phase === 'error' ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{syncState.phase === 'ok' ? '保存済み' : syncState.phase === 'syncing' ? '同期中' : '端末保存'}</span></button></header><div className="view-frame">{page === 'today' && <TodayPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'calendar' && <CalendarPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'inbox' && <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'later' && <LaterPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'memos' && <MemosPage memos={memos} onTaskCreated={(task) => { setPage('inbox'); setEditing(task); }} />}{page === 'history' && <HistoryPage history={history} tasks={tasks} />}{page === 'settings' && <SettingsPage tasks={tasks} memos={memos} sessions={sessions} />}</div></main>{editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onStart={startTimer} />}{activeSession && voice && timerVisible && <TimerDock session={activeSession} task={activeTask} voice={voice} onClose={() => setTimerVisible(false)} />}{activeSession && !timerVisible && <button className="timer-reopen" type="button" onClick={reopenTimer} title={activeSession.status === 'paused' ? 'タイマーを再開' : 'タイマーを表示'}><Volume2 size={20} /><span>{activeSession.status === 'paused' ? '中断中・押して再開：' + activeSession.taskTitle : activeSession.taskTitle}</span></button>}<nav className="mobile-nav">{navItems.slice(0, 5).map((item) => <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}>{item.icon}<span>{PAGE_LABEL[item.id]}</span></button>)}<button type="button" onClick={() => setMenuOpen(true)}><MoreHorizontal /><span>その他</span></button></nav>{menuOpen && mobile && <button className="menu-scrim" type="button" aria-label="メニューを閉じる" onClick={() => setMenuOpen(false)} />}</div>;
+  return <div className="app-shell"><aside className={`sidebar${menuOpen ? ' open' : ''}`}><div className="brand"><span className="brand-mark">S</span><div><strong>SASSHY</strong><span>予定と集中</span></div></div><nav>{navItems.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMenuOpen(false); }}>{item.icon}<span>{PAGE_LABEL[item.id]}</span>{item.id === 'inbox' && <small>{tasks.filter((task) => !task.deletedAt && !task.scheduledDate && task.status !== 'done' && task.horizon === 'now').length}</small>}</button>)}</nav><div className={`sync-indicator ${syncState.phase}`}><span>{syncState.phase === 'error' || syncState.phase === 'offline' ? <CloudOff size={16} /> : <Cloud size={16} />}</span><div><strong>{syncState.message.split('・')[0]}</strong><small>{syncState.message.split('・').slice(1).join('・') || '端末に保存します'}</small></div></div></aside><main className="main-area"><header className="topbar"><IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></IconButton><div className="topbar-title"><span>{PAGE_LABEL[page]}</span><strong>{page === 'today' ? new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()) : 'SASSHY v2'}</strong></div><div className="topbar-actions"><IconButton label="元に戻す" onClick={() => runHistoryAction('undo')} disabled={!undoRedo?.undo.length}><Undo2 size={17} /></IconButton><IconButton label="やり直す" onClick={() => runHistoryAction('redo')} disabled={!undoRedo?.redo.length}><Redo2 size={17} /></IconButton><button className={`top-sync ${syncState.phase}`} type="button" onClick={() => syncNow(true).catch(() => undefined)} title={syncState.message}>{syncState.phase === 'syncing' ? <TimerReset size={17} /> : syncState.phase === 'error' ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{syncState.phase === 'ok' ? '保存済み' : syncState.phase === 'syncing' ? '同期中' : '端末保存'}</span></button></div></header><div className="view-frame">{page === 'today' && <TodayPage tasks={tasks} sessions={sessions} onEdit={setEditing} onStart={startTimer} />}{page === 'calendar' && <CalendarPage tasks={tasks} sessions={sessions} onEdit={setEditing} onStart={startTimer} />}{page === 'inbox' && <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'later' && <LaterPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'memos' && <MemosPage memos={memos} onTaskCreated={(task) => { setPage('inbox'); setEditing(task); }} />}{page === 'history' && <HistoryPage history={history} tasks={tasks} />}{page === 'settings' && <SettingsPage tasks={tasks} memos={memos} sessions={sessions} />}</div></main>{editing && <TaskEditor task={editing} sessions={sessions} onClose={() => setEditing(null)} onStart={startTimer} />}{activeSession && voice && timerVisible && <TimerDock session={activeSession} task={activeTask} voice={voice} onClose={() => setTimerVisible(false)} />}{activeSession && !timerVisible && <button className="timer-reopen" type="button" onClick={reopenTimer} title={activeSession.status === 'paused' ? 'タイマーを再開' : 'タイマーを表示'}><Volume2 size={20} /><span>{activeSession.status === 'paused' ? '中断中・押して再開：' + activeSession.taskTitle : activeSession.taskTitle}</span></button>}{actionMessage && <div className="action-toast">{actionMessage}</div>}<nav className="mobile-nav">{navItems.slice(0, 5).map((item) => <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}>{item.icon}<span>{PAGE_LABEL[item.id]}</span></button>)}<button type="button" onClick={() => setMenuOpen(true)}><MoreHorizontal /><span>その他</span></button></nav>{menuOpen && mobile && <button className="menu-scrim" type="button" aria-label="メニューを閉じる" onClick={() => setMenuOpen(false)} />}</div>;
 }
 
 export default App;

@@ -73,6 +73,21 @@ export interface HistoryEntry {
   source: 'local' | 'remote' | 'import';
 }
 
+export interface TaskUndoAction {
+  id: string;
+  label: string;
+  before: Task | null;
+  after: Task | null;
+  expectedUpdatedAt: string | null;
+  createdAt: string;
+}
+
+export interface UndoRedoSetting {
+  id: 'undo-redo';
+  undo: TaskUndoAction[];
+  redo: TaskUndoAction[];
+}
+
 export interface OutboxItem {
   id?: number;
   entityType: 'task' | 'session' | 'memo';

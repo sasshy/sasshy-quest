@@ -1,8 +1,12 @@
 import Dexie from 'dexie';
 import { db, getDeviceId, makeId, nowIso } from './db';
-import type { FocusSession, HistoryEntry, Memo, OutboxItem, Task, TaskHorizon } from './types';
+import { predictDuration } from './insights';
+import type {
+  FocusSession, HistoryEntry, Memo, OutboxItem, Task, TaskHorizon, TaskUndoAction, UndoRedoSetting,
+} from './types';
 
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sasshy-v2-state') : null;
+const MAX_UNDO_ACTIONS = 30;
 
 export function announceChange(): void {
   channel?.postMessage({ type: 'changed', at: Date.now() });
@@ -37,6 +41,28 @@ function history(entityType: HistoryEntry['entityType'], entityId: string, actio
   return { id: makeId('history'), entityType, entityId, action, label, before, after, createdAt: nowIso(), source };
 }
 
+export async function getUndoRedoState(): Promise<UndoRedoSetting> {
+  const stored = await db.settings.get('undo-redo') as unknown as UndoRedoSetting | undefined;
+  return stored || { id: 'undo-redo', undo: [], redo: [] };
+}
+
+async function recordUndoAction(before: Task | null, after: Task | null, label: string): Promise<void> {
+  const state = await getUndoRedoState();
+  const action: TaskUndoAction = {
+    id: makeId('undo'),
+    label,
+    before,
+    after,
+    expectedUpdatedAt: after?.updatedAt || null,
+    createdAt: nowIso(),
+  };
+  await db.settings.put({
+    id: 'undo-redo',
+    undo: [...state.undo, action].slice(-MAX_UNDO_ACTIONS),
+    redo: [],
+  });
+}
+
 export interface NewTaskInput {
   title: string;
   notes?: string;
@@ -55,6 +81,11 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
   const createdAt = nowIso();
   const deviceId = await getDeviceId();
   const scheduledDate = input.scheduledDate || null;
+  const requestedEstimate = input.estimateMin ?? input.durationMin;
+  const prediction = requestedEstimate === undefined
+    ? predictDuration(input.title, await db.sessions.where('status').equals('completed').toArray())
+    : null;
+  const estimateMin = Math.max(5, requestedEstimate ?? prediction?.predictedMin ?? 25);
   const task: Task = {
     id: makeId('task'),
     title: input.title.trim(),
@@ -63,8 +94,8 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
     horizon: input.horizon || 'now',
     scheduledDate,
     startMinute: input.startMinute ?? null,
-    durationMin: Math.max(5, input.durationMin || input.estimateMin || 25),
-    estimateMin: Math.max(5, input.estimateMin || input.durationMin || 25),
+    durationMin: Math.max(5, input.durationMin ?? estimateMin),
+    estimateMin,
     importance: input.importance || 0,
     urgency: input.urgency || 0,
     createdAt,
@@ -75,19 +106,25 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
     legacyId: input.legacyId,
     sync: { deviceId },
   };
-  await db.transaction('rw', db.tasks, db.history, db.outbox, async () => {
+  await db.transaction('rw', db.tasks, db.history, db.outbox, db.settings, async () => {
     await db.tasks.add(task);
     await db.history.add(history('task', task.id, 'create', `「${task.title}」を追加`, null, task, source));
     await queueRecord('task', task);
+    if (source === 'local') await recordUndoAction(null, task, `「${task.title}」を追加`);
   });
   announceChange();
   return task;
 }
 
-export async function updateTask(id: string, changes: Partial<Omit<Task, 'id' | 'createdAt' | 'sync'>>, label = 'タスクを更新'): Promise<Task | null> {
+export async function updateTask(
+  id: string,
+  changes: Partial<Omit<Task, 'id' | 'createdAt' | 'sync'>>,
+  label = 'タスクを更新',
+  trackUndo = true,
+): Promise<Task | null> {
   const deviceId = await getDeviceId();
   let result: Task | null = null;
-  await db.transaction('rw', db.tasks, db.history, db.outbox, async () => {
+  await db.transaction('rw', db.tasks, db.history, db.outbox, db.settings, async () => {
     const before = await db.tasks.get(id);
     if (!before) return;
     const scheduledDate = changes.scheduledDate === undefined ? before.scheduledDate : changes.scheduledDate;
@@ -102,6 +139,7 @@ export async function updateTask(id: string, changes: Partial<Omit<Task, 'id' | 
     await db.tasks.put(next);
     await db.history.add(history('task', id, 'update', label, before, next));
     await queueRecord('task', next);
+    if (trackUndo) await recordUndoAction(before, next, label);
     result = next;
   });
   announceChange();
@@ -133,12 +171,89 @@ export async function restoreHistoryEntry(entry: HistoryEntry): Promise<void> {
   const deviceId = await getDeviceId();
   const current = await db.tasks.get(snapshot.id);
   const restored: Task = { ...snapshot, updatedAt: nowIso(), sync: { ...snapshot.sync, deviceId } };
-  await db.transaction('rw', db.tasks, db.history, db.outbox, async () => {
+  await db.transaction('rw', db.tasks, db.history, db.outbox, db.settings, async () => {
     await db.tasks.put(restored);
     await db.history.add(history('task', restored.id, 'restore', `「${restored.title}」を履歴から復元`, current || null, restored));
     await queueRecord('task', restored);
+    await recordUndoAction(current || null, restored, `「${restored.title}」を履歴から復元`);
   });
   announceChange();
+}
+
+async function applyUndoSnapshot(
+  action: TaskUndoAction,
+  direction: 'undo' | 'redo',
+): Promise<{ result: string; restored: Task } | null> {
+  const deviceId = await getDeviceId();
+  const current = await db.tasks.get(action.after?.id || action.before?.id || '');
+  if (!current) return null;
+  if (action.expectedUpdatedAt && current.updatedAt !== action.expectedUpdatedAt) return null;
+  const target = direction === 'undo' ? action.before : action.after;
+  const restored: Task = target
+    ? { ...target, updatedAt: nowIso(), sync: { ...target.sync, deviceId } }
+    : { ...current, status: 'archived', deletedAt: nowIso(), updatedAt: nowIso(), sync: { ...current.sync, deviceId } };
+  await db.tasks.put(restored);
+  await db.history.add(history(
+    'task',
+    restored.id,
+    direction,
+    `${direction === 'undo' ? '元に戻す' : 'やり直す'}：${action.label}`,
+    current,
+    restored,
+  ));
+  await queueRecord('task', restored);
+  return {
+    result: `${direction === 'undo' ? '元に戻しました' : 'やり直しました'}：${action.label}`,
+    restored,
+  };
+}
+
+export async function undoLatestTaskChange(): Promise<string | null> {
+  let message: string | null = null;
+  await db.transaction('rw', db.tasks, db.history, db.outbox, db.settings, async () => {
+    const state = await getUndoRedoState();
+    const action = state.undo[state.undo.length - 1];
+    if (!action) return;
+    const applied = await applyUndoSnapshot(action, 'undo');
+    const nextUndo = state.undo.slice(0, -1);
+    if (!applied) {
+      await db.settings.put({ id: 'undo-redo', undo: nextUndo, redo: [] });
+      message = '他の端末で更新されたため、この操作は戻せませんでした';
+      return;
+    }
+    await db.settings.put({
+      id: 'undo-redo',
+      undo: nextUndo,
+      redo: [...state.redo, { ...action, expectedUpdatedAt: applied.restored.updatedAt }].slice(-MAX_UNDO_ACTIONS),
+    });
+    message = applied.result;
+  });
+  announceChange();
+  return message;
+}
+
+export async function redoLatestTaskChange(): Promise<string | null> {
+  let message: string | null = null;
+  await db.transaction('rw', db.tasks, db.history, db.outbox, db.settings, async () => {
+    const state = await getUndoRedoState();
+    const action = state.redo[state.redo.length - 1];
+    if (!action) return;
+    const applied = await applyUndoSnapshot(action, 'redo');
+    const nextRedo = state.redo.slice(0, -1);
+    if (!applied) {
+      await db.settings.put({ id: 'undo-redo', undo: state.undo, redo: nextRedo });
+      message = '他の端末で更新されたため、この操作はやり直せませんでした';
+      return;
+    }
+    await db.settings.put({
+      id: 'undo-redo',
+      undo: [...state.undo, { ...action, expectedUpdatedAt: applied.restored.updatedAt }].slice(-MAX_UNDO_ACTIONS),
+      redo: nextRedo,
+    });
+    message = applied.result;
+  });
+  announceChange();
+  return message;
 }
 
 export async function startFocusSession(task: Task, plannedMin = task.estimateMin): Promise<FocusSession> {

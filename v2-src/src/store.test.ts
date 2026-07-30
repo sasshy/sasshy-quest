@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
 import {
   completeTask, createTask, pauseFocusSession, restoreTask, resumeFocusSession,
-  softDeleteTask, startFocusSession, updateTask,
+  redoLatestTaskChange, softDeleteTask, startFocusSession, undoLatestTaskChange, updateSession, updateTask,
 } from './store';
 import type { Task } from './types';
 
@@ -78,5 +78,28 @@ describe('record safe mutations', () => {
     await resumeFocusSession(session.id);
     expect((await db.sessions.get(session.id))?.status).toBe('running');
     expect((await db.tasks.get(task.id))?.status).toBe('active');
+  });
+
+  it('undoes and redoes the latest task change without deleting the record', async () => {
+    const task = await createTask({ title: '変更前' });
+    await updateTask(task.id, { title: '変更後' }, 'タイトルを変更');
+
+    await undoLatestTaskChange();
+    expect((await db.tasks.get(task.id))?.title).toBe('変更前');
+
+    await redoLatestTaskChange();
+    expect((await db.tasks.get(task.id))?.title).toBe('変更後');
+  });
+
+  it('uses reliable past sessions as the default estimate for repeated work', async () => {
+    const first = await createTask({ title: '出荷準備：前回A', estimateMin: 25 });
+    const firstSession = await startFocusSession(first, 25);
+    await updateSession(firstSession.id, {
+      status: 'completed',
+      endedAt: new Date(new Date(firstSession.startedAt).getTime() + 20 * 60_000).toISOString(),
+    }, '作業を完了');
+
+    const second = await createTask({ title: '出荷準備：今回B' });
+    expect(second.estimateMin).toBe(20);
   });
 });
