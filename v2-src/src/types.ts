@@ -34,6 +34,7 @@ export interface FocusSession {
   taskId: string;
   taskTitle: string;
   plannedMin: number;
+  carriedElapsedSec?: number;
   startedAt: string;
   pausedAt: string | null;
   pausedTotalSec: number;

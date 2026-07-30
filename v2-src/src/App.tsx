@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Component, useEffect, useMemo, useRef, useState, type ErrorInfo, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -16,9 +16,9 @@ import {
 } from 'lucide-react';
 import { db } from './db';
 import {
-  cloneForExport, compactDate, completeTask, createMemo, createTask, restoreHistoryEntry,
+  cloneForExport, compactDate, completeTask, createManualFocusSession, createMemo, createTask, restoreHistoryEntry,
   getUndoRedoState, pauseFocusSession, redoLatestTaskChange, restoreTask, resumeFocusSession,
-  softDeleteTask, startFocusSession, taskStart, todayKey, undoLatestTaskChange, updateMemo,
+  softDeleteSession, softDeleteTask, startFocusSession, taskStart, todayKey, undoLatestTaskChange, updateMemo,
   updateSession, updateTask,
 } from './store';
 import {
@@ -29,7 +29,7 @@ import { importLegacy, legacySummary, type LegacySummary } from './legacy';
 import { emptyGoogleCalendar, getGoogleCalendarConfig, refreshGoogleCalendar, saveGoogleCalendarConfig } from './google-calendar';
 import type { FocusSession, GoogleCalendarConfig, HistoryEntry, Memo, SyncConfig, Task, TaskHorizon, VoiceConfig } from './types';
 import { announcementText, announcementThresholds, remainingStatusText, speakVoice, stopVoice } from './voice';
-import { predictDuration, sessionDuration, taskActualDuration } from './insights';
+import { predictDuration, sessionDuration, taskActualDuration, taskWorkedSeconds } from './insights';
 import setupSql from '../supabase-setup.sql?raw';
 
 type Page = 'today' | 'calendar' | 'inbox' | 'later' | 'memos' | 'history' | 'settings';
@@ -78,6 +78,19 @@ function shiftDate(value: string | null, amount: number): string {
 function formatStamp(value: string | null): string {
   if (!value) return 'まだ同期していません';
   return new Intl.DateTimeFormat('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+
+function toLocalDateTimeInput(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function actualMinutesBetween(start: string, end: string): number | null {
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+  return Math.max(1, Math.round((endMs - startMs) / 60_000));
 }
 
 function taskScore(task: Task): number {
@@ -158,11 +171,67 @@ function TaskRow({
   );
 }
 
+function defaultActualRange(task: Task): { start: string; end: string } {
+  let end = new Date();
+  let start = new Date(end.getTime() - task.estimateMin * 60_000);
+  if (task.scheduledDate && task.startMinute !== null) {
+    const [year, month, day] = task.scheduledDate.split('-').map(Number);
+    start = new Date(year, month - 1, day, Math.floor(task.startMinute / 60), task.startMinute % 60);
+    end = new Date(start.getTime() + task.estimateMin * 60_000);
+  }
+  return { start: toLocalDateTimeInput(start), end: toLocalDateTimeInput(end) };
+}
+
+function WorkLogRow({ session }: { session: FocusSession }) {
+  const [start, setStart] = useState(toLocalDateTimeInput(session.startedAt));
+  const [end, setEnd] = useState(toLocalDateTimeInput(session.endedAt || new Date()));
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    setStart(toLocalDateTimeInput(session.startedAt));
+    setEnd(toLocalDateTimeInput(session.endedAt || new Date()));
+  }, [session.startedAt, session.endedAt, session.updatedAt]);
+  const actualMin = actualMinutesBetween(start, end);
+  const save = async () => {
+    if (!actualMin) {
+      setMessage('終了時刻は開始時刻より後にしてください');
+      return;
+    }
+    await updateSession(session.id, {
+      startedAt: new Date(start).toISOString(),
+      endedAt: new Date(end).toISOString(),
+      pausedAt: null,
+      pausedTotalSec: 0,
+    }, '作業実績の時刻を修正');
+    setMessage('実績を更新しました');
+    syncNow().catch(() => undefined);
+  };
+  return (
+    <div className="work-log-row">
+      <div className="work-log-inputs">
+        <label><span>開始</span><input type="datetime-local" value={start} onChange={(event) => setStart(event.currentTarget.value)} /></label>
+        <label><span>終了</span><input type="datetime-local" value={end} onChange={(event) => setEnd(event.currentTarget.value)} /></label>
+      </div>
+      <div className="work-log-actions">
+        <span>{actualMin ? `実績 ${actualMin}分` : '時刻を確認してください'}</span>
+        <button className="button secondary" type="button" onClick={save}>時刻を更新</button>
+        <IconButton label="この実績を削除" danger onClick={() => softDeleteSession(session.id).then(() => syncNow().catch(() => undefined))}><Trash2 size={16} /></IconButton>
+      </div>
+      {message && <small>{message}</small>}
+    </div>
+  );
+}
+
 function TaskEditor({ task, sessions, onClose, onStart }: { task: Task; sessions: FocusSession[]; onClose: () => void; onStart: (task: Task) => void }) {
   const [draft, setDraft] = useState(task);
   const [saving, setSaving] = useState(false);
+  const [addingActual, setAddingActual] = useState(false);
+  const [actualRange, setActualRange] = useState(() => defaultActualRange(task));
+  const [actualMessage, setActualMessage] = useState('');
   const prediction = useMemo(() => predictDuration(draft.title, sessions, task.id), [draft.title, sessions, task.id]);
   const actual = useMemo(() => taskActualDuration(task.id, sessions), [task.id, sessions]);
+  const taskSessions = useMemo(() => sessions
+    .filter((session) => session.taskId === task.id && !session.deletedAt && session.endedAt && (session.status === 'completed' || session.status === 'interrupted'))
+    .sort((a, b) => (b.endedAt || '').localeCompare(a.endedAt || '')), [sessions, task.id]);
   const save = async () => {
     if (saving) return;
     setSaving(true);
@@ -184,16 +253,32 @@ function TaskEditor({ task, sessions, onClose, onStart }: { task: Task; sessions
       setSaving(false);
     }
   };
+  const addActual = async () => {
+    const minutes = actualMinutesBetween(actualRange.start, actualRange.end);
+    if (!minutes) {
+      setActualMessage('終了時刻は開始時刻より後にしてください');
+      return;
+    }
+    try {
+      await createManualFocusSession(task, actualRange.start, actualRange.end);
+      setActualMessage(`${minutes}分の実績を追加しました`);
+      setAddingActual(false);
+      setActualRange(defaultActualRange(task));
+      syncNow().catch(() => undefined);
+    } catch (error) {
+      setActualMessage(error instanceof Error ? error.message : '実績を追加できませんでした');
+    }
+  };
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="task-edit-title">
         <header><div><span className="eyebrow">TASK</span><h2 id="task-edit-title">タスクを編集</h2></div><IconButton label="閉じる" onClick={onClose}><X size={20} /></IconButton></header>
         <div className="form-stack">
-          <label><span>タイトル</span><input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} /></label>
-          <label><span>メモ</span><textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} rows={4} /></label>
+          <label><span>タイトル</span><input value={draft.title} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, title: value })); }} /></label>
+          <label><span>メモ</span><textarea value={draft.notes} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, notes: value })); }} rows={4} /></label>
           <div className="form-grid">
             <div className="task-date-editor">
-              <label><span>日付</span><input type="date" aria-label="日付" value={draft.scheduledDate || ''} onInput={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} onChange={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} onBlur={(event) => setDraft((current) => ({ ...current, scheduledDate: event.currentTarget.value || null }))} /></label>
+              <label><span>日付</span><input type="date" aria-label="日付" value={draft.scheduledDate || ''} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, scheduledDate: value || null })); }} /></label>
               <div className="date-shortcuts" role="group" aria-label="日付の簡単変更">
                 <button type="button" onClick={() => setDraft((current) => ({ ...current, scheduledDate: shiftDate(current.scheduledDate, -1) }))}>前日</button>
                 <button type="button" onClick={() => setDraft((current) => ({ ...current, scheduledDate: todayKey() }))}>今日</button>
@@ -202,11 +287,11 @@ function TaskEditor({ task, sessions, onClose, onStart }: { task: Task; sessions
               </div>
               <small>{draft.scheduledDate ? `選択中：${formatDateLabel(draft.scheduledDate)}` : '選択中：日付なし'}</small>
             </div>
-            <label><span>開始時刻</span><input type="time" value={formatMinute(draft.startMinute)} onInput={(event) => setDraft((current) => ({ ...current, startMinute: parseMinute(event.currentTarget.value) }))} onChange={(event) => setDraft((current) => ({ ...current, startMinute: parseMinute(event.currentTarget.value) }))} /></label>
-            <label><span>予定時間</span><input type="number" min="5" step="5" value={draft.estimateMin} onChange={(event) => setDraft((current) => ({ ...current, estimateMin: Number(event.target.value) }))} /></label>
-            <label><span>置き場所</span><select value={draft.horizon} onChange={(event) => setDraft((current) => ({ ...current, horizon: event.target.value as TaskHorizon }))}><option value="now">今やる</option><option value="someday">いつか</option><option value="wish">やりたい</option><option value="waiting">待ち</option></select></label>
-            <label><span>重要度</span><select value={draft.importance} onChange={(event) => setDraft((current) => ({ ...current, importance: Number(event.target.value) as 0 | 1 | 2 }))}><option value="0">指定なし</option><option value="1">重要</option><option value="2">最重要</option></select></label>
-            <label><span>緊急度</span><select value={draft.urgency} onChange={(event) => setDraft((current) => ({ ...current, urgency: Number(event.target.value) as 0 | 1 | 2 }))}><option value="0">指定なし</option><option value="1">緊急</option><option value="2">最緊急</option></select></label>
+            <label><span>開始時刻</span><input type="time" value={formatMinute(draft.startMinute)} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, startMinute: parseMinute(value) })); }} /></label>
+            <label><span>予定時間</span><input type="number" min="5" step="5" value={draft.estimateMin} onChange={(event) => { const value = Number(event.currentTarget.value); setDraft((current) => ({ ...current, estimateMin: value })); }} /></label>
+            <label><span>置き場所</span><select value={draft.horizon} onChange={(event) => { const value = event.currentTarget.value as TaskHorizon; setDraft((current) => ({ ...current, horizon: value })); }}><option value="now">今やる</option><option value="someday">いつか</option><option value="wish">やりたい</option><option value="waiting">待ち</option></select></label>
+            <label><span>重要度</span><select value={draft.importance} onChange={(event) => { const value = Number(event.currentTarget.value) as 0 | 1 | 2; setDraft((current) => ({ ...current, importance: value })); }}><option value="0">指定なし</option><option value="1">重要</option><option value="2">最重要</option></select></label>
+            <label><span>緊急度</span><select value={draft.urgency} onChange={(event) => { const value = Number(event.currentTarget.value) as 0 | 1 | 2; setDraft((current) => ({ ...current, urgency: value })); }}><option value="0">指定なし</option><option value="1">緊急</option><option value="2">最緊急</option></select></label>
           </div>
           {(actual || prediction) && <div className="duration-insight">
             <div>
@@ -215,6 +300,18 @@ function TaskEditor({ task, sessions, onClose, onStart }: { task: Task; sessions
             </div>
             {prediction && prediction.predictedMin !== draft.estimateMin && <button type="button" onClick={() => setDraft((current) => ({ ...current, estimateMin: prediction.predictedMin, durationMin: prediction.predictedMin }))}>予測を使う</button>}
           </div>}
+          <section className="work-log-section">
+            <header><div><strong>実際に作業した時間</strong><span>開始を押し忘れた時も、ここから後で記録できます。</span></div><button className="button secondary" type="button" onClick={() => { setAddingActual((value) => !value); setActualMessage(''); }}><Plus size={16} />実績を後から追加</button></header>
+            {addingActual && <div className="work-log-add">
+              <div className="work-log-inputs">
+                <label><span>開始</span><input type="datetime-local" value={actualRange.start} onChange={(event) => { const value = event.currentTarget.value; setActualRange((current) => ({ ...current, start: value })); }} /></label>
+                <label><span>終了</span><input type="datetime-local" value={actualRange.end} onChange={(event) => { const value = event.currentTarget.value; setActualRange((current) => ({ ...current, end: value })); }} /></label>
+              </div>
+              <button className="button primary" type="button" onClick={addActual}>この実績を追加</button>
+            </div>}
+            {actualMessage && <p className="work-log-message">{actualMessage}</p>}
+            {taskSessions.length > 0 && <div className="work-log-list">{taskSessions.map((session) => <WorkLogRow key={session.id} session={session} />)}</div>}
+          </section>
         </div>
         <footer className="modal-actions">
           <button className="button danger-quiet" type="button" disabled={saving} onClick={async () => { await softDeleteTask(task.id); onClose(); syncNow().catch(() => undefined); }}><Trash2 size={17} />ゴミ箱へ</button>
@@ -283,7 +380,7 @@ function CalendarPage({ tasks, sessions, onEdit, onStart }: { tasks: Task[]; ses
   }), [tasks]);
   const actualEvents = useMemo<EventInput[]>(() => {
     const completedSessions: EventInput[] = sessions
-      .filter((session) => session.status === 'completed' && session.endedAt)
+      .filter((session) => !session.deletedAt && (session.status === 'completed' || session.status === 'interrupted') && session.endedAt)
       .flatMap((session) => {
         const task = tasks.find((item) => item.id === session.taskId);
         if (!task || task.deletedAt || !session.endedAt) return [];
@@ -304,7 +401,7 @@ function CalendarPage({ tasks, sessions, onEdit, onStart }: { tasks: Task[]; ses
           extendedProps: { taskId: task.id, actualSession: true },
         } satisfies EventInput];
       });
-    const taskIdsWithSessions = new Set(sessions.filter((session) => session.status === 'completed').map((session) => session.taskId));
+    const taskIdsWithSessions = new Set(sessions.filter((session) => !session.deletedAt && session.status === 'completed').map((session) => session.taskId));
     const manualCompletions = tasks
       .filter((task) => !task.deletedAt && task.status === 'done' && task.completedAt && !taskIdsWithSessions.has(task.id))
       .map((task) => {
@@ -592,6 +689,7 @@ function SettingsPage({ tasks, memos, sessions }: { tasks: Task[]; memos: Memo[]
 
 function TimerDock({ session, task, voice, onClose }: { session: FocusSession; task?: Task; voice: VoiceConfig; onClose: () => void }) {
   const [now, setNow] = useState(Date.now());
+  const [voiceNeedsTap, setVoiceNeedsTap] = useState(false);
   const announced = useRef(new Set<number>());
   const previous = useRef<number | null>(null);
   const paused = session.status === 'paused';
@@ -605,7 +703,7 @@ function TimerDock({ session, task, voice, onClose }: { session: FocusSession; t
     const start = new Date(session.startedAt).getTime();
     const pauseExtra = paused && session.pausedAt ? Math.max(0, at - new Date(session.pausedAt).getTime()) : 0;
     const elapsedSec = Math.max(0, Math.floor((at - start - session.pausedTotalSec * 1000 - pauseExtra) / 1000));
-    return session.plannedMin * 60 - elapsedSec;
+    return session.plannedMin * 60 - (session.carriedElapsedSec || 0) - elapsedSec;
   };
   const remainingSec = remainingAt(now);
   useEffect(() => {
@@ -625,23 +723,28 @@ function TimerDock({ session, task, voice, onClose }: { session: FocusSession; t
     const handleVisibility = () => {
       if (document.hidden) {
         stopVoice();
+        setVoiceNeedsTap(true);
         previous.current = null;
         return;
       }
       const current = remainingAt(Date.now());
       setNow(Date.now());
       previous.current = current;
-      if (!paused && voice.enabled) speakVoice(`タイマーに戻りました。${remainingStatusText(current)}`, voice);
+      setVoiceNeedsTap(true);
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [paused, session.startedAt, session.pausedAt, session.pausedTotalSec, session.plannedMin, voice]);
+  }, [paused, session.startedAt, session.pausedAt, session.pausedTotalSec, session.plannedMin, session.carriedElapsedSec, voice]);
   const display = Math.abs(remainingSec);
   const time = `${String(Math.floor(display / 60)).padStart(2, '0')}:${String(display % 60).padStart(2, '0')}`;
   const pauseToggle = async () => {
     if (paused) {
       const resumed = await resumeFocusSession(session.id);
-      if (resumed && voice.enabled) speakVoice(`タイマーを再開します。${remainingStatusText(remainingAt(Date.now()))}`, voice);
+      if (resumed && voice.enabled) {
+        stopVoice();
+        speakVoice(`タイマーを再開します。${remainingStatusText(remainingAt(Date.now()))}`, voice);
+        setVoiceNeedsTap(false);
+      }
     } else {
       await pauseFocusSession(session.id);
       stopVoice();
@@ -659,7 +762,12 @@ function TimerDock({ session, task, voice, onClose }: { session: FocusSession; t
     if (task) await completeTask(task.id, true);
     syncNow().catch(() => undefined); onClose();
   };
-  return <div className="timer-dock"><div className="timer-title"><span className="live-dot" /><div><span>{remainingSec < 0 ? '予定を超過' : paused ? '一時停止' : '集中しています'}</span><strong>{session.taskTitle}</strong></div><IconButton label="小さくする" onClick={onClose}><X size={19} /></IconButton></div><button className="timer-display" type="button" onClick={pauseToggle}><span>{remainingSec < 0 ? '+' : ''}{time}</span><small>{paused ? '押して再開' : '押して一時停止'}</small></button><div className="timer-controls"><IconButton label={paused ? '再開' : '一時停止'} onClick={pauseToggle}>{paused ? <Play size={21} /> : <Pause size={21} />}</IconButton><button className="button secondary" type="button" onClick={() => updateSession(session.id, { plannedMin: session.plannedMin + 5 }, '5分延長')}>+5分</button><button className="button secondary" type="button" onClick={() => finish(false)}><Square size={16} />中断</button><button className="button complete" type="button" onClick={() => finish(true)}><Check size={17} />完了</button></div></div>;
+  const restoreVoice = () => {
+    stopVoice();
+    const restored = speakVoice(`音声を再開します。${remainingStatusText(remainingAt(Date.now()))}`, { ...voice, enabled: true });
+    setVoiceNeedsTap(!restored);
+  };
+  return <div className="timer-dock"><div className="timer-title"><span className="live-dot" /><div><span>{remainingSec < 0 ? '予定を超過' : paused ? '一時停止' : session.carriedElapsedSec ? `累計${Math.round(session.carriedElapsedSec / 60)}分から再開` : '集中しています'}</span><strong>{session.taskTitle}</strong></div><IconButton label="小さくする" onClick={onClose}><X size={19} /></IconButton></div><button className="timer-display" type="button" onClick={pauseToggle}><span>{remainingSec < 0 ? '+' : ''}{time}</span><small>{paused ? '押して再開' : '押して一時停止'}</small></button><button className={`timer-voice-resume${voiceNeedsTap ? ' needed' : ''}`} type="button" onClick={restoreVoice}><Volume2 size={16} />{voiceNeedsTap ? 'Safariから戻りました・音声を再開' : '音声が聞こえない時はここを押す'}</button><div className="timer-controls"><IconButton label={paused ? '再開' : '一時停止'} onClick={pauseToggle}>{paused ? <Play size={21} /> : <Pause size={21} />}</IconButton><button className="button secondary" type="button" onClick={() => updateSession(session.id, { plannedMin: session.plannedMin + 5 }, '5分延長')}>+5分</button><button className="button secondary" type="button" onClick={() => finish(false)}><Square size={16} />中断</button><button className="button complete" type="button" onClick={() => finish(true)}><Check size={17} />完了</button></div></div>;
 }
 
 function App() {
@@ -676,7 +784,7 @@ function App() {
   const history = useLiveQuery(() => db.history.orderBy('createdAt').reverse().toArray(), [], []) || [];
   const voice = useLiveQuery(() => db.settings.get('voice') as Promise<VoiceConfig | undefined>, [], undefined);
   const undoRedo = useLiveQuery(() => getUndoRedoState(), [], { id: 'undo-redo' as const, undo: [], redo: [] });
-  const activeSession = sessions.filter((session) => session.status === 'running' || session.status === 'paused').sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  const activeSession = sessions.filter((session) => !session.deletedAt && (session.status === 'running' || session.status === 'paused')).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
   const activeTask = activeSession ? tasks.find((task) => task.id === activeSession.taskId) : undefined;
   useEffect(() => startAutoSync(), []);
   useEffect(() => subscribeSync(setSyncState), []);
@@ -693,8 +801,10 @@ function App() {
       syncNow().catch(() => undefined);
       return;
     }
-    if (voice?.enabled) speakVoice(`${task.estimateMin}分タイマーを開始します`, voice);
-    await startFocusSession(task, task.estimateMin);
+    const carriedElapsedSec = taskWorkedSeconds(task.id, sessions);
+    const remainingSec = task.estimateMin * 60 - carriedElapsedSec;
+    if (voice?.enabled) speakVoice(carriedElapsedSec > 0 ? `続きから再開します。${remainingStatusText(remainingSec)}` : `${task.estimateMin}分タイマーを開始します`, voice);
+    await startFocusSession(task, task.estimateMin, carriedElapsedSec);
     setTimerVisible(true);
     syncNow().catch(() => undefined);
   };
@@ -715,7 +825,30 @@ function App() {
     if (result && !result.startsWith('他の端末')) syncNow().catch(() => undefined);
   };
   const navItems: { id: Page; icon: ReactNode }[] = [{ id: 'today', icon: <Sparkles /> }, { id: 'calendar', icon: <CalendarDays /> }, { id: 'inbox', icon: <Inbox /> }, { id: 'later', icon: <Clock3 /> }, { id: 'memos', icon: <MessageSquareText /> }, { id: 'history', icon: <History /> }, { id: 'settings', icon: <Settings /> }];
-  return <div className="app-shell"><aside className={`sidebar${menuOpen ? ' open' : ''}`}><div className="brand"><span className="brand-mark">S</span><div><strong>SASSHY</strong><span>予定と集中</span></div></div><nav>{navItems.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMenuOpen(false); }}>{item.icon}<span>{PAGE_LABEL[item.id]}</span>{item.id === 'inbox' && <small>{tasks.filter((task) => !task.deletedAt && !task.scheduledDate && task.status !== 'done' && task.horizon === 'now').length}</small>}</button>)}</nav><div className={`sync-indicator ${syncState.phase}`}><span>{syncState.phase === 'error' || syncState.phase === 'offline' ? <CloudOff size={16} /> : <Cloud size={16} />}</span><div><strong>{syncState.message.split('・')[0]}</strong><small>{syncState.message.split('・').slice(1).join('・') || '端末に保存します'}</small></div></div></aside><main className="main-area"><header className="topbar"><IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></IconButton><div className="topbar-title"><span>{PAGE_LABEL[page]}</span><strong>{page === 'today' ? new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()) : 'SASSHY v2'}</strong></div><div className="topbar-actions"><IconButton label="元に戻す" onClick={() => runHistoryAction('undo')} disabled={!undoRedo?.undo.length}><Undo2 size={17} /></IconButton><IconButton label="やり直す" onClick={() => runHistoryAction('redo')} disabled={!undoRedo?.redo.length}><Redo2 size={17} /></IconButton><button className={`top-sync ${syncState.phase}`} type="button" onClick={() => syncNow(true).catch(() => undefined)} title={syncState.message}>{syncState.phase === 'syncing' ? <TimerReset size={17} /> : syncState.phase === 'error' ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{syncState.phase === 'ok' ? '保存済み' : syncState.phase === 'syncing' ? '同期中' : '端末保存'}</span></button></div></header><div className="view-frame">{page === 'today' && <TodayPage tasks={tasks} sessions={sessions} onEdit={setEditing} onStart={startTimer} />}{page === 'calendar' && <CalendarPage tasks={tasks} sessions={sessions} onEdit={setEditing} onStart={startTimer} />}{page === 'inbox' && <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'later' && <LaterPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'memos' && <MemosPage memos={memos} onTaskCreated={(task) => { setPage('inbox'); setEditing(task); }} />}{page === 'history' && <HistoryPage history={history} tasks={tasks} />}{page === 'settings' && <SettingsPage tasks={tasks} memos={memos} sessions={sessions} />}</div></main>{editing && <TaskEditor task={editing} sessions={sessions} onClose={() => setEditing(null)} onStart={startTimer} />}{activeSession && voice && timerVisible && <TimerDock session={activeSession} task={activeTask} voice={voice} onClose={() => setTimerVisible(false)} />}{activeSession && !timerVisible && <button className="timer-reopen" type="button" onClick={reopenTimer} title={activeSession.status === 'paused' ? 'タイマーを再開' : 'タイマーを表示'}><Volume2 size={20} /><span>{activeSession.status === 'paused' ? '中断中・押して再開：' + activeSession.taskTitle : activeSession.taskTitle}</span></button>}{actionMessage && <div className="action-toast">{actionMessage}</div>}<nav className="mobile-nav">{navItems.slice(0, 5).map((item) => <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}>{item.icon}<span>{PAGE_LABEL[item.id]}</span></button>)}<button type="button" onClick={() => setMenuOpen(true)}><MoreHorizontal /><span>その他</span></button></nav>{menuOpen && mobile && <button className="menu-scrim" type="button" aria-label="メニューを閉じる" onClick={() => setMenuOpen(false)} />}</div>;
+  return <div className="app-shell"><aside className={`sidebar${menuOpen ? ' open' : ''}`}><div className="brand"><span className="brand-mark">S</span><div><strong>SASSHY</strong><span>予定と集中</span></div></div><nav>{navItems.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMenuOpen(false); }}>{item.icon}<span>{PAGE_LABEL[item.id]}</span>{item.id === 'inbox' && <small>{tasks.filter((task) => !task.deletedAt && !task.scheduledDate && task.status !== 'done' && task.horizon === 'now').length}</small>}</button>)}</nav><div className={`sync-indicator ${syncState.phase}`}><span>{syncState.phase === 'error' || syncState.phase === 'offline' ? <CloudOff size={16} /> : <Cloud size={16} />}</span><div><strong>{syncState.message.split('・')[0]}</strong><small>{syncState.message.split('・').slice(1).join('・') || '端末に保存します'}</small></div></div></aside><main className="main-area"><header className="topbar"><IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></IconButton><div className="topbar-title"><span>{PAGE_LABEL[page]}</span><strong>{page === 'today' ? new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()) : 'SASSHY v2'}</strong></div><div className="topbar-actions"><IconButton label="元に戻す" onClick={() => runHistoryAction('undo')} disabled={!undoRedo?.undo.length}><Undo2 size={17} /></IconButton><IconButton label="やり直す" onClick={() => runHistoryAction('redo')} disabled={!undoRedo?.redo.length}><Redo2 size={17} /></IconButton><button className={`top-sync ${syncState.phase}`} type="button" onClick={() => syncNow(true).catch(() => undefined)} title={syncState.message}>{syncState.phase === 'syncing' ? <TimerReset size={17} /> : syncState.phase === 'error' ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{syncState.phase === 'ok' ? '保存済み' : syncState.phase === 'syncing' ? '同期中' : '端末保存'}</span></button></div></header><div className="view-frame">{page === 'today' && <TodayPage tasks={tasks} sessions={sessions} onEdit={setEditing} onStart={startTimer} />}{page === 'calendar' && <CalendarPage tasks={tasks} sessions={sessions} onEdit={setEditing} onStart={startTimer} />}{page === 'inbox' && <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'later' && <LaterPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />}{page === 'memos' && <MemosPage memos={memos} onTaskCreated={(task) => { setPage('inbox'); setEditing(task); }} />}{page === 'history' && <HistoryPage history={history} tasks={tasks} />}{page === 'settings' && <SettingsPage tasks={tasks} memos={memos} sessions={sessions} />}</div></main>{editing && <TaskEditor key={editing.id} task={editing} sessions={sessions} onClose={() => setEditing(null)} onStart={startTimer} />}{activeSession && voice && timerVisible && <TimerDock session={activeSession} task={activeTask} voice={voice} onClose={() => setTimerVisible(false)} />}{activeSession && !timerVisible && <button className="timer-reopen" type="button" onClick={reopenTimer} title={activeSession.status === 'paused' ? 'タイマーを再開' : 'タイマーを表示'}><Volume2 size={20} /><span>{activeSession.status === 'paused' ? '中断中・押して再開：' + activeSession.taskTitle : activeSession.taskTitle}</span></button>}{actionMessage && <div className="action-toast">{actionMessage}</div>}<nav className="mobile-nav">{navItems.slice(0, 5).map((item) => <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}>{item.icon}<span>{PAGE_LABEL[item.id]}</span></button>)}<button type="button" onClick={() => setMenuOpen(true)}><MoreHorizontal /><span>その他</span></button></nav>{menuOpen && mobile && <button className="menu-scrim" type="button" aria-label="メニューを閉じる" onClick={() => setMenuOpen(false)} />}</div>;
 }
 
-export default App;
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
+  state = { error: false };
+
+  static getDerivedStateFromError() {
+    return { error: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('SASSHY screen error', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return <main className="app-error"><div><strong>画面を開き直してください</strong><p>端末に保存されたタスクは消えていません。画面だけを安全に読み直します。</p><button className="button primary" type="button" onClick={() => window.location.reload()}>画面を再読込</button></div></main>;
+    }
+    return this.props.children;
+  }
+}
+
+function AppRoot() {
+  return <AppErrorBoundary><App /></AppErrorBoundary>;
+}
+
+export default AppRoot;

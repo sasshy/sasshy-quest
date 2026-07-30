@@ -83,7 +83,7 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
   const scheduledDate = input.scheduledDate || null;
   const requestedEstimate = input.estimateMin ?? input.durationMin;
   const prediction = requestedEstimate === undefined
-    ? predictDuration(input.title, await db.sessions.where('status').equals('completed').toArray())
+    ? predictDuration(input.title, await db.sessions.toArray())
     : null;
   const estimateMin = Math.max(5, requestedEstimate ?? prediction?.predictedMin ?? 25);
   const task: Task = {
@@ -256,7 +256,7 @@ export async function redoLatestTaskChange(): Promise<string | null> {
   return message;
 }
 
-export async function startFocusSession(task: Task, plannedMin = task.estimateMin): Promise<FocusSession> {
+export async function startFocusSession(task: Task, plannedMin = task.estimateMin, carriedElapsedSec = 0): Promise<FocusSession> {
   const deviceId = await getDeviceId();
   const at = nowIso();
   const session: FocusSession = {
@@ -264,6 +264,7 @@ export async function startFocusSession(task: Task, plannedMin = task.estimateMi
     taskId: task.id,
     taskTitle: task.title,
     plannedMin: Math.max(1, plannedMin),
+    carriedElapsedSec: Math.max(0, carriedElapsedSec),
     startedAt: at,
     pausedAt: null,
     pausedTotalSec: 0,
@@ -277,7 +278,18 @@ export async function startFocusSession(task: Task, plannedMin = task.estimateMi
   await db.transaction('rw', db.sessions, db.tasks, db.history, db.outbox, async () => {
     const running = await db.sessions.where('status').anyOf('running', 'paused').toArray();
     for (const other of running) {
-      const interrupted = { ...other, status: 'interrupted' as const, endedAt: at, updatedAt: at, sync: { ...other.sync, deviceId } };
+      const extraPausedSec = other.status === 'paused' && other.pausedAt
+        ? Math.max(0, Math.floor((new Date(at).getTime() - new Date(other.pausedAt).getTime()) / 1000))
+        : 0;
+      const interrupted = {
+        ...other,
+        status: 'interrupted' as const,
+        endedAt: at,
+        pausedAt: null,
+        pausedTotalSec: other.pausedTotalSec + extraPausedSec,
+        updatedAt: at,
+        sync: { ...other.sync, deviceId },
+      };
       await db.sessions.put(interrupted);
       await queueRecord('session', interrupted);
     }
@@ -292,6 +304,43 @@ export async function startFocusSession(task: Task, plannedMin = task.estimateMi
   });
   announceChange();
   return session;
+}
+
+export async function createManualFocusSession(task: Task, startedAt: string, endedAt: string): Promise<FocusSession> {
+  const start = new Date(startedAt);
+  const end = new Date(endedAt);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    throw new Error('終了時刻は開始時刻より後にしてください');
+  }
+  const deviceId = await getDeviceId();
+  const at = nowIso();
+  const session: FocusSession = {
+    id: makeId('session'),
+    taskId: task.id,
+    taskTitle: task.title,
+    plannedMin: task.estimateMin,
+    carriedElapsedSec: 0,
+    startedAt: start.toISOString(),
+    pausedAt: null,
+    pausedTotalSec: 0,
+    endedAt: end.toISOString(),
+    status: 'completed',
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+    sync: { deviceId },
+  };
+  await db.transaction('rw', db.sessions, db.history, db.outbox, async () => {
+    await db.sessions.add(session);
+    await db.history.add(history('session', session.id, 'create', `「${task.title}」の実績を後から追加`, null, session));
+    await queueRecord('session', session);
+  });
+  announceChange();
+  return session;
+}
+
+export async function softDeleteSession(id: string): Promise<FocusSession | null> {
+  return updateSession(id, { deletedAt: nowIso() }, '作業実績を削除');
 }
 
 export async function updateSession(id: string, changes: Partial<FocusSession>, label: string): Promise<FocusSession | null> {

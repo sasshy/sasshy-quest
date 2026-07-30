@@ -124,6 +124,24 @@ h1, h2, h3, p { margin: 0; }
 .duration-insight strong { color: #295a43; font-size: 11px; }
 .duration-insight span { color: #527060; font-size: 10px; }
 .duration-insight button { min-height: 32px; padding: 0 10px; border: 1px solid #9ac7ae; border-radius: 5px; background: white; color: #286c4e; font-size: 10px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.work-log-section { padding: 13px; border: 1px solid var(--line); border-radius: 6px; background: #fafafa; }
+.work-log-section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.work-log-section > header > div { min-width: 0; display: grid; gap: 3px; }
+.work-log-section > header strong { font-size: 12px; }
+.work-log-section > header span { color: var(--muted); font-size: 10px; }
+.work-log-add { margin-top: 12px; padding: 11px; border: 1px solid #b9dcc9; border-radius: 6px; background: var(--green-soft); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.work-log-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.work-log-inputs label { min-width: 0; display: grid; gap: 4px; }
+.work-log-inputs label span { color: var(--muted); font-size: 9px; font-weight: 600; }
+.work-log-inputs input { width: 100%; min-width: 0; min-height: 38px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: white; font-size: 11px; }
+.work-log-message { margin-top: 8px; color: #286c4e; font-size: 10px; }
+.work-log-list { margin-top: 12px; display: grid; gap: 7px; }
+.work-log-row { padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: white; display: grid; gap: 8px; }
+.work-log-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.work-log-actions > span { margin-right: auto; color: var(--green); font: 600 10px 'IBM Plex Mono', monospace; }
+.work-log-actions .button { min-height: 32px; font-size: 10px; }
+.work-log-actions .icon-button { width: 32px; height: 32px; flex-basis: 32px; }
+.work-log-row > small { color: var(--muted); font-size: 9px; }
 .priority-marks { display: inline-flex; gap: 4px; }
 .mark { padding: 2px 5px; border-radius: 3px; font-family: 'IBM Plex Sans JP', sans-serif; font-size: 9px; font-weight: 700; }
 .mark.important { color: var(--green); background: var(--green-soft); }
@@ -319,6 +337,8 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .timer-display { width: 100%; padding: 14px 0 10px; border: 0; background: transparent; color: white; display: grid; place-items: center; cursor: pointer; }
 .timer-display span { font: 600 48px/1 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
 .timer-display small { margin-top: 6px; color: #858b88; font-size: 9px; }
+.timer-voice-resume { width: 100%; min-height: 34px; margin-bottom: 8px; padding: 0 10px; border: 1px solid #414441; border-radius: 5px; background: #242625; color: #b8bfbb; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; font-weight: 600; cursor: pointer; }
+.timer-voice-resume.needed { border-color: #83c4a2; background: #173b2b; color: #bde8d0; }
 .timer-controls { display: grid; grid-template-columns: 40px 1fr 1fr 1fr; gap: 6px; }
 .timer-controls .icon-button { width: 40px; height: 38px; color: white; border-color: #414441; }
 .timer-controls .button { min-width: 0; padding: 0 8px; border-color: #414441; background: #282a29; color: white; font-size: 10px; }
@@ -327,6 +347,10 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .timer-reopen span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .action-toast { position: fixed; z-index: 95; top: calc(var(--topbar) + 10px); left: 50%; max-width: calc(100vw - 30px); padding: 10px 14px; border: 1px solid #b9dcc9; border-radius: 6px; background: #14251d; color: white; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); transform: translateX(-50%); font-size: 11px; font-weight: 600; }
 .mobile-nav, .menu-scrim { display: none; }
+.app-error { min-height: 100vh; padding: 24px; background: var(--canvas); display: grid; place-items: center; }
+.app-error > div { width: min(460px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: white; display: grid; gap: 12px; text-align: center; }
+.app-error strong { font-size: 18px; }
+.app-error p { color: var(--muted); font-size: 12px; line-height: 1.7; }
 
 @media (max-width: 1000px) {
   :root { --sidebar: 72px; }
@@ -420,6 +444,13 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
   .date-shortcuts button { height: 38px; font-size: 11px; }
   .modal-actions { position: sticky; bottom: 0; background: white; }
   .modal-actions .danger-quiet { width: 38px; padding: 0; font-size: 0; }
+  .work-log-section { padding: 11px; }
+  .work-log-section > header { align-items: stretch; flex-direction: column; }
+  .work-log-section > header .button { width: 100%; }
+  .work-log-add { grid-template-columns: 1fr; }
+  .work-log-inputs { grid-template-columns: 1fr; }
+  .work-log-inputs input { min-height: 44px; font-size: 16px; }
+  .work-log-actions { flex-wrap: wrap; }
   .timer-dock { right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); }
   .timer-display span { font-size: 43px; }
   .timer-reopen { right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); }

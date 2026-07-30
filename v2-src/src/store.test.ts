@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
 import {
-  completeTask, createTask, pauseFocusSession, restoreTask, resumeFocusSession,
+  completeTask, createManualFocusSession, createTask, pauseFocusSession, restoreTask, resumeFocusSession,
   redoLatestTaskChange, softDeleteTask, startFocusSession, undoLatestTaskChange, updateSession, updateTask,
 } from './store';
+import { taskWorkedSeconds } from './insights';
 import type { Task } from './types';
 
 beforeEach(async () => {
@@ -101,5 +102,27 @@ describe('record safe mutations', () => {
 
     const second = await createTask({ title: '出荷準備：今回B' });
     expect(second.estimateMin).toBe(20);
+  });
+
+  it('adds a missed work interval later and queues it for sync', async () => {
+    const task = await createTask({ title: '開始を押し忘れた作業', estimateMin: 30 });
+    const session = await createManualFocusSession(task, '2026-07-30T01:00:00.000Z', '2026-07-30T01:18:00.000Z');
+
+    expect(session.status).toBe('completed');
+    expect(taskWorkedSeconds(task.id, [session])).toBe(18 * 60);
+    expect(await db.outbox.where('[entityType+entityId]').equals(['session', session.id]).count()).toBe(1);
+  });
+
+  it('starts the same task again with its previous work carried forward', async () => {
+    const first = await createTask({ title: '分割して行う業務', estimateMin: 25 });
+    const other = await createTask({ title: '割り込み業務', estimateMin: 10 });
+    const firstSession = await startFocusSession(first, 25);
+    await updateSession(firstSession.id, { startedAt: new Date(Date.now() - 8 * 60_000).toISOString() }, 'テスト開始時刻');
+    await startFocusSession(other, 10);
+    const carried = taskWorkedSeconds(first.id, await db.sessions.toArray());
+    const resumed = await startFocusSession(first, 25, carried);
+
+    expect(carried).toBeGreaterThanOrEqual(7 * 60);
+    expect(resumed.carriedElapsedSec).toBe(carried);
   });
 });
