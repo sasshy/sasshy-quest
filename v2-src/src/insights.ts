@@ -60,8 +60,23 @@ function roundToFive(value: number): number {
   return Math.max(5, Math.min(240, Math.round(value / 5) * 5));
 }
 
+export function routineEstimateHint(title: string): number | null {
+  const normalized = title.normalize('NFKC').toLowerCase().replace(/[\s　]/g, '');
+  if (/歯磨き|歯みがき|歯を磨/.test(normalized)) return 5;
+  if (/ドライヤー|髪を乾か|髪乾か/.test(normalized)) return 10;
+  return null;
+}
+
+function reasonableDurationMax(plannedMin: number, title: string): number {
+  const routineHint = routineEstimateHint(title);
+  if (routineHint) return routineHint * 2;
+  if (plannedMin <= 15) return Math.max(plannedMin * 3, plannedMin + 15);
+  return Math.min(480, Math.max(plannedMin * 3, plannedMin + 60));
+}
+
 export function predictDuration(title: string, sessions: FocusSession[], excludeTaskId?: string): DurationPrediction | null {
   const family = taskFamily(title);
+  const routineHint = routineEstimateHint(title);
   const grouped = new Map<string, FocusSession[]>();
   sessions
     .filter((session) => session.taskId !== excludeTaskId && taskFamily(session.taskTitle) === family && !session.deletedAt)
@@ -72,16 +87,22 @@ export function predictDuration(title: string, sessions: FocusSession[], exclude
       const seconds = items.reduce((sum, session) => sum + (sessionActiveSeconds(session) || 0), 0);
       const activeMin = Math.max(1, Math.round(seconds / 60));
       const plannedMin = Math.max(...items.map((session) => session.plannedMin), 5);
-      const reasonableMax = Math.min(480, Math.max(plannedMin * 3, plannedMin + 60));
+      const reasonableMax = reasonableDurationMax(plannedMin, items[0]?.taskTitle || title);
       return { activeMin, reliable: seconds >= 30 && activeMin <= reasonableMax, latest: items.map((session) => session.startedAt).sort().at(-1) || '' };
     })
     .sort((a, b) => b.latest.localeCompare(a.latest))
     .slice(0, 12);
   const reliable = totals.flatMap((value) => value.reliable ? [value.activeMin] : []);
   const ignoredCount = totals.filter((value) => !value.reliable).length;
-  if (!reliable.length) return null;
+  if (!reliable.length) {
+    return routineHint
+      ? { predictedMin: routineHint, sampleSize: 0, ignoredCount }
+      : null;
+  }
   return {
-    predictedMin: roundToFive(median(reliable)),
+    predictedMin: routineHint
+      ? Math.min(routineHint * 2, roundToFive(median(reliable)))
+      : roundToFive(median(reliable)),
     sampleSize: reliable.length,
     ignoredCount,
   };

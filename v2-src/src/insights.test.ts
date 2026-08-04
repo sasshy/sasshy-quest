@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { predictDuration, sessionDuration, taskActualDuration, taskFamily, taskWorkedSeconds } from './insights';
+import { predictDuration, routineEstimateHint, sessionDuration, taskActualDuration, taskFamily, taskWorkedSeconds } from './insights';
 import type { FocusSession } from './types';
 
 function session(input: Partial<FocusSession> & Pick<FocusSession, 'id' | 'taskId' | 'taskTitle' | 'startedAt' | 'endedAt'>): FocusSession {
@@ -57,5 +57,18 @@ describe('duration insights', () => {
     ];
     expect(taskWorkedSeconds('same', values)).toBe(20 * 60);
     expect(predictDuration('確認', values)).toEqual({ predictedMin: 20, sampleSize: 1, ignoredCount: 0 });
+  });
+
+  it('uses short routine hints when history is missing', () => {
+    expect(routineEstimateHint('歯磨き')).toBe(5);
+    expect(routineEstimateHint('ドライヤーで髪を乾かす')).toBe(10);
+    expect(predictDuration('歯磨き', [])).toEqual({ predictedMin: 5, sampleSize: 0, ignoredCount: 0 });
+  });
+
+  it('does not learn a forgotten timer as a short routine estimate', () => {
+    const values = [
+      session({ id: 'brush', taskId: 'brush', taskTitle: '歯磨き', plannedMin: 30, startedAt: '2026-08-01T00:00:00.000Z', endedAt: '2026-08-01T00:35:00.000Z' }),
+    ];
+    expect(predictDuration('歯磨き', values)).toEqual({ predictedMin: 5, sampleSize: 0, ignoredCount: 1 });
   });
 });

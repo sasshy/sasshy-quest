@@ -73,6 +73,7 @@ import {
   redoLatestTaskChange,
   restoreTask,
   resumeFocusSession,
+  setFocusSessionPlannedMinutes,
   softDeleteSession,
   softDeleteTask,
   startFocusSession,
@@ -776,8 +777,10 @@ function TaskEditor({
                 )}
                 {prediction && (
                   <span>
-                    次回予測 {prediction.predictedMin}分・過去
-                    {prediction.sampleSize}回の中央値
+                    次回予測 {prediction.predictedMin}分・
+                    {prediction.sampleSize
+                      ? `過去${prediction.sampleSize}回の中央値`
+                      : "短い生活タスクの目安"}
                     {prediction.ignoredCount
                       ? `（長すぎる記録${prediction.ignoredCount}件を除外）`
                       : ""}
@@ -941,14 +944,18 @@ function TodayPage({
   onStart: (task: Task) => void;
 }) {
   const today = todayKey();
-  const due = tasks
+  const dayTasks = tasks
     .filter(
       (task) =>
         !task.deletedAt &&
-        task.status !== "done" &&
         task.scheduledDate === today,
     )
-    .sort((a, b) => (a.startMinute ?? 9999) - (b.startMinute ?? 9999));
+    .sort(
+      (a, b) =>
+        (a.startMinute ?? 9999) - (b.startMinute ?? 9999) ||
+        a.createdAt.localeCompare(b.createdAt),
+    );
+  const due = dayTasks.filter((task) => task.status !== "done");
   const overdue = tasks
     .filter(
       (task) =>
@@ -1007,6 +1014,9 @@ function TodayPage({
           />
         )}
       </section>
+      {dayTasks.length > 0 && (
+        <DayFlow tasks={dayTasks} onEdit={onEdit} onStart={onStart} />
+      )}
       {overdue.length > 0 && (
         <section className="task-section overdue-section">
           <header>
@@ -1109,6 +1119,78 @@ function TodayPage({
         )}
       </section>
     </div>
+  );
+}
+
+function flowTimeLabel(minute: number): string {
+  const dayOffset = Math.floor(minute / 1440);
+  const normalized = ((minute % 1440) + 1440) % 1440;
+  const time = formatMinute(normalized);
+  return dayOffset > 0 ? `翌日 ${time}` : time;
+}
+
+function DayFlow({
+  tasks,
+  onEdit,
+  onStart,
+}: {
+  tasks: Task[];
+  onEdit: (task: Task) => void;
+  onStart: (task: Task) => void;
+}) {
+  const remaining = tasks.filter((task) => task.status !== "done");
+  const totalMin = remaining.reduce((sum, task) => sum + task.estimateMin, 0);
+  const bufferedMin = Math.ceil((totalMin * 1.25) / 5) * 5;
+  const current = new Date();
+  let cursor = Math.ceil((current.getHours() * 60 + current.getMinutes()) / 5) * 5;
+  const entries = tasks.map((task) => {
+    const start = task.status === "done"
+      ? task.startMinute
+      : task.startMinute === null
+        ? cursor
+        : Math.max(cursor, task.startMinute);
+    if (task.status !== "done") cursor = (start ?? cursor) + task.estimateMin;
+    return { task, start };
+  });
+  return (
+    <section className="day-flow" aria-labelledby="day-flow-title">
+      <header>
+        <div>
+          <span className="section-kicker">DAY FLOW</span>
+          <h2 id="day-flow-title">今日の流れ</h2>
+        </div>
+        <div className="day-flow-summary">
+          <span>残り <strong>{remaining.length}件</strong></span>
+          <span>集中 <strong>{totalMin}分</strong></span>
+          <span>余白込み <strong>{bufferedMin}分</strong></span>
+        </div>
+      </header>
+      <ol className="day-flow-list">
+        {entries.map(({ task, start }, index) => (
+          <li className={task.status === "done" ? "done" : ""} key={task.id}>
+            <span className="day-flow-index">
+              {task.status === "done" ? <Check size={14} /> : index + 1}
+            </span>
+            <button type="button" onClick={() => onEdit(task)}>
+              <span>{start === null ? "時刻なし" : flowTimeLabel(start)}</span>
+              <strong>{task.title}</strong>
+              <small>{task.estimateMin}分</small>
+            </button>
+            {task.status !== "done" && (
+              <IconButton label={`${task.title}を開始`} onClick={() => onStart(task)}>
+                <Play size={16} />
+              </IconButton>
+            )}
+          </li>
+        ))}
+      </ol>
+      {remaining.length > 0 && (
+        <footer>
+          <Clock3 size={15} />
+          今から順に進めた目安終了 {flowTimeLabel(cursor)}
+        </footer>
+      )}
+    </section>
   );
 }
 
@@ -2621,6 +2703,7 @@ function TimerDock({
 }) {
   const [now, setNow] = useState(Date.now());
   const [voiceNeedsTap, setVoiceNeedsTap] = useState(false);
+  const [durationDraft, setDurationDraft] = useState(String(session.plannedMin));
   const announced = useRef(new Set<number>());
   const previous = useRef<number | null>(null);
   const paused = session.status === "paused";
@@ -2628,6 +2711,9 @@ function TimerDock({
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    setDurationDraft(String(session.plannedMin));
+  }, [session.plannedMin]);
   useEffect(() => {
     let lock: { release: () => Promise<void> } | null = null;
     if ("wakeLock" in navigator && session.status === "running")
@@ -2763,6 +2849,13 @@ function TimerDock({
     );
     setVoiceNeedsTap(!restored);
   };
+  const changeDuration = async (nextValue: number) => {
+    if (!Number.isFinite(nextValue)) return;
+    const nextMinutes = Math.max(1, Math.min(480, Math.round(nextValue)));
+    setDurationDraft(String(nextMinutes));
+    await setFocusSessionPlannedMinutes(session.id, nextMinutes);
+    syncNow().catch(() => undefined);
+  };
   return (
     <div className="timer-dock">
       <div className="timer-title">
@@ -2790,6 +2883,34 @@ function TimerDock({
         </span>
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
+      <div className="timer-duration-editor">
+        <button type="button" onClick={() => changeDuration(session.plannedMin - 5)}>
+          -5
+        </button>
+        <label>
+          <span>タイマー</span>
+          <input
+            type="number"
+            min="1"
+            max="480"
+            step="1"
+            inputMode="numeric"
+            aria-label="タイマー時間（分）"
+            value={durationDraft}
+            onChange={(event) => setDurationDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") changeDuration(Number(durationDraft));
+            }}
+          />
+          <small>分</small>
+        </label>
+        <button type="button" onClick={() => changeDuration(Number(durationDraft))}>
+          変更
+        </button>
+        <button type="button" onClick={() => changeDuration(session.plannedMin + 5)}>
+          +5
+        </button>
+      </div>
       <button
         className={`timer-voice-resume${voiceNeedsTap ? " needed" : ""}`}
         type="button"
@@ -2804,19 +2925,6 @@ function TimerDock({
         <IconButton label={paused ? "再開" : "一時停止"} onClick={pauseToggle}>
           {paused ? <Play size={21} /> : <Pause size={21} />}
         </IconButton>
-        <button
-          className="button secondary"
-          type="button"
-          onClick={() =>
-            updateSession(
-              session.id,
-              { plannedMin: session.plannedMin + 5 },
-              "5分延長",
-            )
-          }
-        >
-          +5分
-        </button>
         <button
           className="button secondary"
           type="button"

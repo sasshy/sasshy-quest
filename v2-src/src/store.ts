@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { db, getDeviceId, makeId, nowIso } from './db';
-import { predictDuration } from './insights';
+import { predictDuration, routineEstimateHint } from './insights';
 import type {
   FocusSession, HistoryEntry, Memo, OutboxItem, Task, TaskHorizon, TaskUndoAction, UndoRedoSetting,
 } from './types';
@@ -85,7 +85,7 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
   const prediction = requestedEstimate === undefined
     ? predictDuration(input.title, await db.sessions.toArray())
     : null;
-  const estimateMin = Math.max(5, requestedEstimate ?? prediction?.predictedMin ?? 25);
+  const estimateMin = Math.max(5, requestedEstimate ?? prediction?.predictedMin ?? routineEstimateHint(input.title) ?? 25);
   const task: Task = {
     id: makeId('task'),
     title: input.title.trim(),
@@ -376,6 +376,11 @@ export async function resumeFocusSession(id: string): Promise<FocusSession | nul
     pausedAt: null,
     pausedTotalSec: session.pausedTotalSec + pausedSec,
   }, 'タイマーを再開');
+}
+
+export async function setFocusSessionPlannedMinutes(id: string, plannedMin: number): Promise<FocusSession | null> {
+  const nextMinutes = Math.max(1, Math.min(480, Math.round(plannedMin)));
+  return updateSession(id, { plannedMin: nextMinutes }, `タイマーを${nextMinutes}分に変更`);
 }
 
 export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<Pick<Memo, 'category' | 'pinned' | 'reminderAt' | 'source' | 'legacyId'>>, source: HistoryEntry['source'] = 'local'): Promise<Memo> {

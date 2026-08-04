@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
 import {
   completeTask, createManualFocusSession, createTask, pauseFocusSession, restoreTask, resumeFocusSession,
-  redoLatestTaskChange, softDeleteTask, startFocusSession, undoLatestTaskChange, updateSession, updateTask,
+  redoLatestTaskChange, setFocusSessionPlannedMinutes, softDeleteTask, startFocusSession, undoLatestTaskChange, updateSession, updateTask,
 } from './store';
 import { taskWorkedSeconds } from './insights';
 import type { Task } from './types';
@@ -66,6 +66,24 @@ describe('record safe mutations', () => {
     expect(session.plannedMin).toBe(15);
     expect((await db.tasks.get(task.id))?.scheduledDate).toBe('2026-07-21');
     expect((await db.sessions.get(session.id))?.status).toBe('running');
+  });
+
+  it('changes a running timer without restarting its session', async () => {
+    const task = await createTask({ title: '時間を直す', estimateMin: 25 });
+    const session = await startFocusSession(task, 25);
+    await setFocusSessionPlannedMinutes(session.id, 12);
+
+    const changed = await db.sessions.get(session.id);
+    expect(changed?.plannedMin).toBe(12);
+    expect(changed?.startedAt).toBe(session.startedAt);
+    expect(changed?.status).toBe('running');
+  });
+
+  it('uses a short routine hint as the initial estimate', async () => {
+    const brushing = await createTask({ title: '歯磨き' });
+    const dryer = await createTask({ title: 'ドライヤー' });
+    expect(brushing.estimateMin).toBe(5);
+    expect(dryer.estimateMin).toBe(10);
   });
 
   it('keeps an interrupted timer available for resume', async () => {
