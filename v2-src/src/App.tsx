@@ -27,8 +27,10 @@ import {
   Bell,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleHelp,
   Clock3,
   Cloud,
@@ -71,6 +73,7 @@ import {
   getUndoRedoState,
   pauseFocusSession,
   redoLatestTaskChange,
+  reorderTasksForDay,
   restoreTask,
   resumeFocusSession,
   setFocusSessionPlannedMinutes,
@@ -226,6 +229,18 @@ function actualMinutesBetween(start: string, end: string): number | null {
 function taskScore(task: Task): number {
   const overdue = task.scheduledDate && task.scheduledDate < todayKey() ? 8 : 0;
   return task.importance * 3 + task.urgency * 4 + overdue;
+}
+
+function compareDayFlowTasks(a: Task, b: Task): number {
+  if (a.flowOrder !== undefined || b.flowOrder !== undefined) {
+    if (a.flowOrder === undefined) return 1;
+    if (b.flowOrder === undefined) return -1;
+    if (a.flowOrder !== b.flowOrder) return a.flowOrder - b.flowOrder;
+  }
+  return (
+    (a.startMinute ?? 9999) - (b.startMinute ?? 9999) ||
+    a.createdAt.localeCompare(b.createdAt)
+  );
 }
 
 function IconButton({
@@ -950,12 +965,19 @@ function TodayPage({
         !task.deletedAt &&
         task.scheduledDate === today,
     )
-    .sort(
-      (a, b) =>
-        (a.startMinute ?? 9999) - (b.startMinute ?? 9999) ||
-        a.createdAt.localeCompare(b.createdAt),
+    .sort((a, b) =>
+      Number(a.status === "done") - Number(b.status === "done") ||
+      compareDayFlowTasks(a, b),
     );
   const due = dayTasks.filter((task) => task.status !== "done");
+  const moveTodayTask = async (taskId: string, direction: -1 | 1) => {
+    await reorderTasksForDay(
+      due.map((task) => task.id),
+      taskId,
+      direction,
+    );
+    syncNow().catch(() => undefined);
+  };
   const overdue = tasks
     .filter(
       (task) =>
@@ -1015,7 +1037,12 @@ function TodayPage({
         )}
       </section>
       {dayTasks.length > 0 && (
-        <DayFlow tasks={dayTasks} onEdit={onEdit} onStart={onStart} />
+        <DayFlow
+          tasks={dayTasks}
+          onEdit={onEdit}
+          onStart={onStart}
+          onMove={moveTodayTask}
+        />
       )}
       {overdue.length > 0 && (
         <section className="task-section overdue-section">
@@ -1133,10 +1160,12 @@ function DayFlow({
   tasks,
   onEdit,
   onStart,
+  onMove,
 }: {
   tasks: Task[];
   onEdit: (task: Task) => void;
   onStart: (task: Task) => void;
+  onMove: (taskId: string, direction: -1 | 1) => void;
 }) {
   const remaining = tasks.filter((task) => task.status !== "done");
   const totalMin = remaining.reduce((sum, task) => sum + task.estimateMin, 0);
@@ -1166,7 +1195,9 @@ function DayFlow({
         </div>
       </header>
       <ol className="day-flow-list">
-        {entries.map(({ task, start }, index) => (
+        {entries.map(({ task, start }, index) => {
+          const remainingIndex = remaining.findIndex((item) => item.id === task.id);
+          return (
           <li className={task.status === "done" ? "done" : ""} key={task.id}>
             <span className="day-flow-index">
               {task.status === "done" ? <Check size={14} /> : index + 1}
@@ -1177,12 +1208,29 @@ function DayFlow({
               <small>{task.estimateMin}分</small>
             </button>
             {task.status !== "done" && (
-              <IconButton label={`${task.title}を開始`} onClick={() => onStart(task)}>
-                <Play size={16} />
-              </IconButton>
+              <div className="day-flow-actions">
+                <IconButton
+                  label={`${task.title}を上へ`}
+                  disabled={remainingIndex === 0}
+                  onClick={() => onMove(task.id, -1)}
+                >
+                  <ChevronUp size={15} />
+                </IconButton>
+                <IconButton
+                  label={`${task.title}を下へ`}
+                  disabled={remainingIndex === remaining.length - 1}
+                  onClick={() => onMove(task.id, 1)}
+                >
+                  <ChevronDown size={15} />
+                </IconButton>
+                <IconButton label={`${task.title}を開始`} onClick={() => onStart(task)}>
+                  <Play size={16} />
+                </IconButton>
+              </div>
             )}
           </li>
-        ))}
+          );
+        })}
       </ol>
       {remaining.length > 0 && (
         <footer>
@@ -1228,6 +1276,22 @@ function CalendarPage({
       task.horizon === "now" &&
       task.title.toLowerCase().includes(search.toLowerCase()),
   );
+  const visibleDayTasks = tasks
+    .filter(
+      (task) =>
+        !task.deletedAt &&
+        task.status !== "done" &&
+        task.scheduledDate === activeDate,
+    )
+    .sort(compareDayFlowTasks);
+  const moveVisibleDayTask = async (taskId: string, direction: -1 | 1) => {
+    await reorderTasksForDay(
+      visibleDayTasks.map((task) => task.id),
+      taskId,
+      direction,
+    );
+    syncNow().catch(() => undefined);
+  };
   const events = useMemo<EventInput[]>(
     () =>
       tasks
@@ -1251,7 +1315,10 @@ function CalendarPage({
               task.status === "done" ? "is-done" : "",
               task.importance ? "is-important" : "",
             ].filter(Boolean),
-            extendedProps: { taskId: task.id },
+            extendedProps: {
+              taskId: task.id,
+              flowOrder: task.flowOrder ?? 9999,
+            },
           };
         }),
     [tasks],
@@ -1597,7 +1664,10 @@ function CalendarPage({
             ))}
           </div>
         </aside>
-        <section className="calendar-surface" ref={calendarSurfaceRef}>
+        <section
+          className={`calendar-surface${mode === "day" ? " has-day-order" : ""}`}
+          ref={calendarSurfaceRef}
+        >
           {draggingTaskId && (
             <>
               <div className="calendar-edge-drop previous">
@@ -1622,6 +1692,41 @@ function CalendarPage({
               </div>
             </>
           )}
+          {mode === "day" && visibleDayTasks.length > 0 && (
+            <section className="calendar-day-order" aria-label="表示日のタスク順">
+              <header>
+                <strong>この日の順番</strong>
+                <span>上下で入れ替え</span>
+              </header>
+              <ol>
+                {visibleDayTasks.map((task, index) => (
+                  <li key={task.id}>
+                    <span>{index + 1}</span>
+                    <button type="button" onClick={() => onEdit(task)}>
+                      <strong>{task.title}</strong>
+                      <small>{formatMinute(task.startMinute)} · {task.estimateMin}分</small>
+                    </button>
+                    <div>
+                      <IconButton
+                        label={`${task.title}を上へ`}
+                        disabled={index === 0}
+                        onClick={() => moveVisibleDayTask(task.id, -1)}
+                      >
+                        <ChevronUp size={15} />
+                      </IconButton>
+                      <IconButton
+                        label={`${task.title}を下へ`}
+                        disabled={index === visibleDayTasks.length - 1}
+                        onClick={() => moveVisibleDayTask(task.id, 1)}
+                      >
+                        <ChevronDown size={15} />
+                      </IconButton>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -1631,6 +1736,8 @@ function CalendarPage({
             firstDay={1}
             nowIndicator
             editable
+            longPressDelay={350}
+            eventLongPressDelay={350}
             selectable
             droppable
             eventResizableFromStart
@@ -1644,6 +1751,14 @@ function CalendarPage({
             height="100%"
             dayMaxEvents={4}
             events={calendarEvents}
+            eventOrder={(a: unknown, b: unknown) => {
+              const first = a as { flowOrder?: number };
+              const second = b as { flowOrder?: number };
+              return (
+                Number(first.flowOrder ?? 9999) -
+                Number(second.flowOrder ?? 9999)
+              );
+            }}
             datesSet={(info: DatesSetArg) => {
               setTitle(info.view.title);
               setActiveDate(compactDate(info.start));

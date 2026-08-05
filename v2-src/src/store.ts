@@ -146,6 +146,51 @@ export async function updateTask(
   return result;
 }
 
+export async function reorderTasksForDay(
+  orderedTaskIds: string[],
+  movedTaskId: string,
+  direction: -1 | 1,
+): Promise<void> {
+  const currentIndex = orderedTaskIds.indexOf(movedTaskId);
+  const targetIndex = currentIndex + direction;
+  if (
+    currentIndex < 0 ||
+    targetIndex < 0 ||
+    targetIndex >= orderedTaskIds.length
+  ) return;
+
+  const nextIds = [...orderedTaskIds];
+  [nextIds[currentIndex], nextIds[targetIndex]] = [
+    nextIds[targetIndex],
+    nextIds[currentIndex],
+  ];
+  const records = await db.tasks.bulkGet(nextIds);
+  const byId = new Map(
+    records.filter((task): task is Task => Boolean(task)).map((task) => [task.id, task]),
+  );
+  const moved = byId.get(movedTaskId);
+  const target = byId.get(orderedTaskIds[targetIndex]);
+  const swapTimes =
+    moved?.startMinute !== null &&
+    moved?.startMinute !== undefined &&
+    target?.startMinute !== null &&
+    target?.startMinute !== undefined;
+
+  for (const [flowOrder, taskId] of nextIds.entries()) {
+    const task = byId.get(taskId);
+    if (!task) continue;
+    let startMinute = task.startMinute;
+    if (swapTimes && task.id === moved?.id) startMinute = target!.startMinute;
+    if (swapTimes && task.id === target?.id) startMinute = moved!.startMinute;
+    await updateTask(
+      task.id,
+      { flowOrder, startMinute },
+      "今日の順番を変更",
+      task.id === movedTaskId,
+    );
+  }
+}
+
 export async function completeTask(id: string, done: boolean): Promise<Task | null> {
   return updateTask(id, {
     status: done ? 'done' : 'planned',

@@ -14,6 +14,7 @@ export interface Task {
   horizon: TaskHorizon;
   scheduledDate: string | null;
   startMinute: number | null;
+  flowOrder?: number;
   durationMin: number;
   estimateMin: number;
   importance: 0 | 1 | 2;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
 import {
   completeTask, createManualFocusSession, createTask, pauseFocusSession, restoreTask, resumeFocusSession,
-  redoLatestTaskChange, setFocusSessionPlannedMinutes, softDeleteTask, startFocusSession, undoLatestTaskChange, updateSession, updateTask,
+  redoLatestTaskChange, reorderTasksForDay, setFocusSessionPlannedMinutes, softDeleteTask, startFocusSession, undoLatestTaskChange, updateSession, updateTask,
 } from './store';
 import { taskWorkedSeconds } from './insights';
 import type { Task } from './types';
@@ -23,6 +23,21 @@ describe('record safe mutations', () => {
     expect((await db.tasks.get(second.id))?.title).toBe('iPhoneで追加する予定のタスク');
     expect(await db.tasks.count()).toBe(2);
     expect(await db.outbox.count()).toBe(2);
+  });
+
+  it('reorders a day and swaps the times of adjacent timed tasks', async () => {
+    const first = await createTask({ title: '最初', scheduledDate: '2026-08-05', startMinute: 600 });
+    const second = await createTask({ title: '次', scheduledDate: '2026-08-05', startMinute: 660 });
+    const third = await createTask({ title: '最後', scheduledDate: '2026-08-05', startMinute: 720 });
+
+    await reorderTasksForDay([first.id, second.id, third.id], second.id, -1);
+
+    expect((await db.tasks.get(second.id))?.flowOrder).toBe(0);
+    expect((await db.tasks.get(second.id))?.startMinute).toBe(600);
+    expect((await db.tasks.get(first.id))?.flowOrder).toBe(1);
+    expect((await db.tasks.get(first.id))?.startMinute).toBe(660);
+    expect((await db.tasks.get(third.id))?.flowOrder).toBe(2);
+    expect((await db.tasks.get(third.id))?.startMinute).toBe(720);
   });
 
   it('keeps the scheduled date when completing a task later', async () => {
