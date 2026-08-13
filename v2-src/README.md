@@ -50,6 +50,17 @@ v2.3では、ホーム画面へ追加したiPhone PWAへWeb Pushを送ります�
 
 設定手順とGPT Actions用の定義は `chatgpt-action/` にあります。
 
+### 通常のCodexチャットから追加
+
+`?task=<Base64URL化したJSON>` を付けたリンクを開くと、タスク名・予定・所要時間を確認してから端末へ追加できます。専用GPTやAPIキーは不要です。
+
+- 内容を確認するまで保存しない
+- 受付番号 `requestId` が同じリンクは同じ端末で二重登録しない
+- 追加後は通常の同期キューへ入り、設定済みのSupabaseへ同期する
+- URLからタスク情報をすぐ取り除き、再読み込みによる再表示を防ぐ
+
+リンク用JSONは `v: 1`、`requestId`、`title` が必須です。任意で `notes`、`scheduledDate`、`startTime`、`durationMin`、`importance`、`urgency`、`horizon` を指定できます。
+
 ## 公開先
 
 GitHub Pagesの `/v2/` 配下へ `dist/` の内容を配置します。旧版のルート `/sasshy-quest/` はそのまま残します。
