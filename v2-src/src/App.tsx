@@ -136,6 +136,11 @@ import {
   getPushSupport,
   testPushNotification,
 } from "./push";
+import {
+  clearTaskLinkFromUrl,
+  parseTaskLink,
+  type ParsedTaskLink,
+} from "./task-link";
 import setupSql from "../supabase-setup.sql?raw";
 
 type Page =
@@ -322,6 +327,83 @@ function QuickAdd({
         追加
       </button>
     </form>
+  );
+}
+
+function TaskLinkImportDialog({
+  task,
+  onClose,
+  onAdded,
+}: {
+  task: ParsedTaskLink;
+  onClose: () => void;
+  onAdded: (created: Task, duplicate: boolean) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const add = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const receiptId = `task-link:${task.requestId}`;
+      const receipt = await db.settings.get(receiptId);
+      const taskId = typeof receipt?.taskId === "string" ? receipt.taskId : "";
+      const existing = taskId ? await db.tasks.get(taskId) : undefined;
+      if (existing) {
+        onAdded(existing, true);
+        return;
+      }
+      const created = await createTask({
+        title: task.title,
+        notes: task.notes,
+        scheduledDate: task.scheduledDate,
+        startMinute: task.startMinute,
+        durationMin: task.durationMin,
+        estimateMin: task.durationMin,
+        importance: task.importance,
+        urgency: task.urgency,
+        horizon: task.horizon,
+        legacyId: `codex:${task.requestId}`,
+      }, "import");
+      await db.settings.put({
+        id: receiptId,
+        taskId: created.id,
+        importedAt: new Date().toISOString(),
+      });
+      syncNow().catch(() => undefined);
+      onAdded(created, false);
+    } catch {
+      setError("タスクを追加できませんでした。もう一度お試しください");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <section className="modal-sheet task-link-dialog" role="dialog" aria-modal="true" aria-labelledby="task-link-title">
+        <header>
+          <div>
+            <span className="eyebrow">CODEXから受信</span>
+            <h2 id="task-link-title">このタスクを追加しますか？</h2>
+          </div>
+          <IconButton label="閉じる" onClick={onClose}><X size={19} /></IconButton>
+        </header>
+        <div className="task-link-summary">
+          <strong>{task.title}</strong>
+          {task.notes && <p>{task.notes}</p>}
+          <dl>
+            <div><dt>予定</dt><dd>{task.scheduledDate ? formatDateLabel(task.scheduledDate) : "日付なし"}{task.startMinute !== null ? ` ${formatMinute(task.startMinute)}` : ""}</dd></div>
+            <div><dt>所要時間</dt><dd>{task.durationMin}分</dd></div>
+          </dl>
+          {error && <p className="settings-error">{error}</p>}
+        </div>
+        <footer className="modal-actions">
+          <button className="button secondary" type="button" onClick={onClose} disabled={busy}>キャンセル</button>
+          <button className="button primary" type="button" onClick={add} disabled={busy}>{busy ? "追加中…" : "SASSHYに追加"}</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -3063,6 +3145,8 @@ function TimerDock({
 
 function App() {
   const mobile = useMobile();
+  const [taskLink] = useState(() => parseTaskLink(window.location.href));
+  const [incomingTask, setIncomingTask] = useState<ParsedTaskLink | null>(() => taskLink.task);
   const [page, setPage] = useState<Page>(() => {
     const requested = new URLSearchParams(location.search).get("open");
     return requested && requested in PAGE_LABEL ? (requested as Page) : "today";
@@ -3103,6 +3187,14 @@ function App() {
     : undefined;
   useEffect(() => startAutoSync(), []);
   useEffect(() => subscribeSync(setSyncState), []);
+  useEffect(() => {
+    if (!taskLink.hasTask) return;
+    clearTaskLinkFromUrl();
+    if (taskLink.error) {
+      setActionMessage(taskLink.error);
+      window.setTimeout(() => setActionMessage(""), 4200);
+    }
+  }, [taskLink]);
   useEffect(() => {
     if (page === "calendar") setTimerVisible(false);
   }, [page]);
@@ -3374,6 +3466,18 @@ function App() {
               : activeSession.taskTitle}
           </span>
         </button>
+      )}
+      {incomingTask && (
+        <TaskLinkImportDialog
+          task={incomingTask}
+          onClose={() => setIncomingTask(null)}
+          onAdded={(created, duplicate) => {
+            setIncomingTask(null);
+            setPage(created.scheduledDate === todayKey() ? "today" : created.scheduledDate ? "calendar" : "inbox");
+            setActionMessage(duplicate ? "このタスクは追加済みです" : `「${created.title}」を追加しました`);
+            window.setTimeout(() => setActionMessage(""), 3200);
+          }}
+        />
       )}
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
