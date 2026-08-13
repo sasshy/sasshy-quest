@@ -364,6 +364,16 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .modal-sheet h2 { font-size: 17px; }
 .modal-sheet > .form-stack { padding: 18px; }
 .modal-actions { min-height: 64px; padding: 12px 18px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+.task-link-dialog { width: min(520px, 100%); }
+.task-link-dialog > header > div { display: grid; gap: 4px; }
+.task-link-summary { padding: 20px 18px; display: grid; gap: 14px; }
+.task-link-summary > strong { font-size: 16px; line-height: 1.55; }
+.task-link-summary > p:not(.settings-error) { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; white-space: pre-wrap; }
+.task-link-summary dl { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--soft); display: grid; gap: 9px; }
+.task-link-summary dl > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+.task-link-summary dt { color: var(--muted); font-size: 10px; }
+.task-link-summary dd { margin: 0; font-size: 11px; font-weight: 600; }
+.task-link-dialog .modal-actions { justify-content: flex-end; }
 .task-date-editor { display: grid; gap: 7px; }
 .task-date-editor > label { display: grid; gap: 5px; }
 .task-date-editor > small { color: var(--muted); font-size: 9px; }
