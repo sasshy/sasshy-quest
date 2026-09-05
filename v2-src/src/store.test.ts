@@ -159,3 +159,20 @@ describe('record safe mutations', () => {
     expect(resumed.carriedElapsedSec).toBe(carried);
   });
 });
+
+it('retains voice fields through edits and completion and does not reactivate reminders on active edits', async () => {
+  const task = await createTask({ title: '音声テスト' });
+  await updateTask(task.id, { dueDate: '2026-09-07', dueTime: '15:00', counterparty: 'テスト先', requestSource: '電話', voiceTranscript: '見積を送る', reminderEnabled: true });
+  const voiceTask = (await db.tasks.get(task.id))!;
+  await startFocusSession(voiceTask);
+  await updateTask(task.id, { notes: '金額を確認' });
+  expect((await db.tasks.get(task.id))?.status).toBe('active');
+  await completeTask(task.id, true);
+  const saved = (await db.tasks.get(task.id))!;
+  expect(saved.status).toBe('done');
+  expect(saved.counterparty).toBe('テスト先');
+  expect(saved.dueDate).toBe('2026-09-07');
+  expect(saved.voiceTranscript).toBe('見積を送る');
+  const queued = await db.outbox.where('[entityType+entityId]').equals(['task', task.id]).first();
+  expect((queued?.payload as Task).dueTime).toBe('15:00');
+});

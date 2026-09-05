@@ -459,6 +459,9 @@ function TaskRow({
           {task.startMinute !== null && (
             <span>{formatMinute(task.startMinute)}</span>
           )}
+          {task.dueDate && <span>期限 {task.dueDate} {task.dueTime || ""}</span>}
+          {task.counterparty && <span>{task.counterparty}</span>}
+          {task.reminderEnabled && !done && <span>再通知ON</span>}
           <span>予測 {task.estimateMin}分</span>
           {actualMin !== undefined && (
             <span className={`actual-chip${actualReliable ? "" : " suspect"}`}>
@@ -634,6 +637,12 @@ function TaskEditor({
         {
           title: draft.title.trim() || task.title,
           notes: draft.notes,
+          dueDate: draft.dueDate || null,
+          dueTime: draft.dueDate ? draft.dueTime || null : null,
+          counterparty: draft.counterparty || '',
+          requestSource: draft.requestSource || '',
+          reminderEnabled: Boolean(draft.reminderEnabled),
+          reminderAfter: draft.reminderAfter || null,
           horizon: draft.horizon,
           scheduledDate: draft.scheduledDate,
           startMinute: draft.startMinute,
@@ -716,6 +725,24 @@ function TaskEditor({
               rows={4}
             />
           </label>
+          <details open={Boolean(draft.voiceTranscript || draft.reminderEnabled || draft.dueDate)}>
+            <summary>仕事の期限・相手・再通知</summary>
+            <div className="form-stack">
+              <div className="form-grid">
+                <label><span>期限日</span><input type="date" value={draft.dueDate || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, dueDate: value || null, dueTime: value ? current.dueTime : null })); }} /></label>
+                <label><span>期限時刻（日本時間）</span><input type="time" disabled={!draft.dueDate} value={draft.dueTime || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, dueTime: value || null })); }} /></label>
+                <label><span>相手</span><input maxLength={200} value={draft.counterparty || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, counterparty: value })); }} /></label>
+                <label><span>依頼元</span><input maxLength={200} placeholder="例：善之さん／電話" value={draft.requestSource || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, requestSource: value })); }} /></label>
+              </div>
+              <label className="checkbox-row"><input type="checkbox" checked={Boolean(draft.reminderEnabled)} onChange={event => { const value = event.currentTarget.checked; setDraft(current => ({ ...current, reminderEnabled: value })); }} /><span>未対応なら再通知</span></label>
+              {draft.reminderEnabled && <>
+                <p className="muted">平日9〜18時（日本時間）に1時間おき。期限の時刻から、時刻なしは17時から、期限なしは登録1時間後から通知します。作業開始・完了・ゴミ箱移動で停止します。端末の通知設定と同期が必要です。</p>
+                <p className="muted">延期：{draft.reminderAfter ? new Date(draft.reminderAfter).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) + "まで" : "なし"}</p>
+                <div className="button-row"><button type="button" onClick={() => setDraft(current => ({ ...current, reminderAfter: new Date(Date.now() + 3_600_000).toISOString() }))}>今から1時間延期</button><button type="button" onClick={() => setDraft(current => ({ ...current, reminderAfter: new Date(Date.now() + 86_400_000).toISOString() }))}>今から1日延期</button><button type="button" onClick={() => setDraft(current => ({ ...current, reminderAfter: null }))}>延期を解除</button></div>
+              </>}
+              {draft.voiceTranscript && <details><summary>元の音声メモ</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.voiceTranscript}</p></details>}
+            </div>
+          </details>
           <div className="form-grid">
             <div className="task-date-editor">
               <label>
@@ -2748,9 +2775,9 @@ function SettingsPage({
         <header>
           <Bell size={20} />
           <div>
-            <h2>iPhoneバックグラウンド通知</h2>
+            <h2>iPhoneバックグラウンド通知</h2><a href="./siri-setup.html" target="_blank" rel="noreferrer">Siriから仕事タスクを追加する設定</a>
             <p>
-              SASSHYを閉じていても、タスク開始・タイマー終了・メモの時刻に通知します。
+              SASSHYを閉じていても、タスク開始・タイマー終了・メモの時刻と、設定した仕事の未対応を通知します。
             </p>
           </div>
         </header>

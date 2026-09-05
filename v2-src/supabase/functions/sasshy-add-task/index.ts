@@ -1,3 +1,4 @@
+import { parseVoiceInput, extractVoiceTask } from './voice.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { parseTaskRequest, type AddTaskRequest } from './validation.ts';
 import {
@@ -81,7 +82,10 @@ Deno.serve(async (request: Request) => {
 
   let body: unknown;
   try {
-    body = await request.json();
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).length > 16_384) return respond(request, 413, { error: '入力が大きすぎます' });
+    body = JSON.parse(raw);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return respond(request, 400, { error: '入力を確認してください' });
   } catch (error) {
     return respond(request, 400, { error: '入力を確認してください' });
   }
@@ -92,6 +96,26 @@ Deno.serve(async (request: Request) => {
   const action = endpoint(request);
 
   try {
+    if (action === 'voice') {
+      const input = parseVoiceInput(body);
+      // Check before AI: a retry does not pay for extraction again or change relative dates.
+      const args = { p_sync_key: syncKey, p_idempotency_key: input.idempotency_key, p_transcript: input.transcript };
+      const existing = await client.rpc('sasshy_v2_ingest_voice_task', { ...args, p_task: null });
+      if (existing.error) throw existing.error;
+      let result = existing.data;
+      if (!result) {
+        const apiKey = Deno.env.get('OPENAI_API_KEY') || '';
+        if (!apiKey) return respond(request, 503, { error: '音声整理用のAIキーが未設定です。タスクは未登録です' });
+        const task = await extractVoiceTask(input.transcript, apiKey, Deno.env.get('SASSHY_VOICE_MODEL') || 'gpt-4.1-mini-2025-04-14');
+        const saved = await client.rpc('sasshy_v2_ingest_voice_task', { ...args, p_task: task });
+        if (saved.error) throw saved.error;
+        result = saved.data;
+      }
+      if (!result?.task?.id) throw new Error('保存を確認できませんでした。同じ受付番号で再試行してください');
+      return respond(request, 200, { ok: true, task_id: result.task.id, task: result.task, duplicate: Boolean(result.duplicate),
+        message: `${result.duplicate ? '登録済みです' : 'SASSHYに追加しました'}：${result.task.title}。期限：${result.task.dueDate || '未指定'} ${result.task.dueTime || ''}。相手：${result.task.counterparty || '未指定'}。依頼元：${result.task.requestSource || '未指定'}` });
+    }
+
     if (action === 'search') {
       const input = parseTaskSearchRequest(body as TaskSearchRequest);
       const { data, error } = await client.rpc('sasshy_v2_action_search_tasks', {
@@ -149,6 +173,7 @@ Deno.serve(async (request: Request) => {
         ? String(error.message)
         : '';
     console.error('sasshy task action failed');
+    if (message.includes('idempotency key')) return respond(request, 409, { error: '同じ受付番号が別の内容に使われています。新しい受付番号で送信してください' });
     if (message.includes('task was changed')) {
       return respond(request, 409, {
         error: '別の端末でタスクが更新されました。もう一度検索して最新内容を確認してください',

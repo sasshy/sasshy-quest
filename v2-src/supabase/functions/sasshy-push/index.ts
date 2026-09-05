@@ -1,3 +1,5 @@
+import { candidates } from './notifications.ts';
+import { workReminderSlot } from '../_shared/work-reminder.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
 
@@ -94,83 +96,6 @@ function validSubscription(value: unknown): value is WebPushSubscription {
     && typeof keys?.auth === 'string';
 }
 
-function taskNotification(record: StoredRecord): Candidate | null {
-  const value = record.payload;
-  const date = text(value.scheduledDate, 10);
-  const startMinute = Number(value.startMinute);
-  if (!date || !Number.isInteger(startMinute) || startMinute < 0 || startMinute > 1439) return null;
-  if (['done', 'archived'].includes(text(value.status, 20)) || value.deletedAt) return null;
-  const hour = String(Math.floor(startMinute / 60)).padStart(2, '0');
-  const minute = String(startMinute % 60).padStart(2, '0');
-  const at = Date.parse(`${date}T${hour}:${minute}:00+09:00`);
-  if (!Number.isFinite(at)) return null;
-  return {
-    workspaceHash: record.workspace_hash,
-    key: `task:${record.id}:${at}`,
-    at,
-    payload: {
-      title: '予定の時間です',
-      body: text(value.title, 180) || 'SASSHYのタスクを確認してください',
-      tag: `sasshy-task-${record.id}`,
-      kind: 'task',
-      sourceId: record.id,
-      url: './?open=calendar',
-    },
-  };
-}
-
-function memoNotification(record: StoredRecord): Candidate | null {
-  const value = record.payload;
-  if (value.archived || value.deletedAt) return null;
-  const at = Date.parse(text(value.reminderAt, 40));
-  if (!Number.isFinite(at)) return null;
-  return {
-    workspaceHash: record.workspace_hash,
-    key: `memo:${record.id}:${at}`,
-    at,
-    payload: {
-      title: text(value.title, 120) || 'SASSHYメモ',
-      body: text(value.body, 180) || '設定した時刻になりました',
-      tag: `sasshy-memo-${record.id}`,
-      kind: 'memo',
-      sourceId: record.id,
-      url: './?open=memos',
-    },
-  };
-}
-
-function sessionNotification(record: StoredRecord): Candidate | null {
-  const value = record.payload;
-  if (text(value.status, 20) !== 'running' || value.deletedAt) return null;
-  const startedAt = Date.parse(text(value.startedAt, 40));
-  const plannedSec = Number(value.plannedMin) * 60;
-  const carriedSec = Number(value.carriedElapsedSec || 0);
-  const pausedSec = Number(value.pausedTotalSec || 0);
-  const remainingAtStart = plannedSec - carriedSec;
-  if (![startedAt, plannedSec, carriedSec, pausedSec].every(Number.isFinite) || remainingAtStart <= 0) return null;
-  const at = startedAt + (remainingAtStart + pausedSec) * 1000;
-  return {
-    workspaceHash: record.workspace_hash,
-    key: `session:${record.id}:${at}`,
-    at,
-    payload: {
-      title: 'タイマーが終了しました',
-      body: text(value.taskTitle, 180) || '予定時間になりました',
-      tag: `sasshy-session-${record.id}`,
-      kind: 'timer',
-      sourceId: record.id,
-      url: './?open=today',
-    },
-  };
-}
-
-function candidate(record: StoredRecord): Candidate | null {
-  if (record.record_type === 'task') return taskNotification(record);
-  if (record.record_type === 'memo') return memoNotification(record);
-  if (record.record_type === 'session') return sessionNotification(record);
-  return null;
-}
-
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -212,9 +137,8 @@ Deno.serve(async (request: Request) => {
 
     const now = Date.now();
     const due = (records as StoredRecord[])
-      .map(candidate)
-      .filter((item): item is Candidate => Boolean(item))
-      .filter((item) => item.at >= now - 10 * 60_000 && item.at <= now + 75_000);
+      .flatMap((record) => candidates(record, now))
+      .filter((item) => item.at <= now && (item.payload.kind === 'work' || item.at >= now - 10 * 60_000));
     if (!due.length) return respond(request, 200, { ok: true, due: 0, sent: 0 });
 
     const workspaces = [...new Set(due.map((item) => item.workspaceHash))];
@@ -228,6 +152,11 @@ Deno.serve(async (request: Request) => {
     let sent = 0;
     for (const notice of due) {
       for (const subscription of (subscriptions as StoredSubscription[]).filter((item) => item.workspace_hash === notice.workspaceHash)) {
+        if (notice.payload.kind === 'work') {
+          const { data: latest, error: latestError } = await client.from('sasshy_v2_records')
+            .select('payload,deleted').match({ workspace_hash: notice.workspaceHash, record_type: 'task', id: notice.payload.sourceId }).maybeSingle();
+          if (latestError || !latest || latest.deleted || workReminderSlot(latest.payload, now) !== notice.at) continue;
+        }
         const delivery = {
           workspace_hash: notice.workspaceHash,
           notification_key: notice.key,

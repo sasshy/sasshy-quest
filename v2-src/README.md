@@ -64,3 +64,42 @@ v2.3では、ホーム画面へ追加したiPhone PWAへWeb Pushを送ります�
 ## 公開先
 
 GitHub Pagesの `/v2/` 配下へ `dist/` の内容を配置します。旧版のルート `/sasshy-quest/` はそのまま残します。
+
+## v2.6 Siri音声タスク・未対応再通知
+
+`POST /functions/v1/sasshy-add-task/voice` を追加。既存のBearer認証をそのまま使用し、
+`idempotency_key`（8〜120文字）と`transcript`（1〜4000文字）を受け付ける。
+OpenAI Structured Outputsでtitle/dueDate/dueTime/counterparty/requestSource/notesを抽出し、
+元の文字起こしと再通知ONを既存`sasshy_v2_records.payload`へ原子的に保存する。
+期限はscheduledDate/startMinute（作業予定）と分ける。テーブル追加・全件置換は行わない。
+
+- 先に `supabase/migrations/20260905122546_voice_tasks.sql` を適用。
+- Edge Function Secretsに `OPENAI_API_KEY` を設定。モデルの既定は `gpt-4.1-mini-2025-04-14`。
+  `SASSHY_VOICE_MODEL`で変更可。API料金はChatGPT契約とは別。
+- `sasshy-add-task` は `index.ts`、`validation.ts`、`management.ts`、`voice.ts` を一緒にデプロイ。
+- `sasshy-push` は `index.ts`、`notifications.ts`、`../_shared/work-reminder.ts` を一緒にデプロイ。
+  既存の毎分Cron・購読先・配信重複防止テーブルを再利用。
+- iPhoneの手順は `public/siri-setup.html`。受付トークンは既存設定から手元で入力する。
+  未署名のインポート用ショートカットは同梱せず、手順から作成する。
+- 同じ受付番号・同じ原文の再送は登録済み結果を返す。同じ番号・別原文は409。
+  AI失敗・未設定・不完全な出力では保存しない。元のJSONを残して同じ番号で再送する。
+- 日本時間の平日9〜18時、1時間おき。期限時刻なしは17時、期限なしは作成1時間後。
+  祝日は判定しない。既存タスクはOFF。作業開始/完了/削除/停止/延期は同期後に反映。
+  配信直前にも最新の仕事タスクを再取得し、完了や延期を確認する。
+- 本番にだけあったタイマー終了10分後・30分後の再通知もソースへ取り込んで維持。
+- 通常のpush/pullは既存の同期キー認証を維持。新RPCはSECURITY INVOKERかつservice_role限定。
+  既存同期RPCのSECURITY DEFINER警告は認証方式由来で、この変更で権限を広げない。
+
+検証: Vitest（AI応答はモック）、TypeScript/Viteビルド、実DBのトランザクション内で
+作成・重複・不一致を検証してrollback。実機のSiri・AI API・Web Push到着確認は別途必要。
+
+### この実装の反映状態（2026-09-05）
+
+- DBの新RPCは適用済み。既存タスクは変更していない。ロール制限・RLS確認済み。
+- ローカルの `feat/siri-work-tasks` にソースとv2生成物をコミット済み。
+- 53テストとアプリのTypeScript/Viteビルド成功。
+- Edge Functionsは未デプロイ、GitHub Pagesは未反映。
+- GitHubへのpushは自動承認審査が未許可の外部書き込みとして拒否。ユーザー許可後に作業ブランチをpushし下書きPRを作成する。
+- クラウドブラウザからローカル画面へERR_BLOCKED_BY_CLIENT。デスクトップ・iPhone幅のスクリーンショット確認は未完了で、本番公開の前に実施が必要。
+- OPENAI_API_KEYの設定有無は取得できていない。秘密の値をチャットやリポジトリへ貼らずSupabase側で設定する。
+- DenoのEdge全体チェックはJSR依存のダウンロード待ち。純粋ロジックはVitestで確認済み。

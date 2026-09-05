@@ -10,6 +10,13 @@ export interface Task {
   id: string;
   title: string;
   notes: string;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  counterparty?: string;
+  requestSource?: string;
+  voiceTranscript?: string;
+  reminderEnabled?: boolean;
+  reminderAfter?: string | null;
   status: TaskStatus;
   horizon: TaskHorizon;
   scheduledDate: string | null;
