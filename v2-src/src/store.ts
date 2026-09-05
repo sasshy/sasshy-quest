@@ -131,7 +131,7 @@ export async function updateTask(
     const next: Task = {
       ...before,
       ...changes,
-      status: changes.status || (before.status === 'done' || before.status === 'archived' ? before.status : scheduledDate ? 'planned' : 'inbox'),
+      status: changes.status || (before.status === 'done' || before.status === 'archived' || before.status === 'active' ? before.status : scheduledDate ? 'planned' : 'inbox'),
       scheduledDate,
       updatedAt: nowIso(),
       sync: { ...before.sync, deviceId },
