@@ -1,20 +1,26 @@
 # SASSHY QUEST Development Guide
 
-## Current product
+## Scope
 
 - Production app: `https://sasshy.github.io/sasshy-quest/v2/`
 - Source of truth: `v2-src/`
 - GitHub Pages output: `v2/`
-- Current release: v2.5.0
-- Repository: `https://github.com/sasshy/sasshy-quest`
+- The root single-file app is legacy. Do not add features there unless the user explicitly asks for a legacy fix.
 
-The old single-file application at the repository root is legacy. Do not add
-new features to it unless the user explicitly asks for a legacy fix.
+## Working style
 
-## Product priorities
+Keep the instruction stack small and bias toward completing the user's requested task.
 
-The owner has ADHD and uses the app on Mac Chrome and iPhone PWA. Reliability
-is more important than clever automation.
+- The user's explicit instructions take precedence over project workflow guidance and skill guidance, except where a higher-priority safety or data-integrity rule applies.
+- Infer routine details from the request, nearby code, and existing conventions. Ask a question only when missing information could materially change the result, cause data loss, or trigger an external action the user did not request.
+- Prefer the smallest change that fully solves the task. Do not refactor unrelated code while fixing a focused issue.
+- Default to a single agent. Do not spawn or delegate to subagents for ordinary code search, file reading, small edits, tests, or documentation. Use subagents only when the user explicitly asks, or when there are multiple genuinely independent workstreams and parallelism is likely to materially improve the result.
+- Load or follow only skills relevant to the current task. Do not invoke skills "just in case." If a skill or instruction file would force a confirmation, block requested work, or conflict with the user's intent, identify the exact file and rule instead of silently stopping.
+- Keep progress/final reports concise. Report what changed, verification performed, and any real unresolved risk.
+
+## Product invariants
+
+Reliability and low cognitive load are more important than clever automation.
 
 1. Never replace the complete task collection during ordinary sync.
 2. Store local edits first, then sync records individually.
@@ -22,7 +28,7 @@ is more important than clever automation.
 4. Destructive actions must remain recoverable through history or trash.
 5. Prefer visible, deterministic controls over fragile drag-only interaction.
 6. Keep the UI quiet and focused; hide unused controls instead of adding noise.
-7. Test both desktop and iPhone-width layouts for interaction changes.
+7. Preserve desktop and iPhone/PWA usability when an interaction is changed.
 
 ## Architecture
 
@@ -33,12 +39,28 @@ is more important than clever automation.
 - Web Speech and Web Push for timer guidance and background notifications
 - GitHub Pages deployment from the built `v2/` directory
 
-Task, memo, session, history, and outbox records are separate. Do not reintroduce
-whole-state last-write-wins syncing or collection replacement.
+Task, memo, session, history, and outbox records are separate. Do not reintroduce whole-state last-write-wins syncing or collection replacement.
 
-## Development workflow
+## Context loading
 
-Run commands from `v2-src/`:
+At the start of a task, read this file first, then inspect only the context needed for that task.
+
+- Read `WINDOWS_HANDOFF.md` only for Windows setup, cross-device handoff, or Windows publishing questions.
+- Read `v2-src/README.md` when architecture, deployment, Supabase, push, or ChatGPT task-management context is relevant.
+- In a mutable local checkout, inspect `git status` before editing so existing work is preserved. Inspect recent commits only when history is relevant to the requested change.
+- Do not reset, discard, or overwrite unrelated existing changes.
+
+## Validation proportional to risk
+
+Run the minimum meaningful verification for the change. Do not repeat broad checks after they have passed unless new changes, failures, or unresolved concerns justify it.
+
+- Documentation/instruction-only change: review the diff; runtime tests are normally unnecessary.
+- Small isolated logic change: run the closest relevant test(s), plus TypeScript/build checks when they can catch integration errors.
+- Sync, storage, auth, service worker, migration, or other data-sensitive change: run the relevant tests and `pnpm test` + `pnpm build` before release.
+- UI interaction/layout change: verify the affected desktop and iPhone-width behavior. Do not require screenshots for non-UI changes.
+- Do not add tests that merely mirror a reversible, low-impact implementation. Add tests when they protect meaningful behavior or a regression boundary.
+
+Commands run from `v2-src/` when needed:
 
 ```bash
 pnpm install
@@ -46,41 +68,21 @@ pnpm test
 pnpm build
 ```
 
-After a successful build, replace the generated contents of `v2/assets/` with
-`v2-src/dist/assets/`, and copy the other files from `v2-src/dist/` into `v2/`.
-Remove stale hashed assets before committing. Bump both the package version and
-the cache name in `v2-src/public/sw.js` for a release.
+## Release and publishing
 
-Before publishing:
+Do not deploy, push, or publish merely to complete a local implementation unless the user requested that external action.
 
-1. Run tests and TypeScript/build checks.
-2. Inspect desktop and iPhone-width screenshots.
-3. Verify task creation, editing, completion, reordering, and sync-sensitive
-   interactions touched by the change.
-4. Commit source and built output together.
-5. Push `main`, then confirm the new hashed assets and Service Worker are live.
+For an actual release, build from `v2-src/`, replace generated `v2/assets/` with `v2-src/dist/assets/`, copy the other `dist/` files into `v2/`, remove stale hashed assets, and keep source plus built output together. Bump the package version and `v2-src/public/sw.js` cache name when the release requires a version bump.
 
-## Secrets and data
+Before publishing a runtime change, complete the validation appropriate to its risk and verify only the user-visible/sync-sensitive interactions touched by that change.
 
-Never commit or paste these into documentation:
+## Secrets and access boundaries
 
-- Supabase publishable key
-- Supabase service-role key
-- SASSHY sync key
-- ChatGPT task-management bearer token
-- VAPID private key
+Never commit or paste secrets into repository documentation, including:
 
-Use the existing browser settings or Supabase project secrets. The ChatGPT task
-management Edge Function may access tasks only; do not broaden it to memos,
-timer history, or sync settings without explicit approval.
+- Supabase publishable/service-role credentials
+- SASSHY sync keys
+- ChatGPT task-management bearer tokens
+- VAPID private keys
 
-## Start of a new Codex chat
-
-Read these files first:
-
-1. `AGENTS.md`
-2. `WINDOWS_HANDOFF.md`
-3. `v2-src/README.md`
-
-Then run `git status`, inspect recent commits, and work with existing changes
-instead of resetting them.
+Use existing browser settings or Supabase project secrets. The ChatGPT task-management Edge Function may access tasks only; do not broaden it to memos, timer history, or sync settings without explicit user approval.
