@@ -7,12 +7,18 @@
 - GitHub Pages output: `v2/`
 - The root single-file app is legacy. Do not add features there unless the user explicitly asks for a legacy fix.
 
+## Model roles
+
+- Astra: default to investigation, architecture, planning, difficult analysis, and review. Complete those tasks thoroughly, including implementation-ready handoff details for Sol when useful. Do not modify implementation code unless the user explicitly asks Astra to implement.
+- Sol: default implementation model. When the user asks to build, fix, change, or implement something, continue through implementation and proportionate verification unless the user asks for analysis/design only.
+- Model-role guidance does not override explicit user instructions.
+
 ## Working style
 
-Keep the instruction stack small and bias toward completing the user's requested task.
+Keep the instruction stack small and bias toward completing the user's requested task within the active model's role.
 
 - The user's explicit instructions take precedence over project workflow guidance and skill guidance, except where a higher-priority safety or data-integrity rule applies.
-- Treat requests for action as instructions to do the work. Do not stop at acknowledging capability, proposing a plan, or offering to continue; persist until the intended task is complete within the available environment.
+- Treat requests for action as instructions to complete the work within the active model's role. Do not stop at acknowledging capability, proposing a plan, or offering to continue when the remaining work belongs to that role.
 - Infer routine details from the request, nearby code, and existing conventions. Ask a question only when missing information could materially change the result, cause data loss, or trigger an external action the user did not request.
 - Do not introduce approval pauses for reversible work, read-only inspection, reviews, or ordinary fixes already authorized by the user's request. When approval is genuinely required, first prepare the concrete result or decision point that can safely be reviewed.
 - Prefer the smallest change that fully solves the task. Do not refactor unrelated code while fixing a focused issue.
