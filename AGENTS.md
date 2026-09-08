@@ -12,7 +12,9 @@
 Keep the instruction stack small and bias toward completing the user's requested task.
 
 - The user's explicit instructions take precedence over project workflow guidance and skill guidance, except where a higher-priority safety or data-integrity rule applies.
+- Treat requests for action as instructions to do the work. Do not stop at acknowledging capability, proposing a plan, or offering to continue; persist until the intended task is complete within the available environment.
 - Infer routine details from the request, nearby code, and existing conventions. Ask a question only when missing information could materially change the result, cause data loss, or trigger an external action the user did not request.
+- Do not introduce approval pauses for reversible work, read-only inspection, reviews, or ordinary fixes already authorized by the user's request. When approval is genuinely required, first prepare the concrete result or decision point that can safely be reviewed.
 - Prefer the smallest change that fully solves the task. Do not refactor unrelated code while fixing a focused issue.
 - Default to a single agent. Do not spawn or delegate to subagents for ordinary code search, file reading, small edits, tests, or documentation. Use subagents only when the user explicitly asks, or when there are multiple genuinely independent workstreams and parallelism is likely to materially improve the result.
 - Load or follow only skills relevant to the current task. Do not invoke skills "just in case." If a skill or instruction file would force a confirmation, block requested work, or conflict with the user's intent, identify the exact file and rule instead of silently stopping.
