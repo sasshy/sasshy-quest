@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { AppSetting, FocusSession, GoogleCalendarConfig, GoogleCalendarEvent, HistoryEntry, Memo, OutboxItem, PushConfig, Task } from './types';
+import type { AppSetting, FocusSession, GoogleCalendarConfig, GoogleCalendarEvent, HistoryEntry, Memo, OutboxItem, PushConfig, ScheduleHistoryEntry, ScheduleOutboxItem, Task } from './types';
 
 export class SasshyDatabase extends Dexie {
   tasks!: EntityTable<Task, 'id'>;
@@ -7,6 +7,8 @@ export class SasshyDatabase extends Dexie {
   memos!: EntityTable<Memo, 'id'>;
   history!: EntityTable<HistoryEntry, 'id'>;
   outbox!: EntityTable<OutboxItem, 'id'>;
+  scheduleHistory!: EntityTable<ScheduleHistoryEntry, 'id'>;
+  scheduleOutbox!: EntityTable<ScheduleOutboxItem, 'id'>;
   settings!: EntityTable<AppSetting, 'id'>;
 
   constructor(name = 'sasshy-v2') {
@@ -17,6 +19,16 @@ export class SasshyDatabase extends Dexie {
       memos: 'id, category, pinned, reminderAt, updatedAt, deletedAt',
       history: 'id, entityType, entityId, createdAt, source',
       outbox: '++id, [entityType+entityId], createdAt',
+      settings: 'id',
+    });
+    this.version(2).stores({
+      tasks: 'id, status, horizon, scheduledDate, updatedAt, deletedAt',
+      sessions: 'id, taskId, status, startedAt, updatedAt, deletedAt',
+      memos: 'id, category, pinned, reminderAt, updatedAt, deletedAt',
+      history: 'id, entityType, entityId, createdAt, source',
+      outbox: '++id, [entityType+entityId], createdAt',
+      scheduleHistory: 'id, taskId, targetVersionId, occurredAt, [taskId+occurredAt]',
+      scheduleOutbox: '++id, [taskId+operationId], taskId, createdAt',
       settings: 'id',
     });
   }

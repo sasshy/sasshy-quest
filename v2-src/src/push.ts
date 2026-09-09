@@ -11,6 +11,12 @@ interface PushResponse {
   message?: string;
 }
 
+export interface WorkStartNotificationStatus {
+  attempts: number;
+  limit: number;
+  reached: boolean;
+}
+
 export interface PushSupport {
   supported: boolean;
   installed: boolean;
@@ -213,4 +219,22 @@ export async function testPushNotification(): Promise<PushConfig> {
     lastError: '',
     enabled: true,
   });
+}
+
+export async function getWorkStartNotificationStatus(
+  taskId: string,
+  dateKey: string,
+): Promise<WorkStartNotificationStatus> {
+  const config = await getSyncConfig();
+  validateSync(config);
+  const response = await pushRequest<PushResponse & WorkStartNotificationStatus>(
+    config,
+    'work-start-status',
+    { syncKey: config.syncKey, taskId, dateKey },
+  );
+  return {
+    attempts: Math.max(0, Number(response.attempts) || 0),
+    limit: Math.max(1, Number(response.limit) || 2),
+    reached: Boolean(response.reached),
+  };
 }

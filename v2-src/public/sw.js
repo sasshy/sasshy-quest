@@ -1,7 +1,11 @@
-const CACHE = 'sasshy-v2-2.5.0';
+const CACHE = 'sasshy-v2-2.6.0-calendar';
+const APP_SHELL = ['./', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', './manifest.webmanifest', './icon.svg'])));
+  event.waitUntil(caches.open(CACHE).then(async (cache) => {
+    await cache.add(new Request('./', { cache: 'reload' }));
+    await Promise.allSettled(APP_SHELL.slice(1).map((url) => cache.add(url)));
+  }));
   self.skipWaiting();
 });
 
@@ -14,7 +18,10 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const requestUrl = new URL(event.request.url);
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request, { cache: 'no-store' }).catch(() => caches.match('./')));
+    event.respondWith(fetch(event.request, { cache: 'no-store' }).then((response) => {
+      if (response.ok) caches.open(CACHE).then((cache) => cache.put('./', response.clone()));
+      return response;
+    }).catch(() => caches.match('./')));
     return;
   }
   if (requestUrl.origin !== self.location.origin) return;

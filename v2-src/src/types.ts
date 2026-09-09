@@ -1,5 +1,33 @@
 export type TaskStatus = 'inbox' | 'planned' | 'active' | 'done' | 'archived';
 export type TaskHorizon = 'now' | 'someday' | 'wish' | 'waiting';
+export type MorningProgress = 'unrecorded' | 'not_started' | 'partial' | 'completed';
+
+export interface WorkStartDay {
+  enabled: boolean;
+  anchorText: string;
+  currentTargetAt: string;
+  reviewOn: string;
+  deadlineAt: string;
+  remainingEstimateMin: number;
+  bufferMin: number;
+  latestSafeStartAt: string;
+  workStartedAt: string | null;
+  firstContactAt: string | null;
+  mainStartedAt: string | null;
+  mainStartReportedAt: string | null;
+  mainSessionId: string | null;
+  morningMilestone: string;
+  morningProgress: MorningProgress;
+  progressRecordedAt: string | null;
+  snoozedUntil: string | null;
+  skippedAt: string | null;
+  notificationEndpointHash: string;
+}
+
+export interface WorkStartSupport {
+  version: 1;
+  days: Record<string, WorkStartDay>;
+}
 
 export interface SyncMeta {
   serverUpdatedAt?: string;
@@ -14,6 +42,14 @@ export interface Task {
   horizon: TaskHorizon;
   scheduledDate: string | null;
   startMinute: number | null;
+  /** Identifies the currently-active placement of this task on the calendar. */
+  scheduleVersionId?: string | null;
+  /**
+   * Whether this task should interrupt the user at its scheduled start.
+   * Undefined is kept for pre-setting data so it can be reviewed without
+   * silently disabling a possibly important existing notification.
+   */
+  scheduledStartNotification?: boolean;
   flowOrder?: number;
   durationMin: number;
   estimateMin: number;
@@ -25,6 +61,7 @@ export interface Task {
   deletedAt: string | null;
   source: 'v2' | 'legacy';
   legacyId?: string;
+  workStartSupport?: WorkStartSupport;
   sync: SyncMeta;
 }
 
@@ -82,6 +119,10 @@ export interface TaskUndoAction {
   after: Task | null;
   expectedUpdatedAt: string | null;
   createdAt: string;
+  beforeGroup?: Task[];
+  afterGroup?: Task[];
+  scheduleOperationIds?: string[];
+  expectedUpdatedAts?: Record<string, string>;
 }
 
 export interface UndoRedoSetting {
@@ -98,6 +139,68 @@ export interface OutboxItem {
   deleted: boolean;
   createdAt: string;
   attempts: number;
+}
+
+export type ScheduleOperation =
+  | 'schedule'
+  | 'reschedule'
+  | 'adjust_date'
+  | 'adjust_time'
+  | 'adjust_duration'
+  | 'unschedule'
+  | 'set_result'
+  | 'correct_result'
+  | 'revert'
+  | 'reapply'
+  | 'resolve_conflict';
+
+export type ScheduleResult =
+  | 'unconfirmed'
+  | 'completed'
+  | 'not_done'
+  | 'cancelled'
+  | 'skipped';
+
+export interface ScheduleSnapshot {
+  scheduleVersionId: string | null;
+  scheduledDate: string | null;
+  startMinute: number | null;
+  durationMin: number;
+  title: string;
+}
+
+export interface ScheduleHistoryEntry {
+  id: string;
+  taskId: string;
+  operationGroupId: string | null;
+  beforeVersionId: string | null;
+  afterVersionId: string | null;
+  targetVersionId: string | null;
+  operation: ScheduleOperation;
+  result: ScheduleResult;
+  before: ScheduleSnapshot | null;
+  after: ScheduleSnapshot | null;
+  title: string;
+  occurredAt: string;
+  serverReceivedAt: string | null;
+  deviceId: string;
+  source: 'local' | 'remote' | 'external';
+  relatedEntryId: string | null;
+  reason: string;
+}
+
+export interface ScheduleOutboxItem {
+  id?: number;
+  operationId: string;
+  taskId: string;
+  baseRevision: string | null;
+  taskPayload: Task;
+  updateTask: boolean;
+  history: ScheduleHistoryEntry;
+  createdAt: string;
+  attempts: number;
+  conflictRevision?: string | null;
+  conflictTask?: Task | null;
 }
 
 export interface SyncConfig {

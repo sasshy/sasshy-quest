@@ -11,7 +11,7 @@ const emptyResponse = () => ({
 
 beforeEach(async () => {
   await db.open();
-  await Promise.all([db.tasks.clear(), db.sessions.clear(), db.memos.clear(), db.history.clear(), db.outbox.clear(), db.settings.clear()]);
+  await Promise.all([db.tasks.clear(), db.sessions.clear(), db.memos.clear(), db.history.clear(), db.outbox.clear(), db.scheduleHistory.clear(), db.scheduleOutbox.clear(), db.settings.clear()]);
   await ensureDefaults();
   await saveSyncConfig({
     enabled: true,
@@ -42,8 +42,8 @@ describe('sync resume coordination', () => {
     syncNow();
     releaseFirst?.(emptyResponse());
     await first;
-    await new Promise((resolve) => window.setTimeout(resolve, 20));
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4), {
+      timeout: 1_000,
+    });
   });
 });

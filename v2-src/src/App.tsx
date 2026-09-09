@@ -72,6 +72,7 @@ import {
   restoreHistoryEntry,
   getUndoRedoState,
   pauseFocusSession,
+  recordExistingMainWork,
   redoLatestTaskChange,
   reorderTasksForDay,
   restoreTask,
@@ -87,6 +88,17 @@ import {
   updateSession,
   updateTask,
 } from "./store";
+import { WorkStartPanel } from "./WorkStartPanel";
+import { CalendarDayDetail } from "./CalendarDayDetail";
+import {
+  ScheduleEditorSheet,
+  type ScheduleDraftSeed,
+} from "./ScheduleEditorSheet";
+import { ScheduleHistoryPanel } from "./ScheduleHistoryPanel";
+import {
+  latestResultsByVersion,
+  scheduleResultLabel,
+} from "./schedule-history";
 import {
   getSyncConfig,
   getSyncState,
@@ -111,6 +123,8 @@ import type {
   HistoryEntry,
   Memo,
   PushConfig,
+  ScheduleHistoryEntry,
+  ScheduleOutboxItem,
   SyncConfig,
   Task,
   TaskHorizon,
@@ -141,7 +155,10 @@ import {
   parseTaskLink,
   type ParsedTaskLink,
 } from "./task-link";
-import setupSql from "../supabase-setup.sql?raw";
+import baseSetupSql from "../supabase-setup.sql?raw";
+import calendarHistorySql from "../supabase-calendar-history.sql?raw";
+
+const setupSql = `${baseSetupSql}\n\n${calendarHistorySql}`;
 
 type Page =
   | "today"
@@ -152,6 +169,43 @@ type Page =
   | "history"
   | "settings";
 type CalendarMode = "day" | "week" | "month";
+
+function formatCalendarTitle(info: DatesSetArg): string {
+  const current = info.view.calendar.getDate();
+  if (info.view.type === "timeGridDay") {
+    return new Intl.DateTimeFormat("ja-JP", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "short",
+    }).format(current);
+  }
+  if (info.view.type === "dayGridMonth") {
+    return new Intl.DateTimeFormat("ja-JP", {
+      year: "numeric",
+      month: "long",
+    }).format(current);
+  }
+
+  const start = info.view.currentStart;
+  const end = new Date(info.view.currentEnd);
+  end.setDate(end.getDate() - 1);
+  const startLabel = new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).format(start);
+  const endLabel =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth()
+      ? `${end.getDate()}日`
+      : new Intl.DateTimeFormat("ja-JP", {
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+        }).format(end);
+  return `${startLabel} – ${endLabel}`;
+}
 
 const PAGE_LABEL: Record<Page, string> = {
   today: "今日",
@@ -588,11 +642,15 @@ function WorkLogRow({ session }: { session: FocusSession }) {
 function TaskEditor({
   task,
   sessions,
+  scheduleHistory,
+  scheduleConflicts,
   onClose,
   onStart,
 }: {
   task: Task;
   sessions: FocusSession[];
+  scheduleHistory: ScheduleHistoryEntry[];
+  scheduleConflicts: ScheduleOutboxItem[];
   onClose: () => void;
   onStart: (task: Task) => void;
 }) {
@@ -637,6 +695,7 @@ function TaskEditor({
           horizon: draft.horizon,
           scheduledDate: draft.scheduledDate,
           startMinute: draft.startMinute,
+          scheduledStartNotification: draft.scheduledStartNotification,
           estimateMin: Math.max(5, Number(draft.estimateMin) || 25),
           durationMin: Math.max(
             5,
@@ -804,6 +863,38 @@ function TaskEditor({
                 }}
               />
             </label>
+            <label className="task-notification-choice">
+              <span>予定開始の通知</span>
+              <select
+                aria-label="予定開始の通知"
+                disabled={!draft.scheduledDate || draft.startMinute === null}
+                value={draft.scheduledStartNotification === undefined
+                  ? "legacy"
+                  : draft.scheduledStartNotification
+                    ? "on"
+                    : "off"}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({
+                    ...current,
+                    scheduledStartNotification: value === "legacy" ? undefined : value === "on",
+                  }));
+                }}
+              >
+                {draft.scheduledStartNotification === undefined && (
+                  <option value="legacy">要確認（旧設定を一時継続）</option>
+                )}
+                <option value="off">OFF（通知しない）</option>
+                <option value="on">ON（開始時刻に1回）</option>
+              </select>
+              <small>
+                {draft.scheduledStartNotification === undefined
+                  && draft.scheduledDate
+                  && draft.startMinute !== null
+                  ? "必要ならON、不要ならOFFを選んで保存してください"
+                  : "このタスクだけの通知設定です"}
+              </small>
+            </label>
             <label>
               <span>予定時間</span>
               <input
@@ -900,6 +991,12 @@ function TaskEditor({
               )}
             </div>
           )}
+          <ScheduleHistoryPanel
+            task={task}
+            entries={scheduleHistory}
+            conflicts={scheduleConflicts}
+            onChanged={onClose}
+          />
           <section className="work-log-section">
             <header>
               <div>
@@ -1032,13 +1129,15 @@ function TaskEditor({
 function TodayPage({
   tasks,
   sessions,
+  syncState,
   onEdit,
   onStart,
 }: {
   tasks: Task[];
   sessions: FocusSession[];
+  syncState: SyncState;
   onEdit: (task: Task) => void;
-  onStart: (task: Task) => void;
+  onStart: (task: Task) => Promise<void>;
 }) {
   const today = todayKey();
   const dayTasks = tasks
@@ -1091,33 +1190,13 @@ function TodayPage({
   return (
     <div className="page-content today-page">
       <QuickAdd defaultDate={today} />
-      <section className="focus-band">
-        <div>
-          <span className="eyebrow">NOW</span>
-          <h2>今やる</h2>
-        </div>
-        {focus ? (
-          <div className="focus-task">
-            <div>
-              <strong>{focus.title}</strong>
-              <span>{focus.estimateMin}分だけ、ここから始める</span>
-            </div>
-            <button
-              className="start-button"
-              type="button"
-              onClick={() => onStart(focus)}
-            >
-              <Play size={22} fill="currentColor" />
-              開始
-            </button>
-          </div>
-        ) : (
-          <EmptyState
-            title="いまは空です"
-            detail="今日のタスクを追加すると、ここに1件だけ出します"
-          />
-        )}
-      </section>
+      <WorkStartPanel
+        tasks={tasks}
+        sessions={sessions}
+        fallbackTask={focus || null}
+        syncState={syncState}
+        onStart={onStart}
+      />
       {dayTasks.length > 0 && (
         <DayFlow
           tasks={dayTasks}
@@ -1327,24 +1406,46 @@ function DayFlow({
 function CalendarPage({
   tasks,
   sessions,
+  scheduleHistory,
   onEdit,
   onStart,
 }: {
   tasks: Task[];
   sessions: FocusSession[];
+  scheduleHistory: ScheduleHistoryEntry[];
   onEdit: (task: Task) => void;
   onStart: (task: Task) => void;
 }) {
+  const mobile = useMobile();
   const calendarRef = useRef<FullCalendar>(null);
   const backlogRef = useRef<HTMLDivElement>(null);
   const calendarSurfaceRef = useRef<HTMLElement>(null);
   const edgeMoveRef = useRef<{ taskId: string; direction: -1 | 1 } | null>(
     null,
   );
-  const [mode, setMode] = useState<CalendarMode>("week");
+  const [mode, setMode] = useState<CalendarMode>(() => {
+    const device = matchMedia("(max-width: 760px)").matches
+      ? "mobile"
+      : "desktop";
+    const saved = localStorage.getItem(`sasshy-calendar-view-${device}`);
+    return saved === "day" || saved === "week" || saved === "month"
+      ? saved
+      : device === "mobile"
+        ? "day"
+        : "week";
+  });
   const [title, setTitle] = useState("");
   const [activeDate, setActiveDate] = useState(todayKey());
   const [search, setSearch] = useState("");
+  const [showResults, setShowResults] = useState(false);
+  const [backlogOpen, setBacklogOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [scheduleEditor, setScheduleEditor] = useState<{
+    task: Task | null;
+    seed: ScheduleDraftSeed;
+  } | null>(null);
+  const [message, setMessage] = useState("");
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const ignoreEventClickUntil = useRef(0);
   const googleCalendar =
@@ -1377,7 +1478,10 @@ function CalendarPage({
   const events = useMemo<EventInput[]>(
     () =>
       tasks
-        .filter((task) => !task.deletedAt && task.scheduledDate)
+        .filter(
+          (task) =>
+            !task.deletedAt && task.status !== "done" && task.scheduledDate,
+        )
         .map((task) => {
           const start = taskStart(task)!;
           const allDay = task.startMinute === null;
@@ -1394,8 +1498,8 @@ function CalendarPage({
             durationEditable: !allDay,
             classNames: [
               `task-event`,
-              task.status === "done" ? "is-done" : "",
               task.importance ? "is-important" : "",
+              task.scheduledDate! < todayKey() ? "is-unconfirmed-past" : "",
             ].filter(Boolean),
             extendedProps: {
               taskId: task.id,
@@ -1474,10 +1578,62 @@ function CalendarPage({
       });
     return [...completedSessions, ...manualCompletions];
   }, [sessions, tasks]);
+  const resultEvents = useMemo<EventInput[]>(() => {
+    const results = latestResultsByVersion(scheduleHistory);
+    const snapshots = new Map<
+      string,
+      { snapshot: NonNullable<ScheduleHistoryEntry["before"]>; taskId: string }
+    >();
+    scheduleHistory.forEach((entry) => {
+      [entry.before, entry.after].forEach((snapshot) => {
+        if (snapshot?.scheduleVersionId) {
+          snapshots.set(snapshot.scheduleVersionId, {
+            snapshot,
+            taskId: entry.taskId,
+          });
+        }
+      });
+    });
+    return [...results.entries()].flatMap(([versionId, result]) => {
+      if (result === "unconfirmed") return [];
+      const version = snapshots.get(versionId);
+      const snapshot = version?.snapshot;
+      if (!version || !snapshot?.scheduledDate) return [];
+      const [year, month, day] = snapshot.scheduledDate.split("-").map(Number);
+      const start = new Date(year, month - 1, day);
+      if (snapshot.startMinute !== null) {
+        start.setHours(
+          Math.floor(snapshot.startMinute / 60),
+          snapshot.startMinute % 60,
+          0,
+          0,
+        );
+      }
+      return [
+        {
+          id: `schedule-result:${versionId}`,
+          title: `結果 ${scheduleResultLabel[result]} · ${snapshot.title}`,
+          start,
+          end:
+            snapshot.startMinute === null
+              ? undefined
+              : new Date(start.getTime() + snapshot.durationMin * 60_000),
+          allDay: snapshot.startMinute === null,
+          editable: false,
+          durationEditable: false,
+          classNames: ["schedule-result-event", `is-${result}`],
+          extendedProps: {
+            taskId: version.taskId,
+            scheduleResult: true,
+          },
+        } satisfies EventInput,
+      ];
+    });
+  }, [scheduleHistory]);
   const calendarEvents = useMemo<EventInput[]>(
     () => [
       ...events,
-      ...actualEvents,
+      ...(showResults ? [...resultEvents, ...actualEvents] : []),
       ...(googleCalendar.enabled
         ? googleCalendar.events.map((event) => ({
             id: `google:${event.id}`,
@@ -1493,7 +1649,7 @@ function CalendarPage({
           }))
         : []),
     ],
-    [actualEvents, events, googleCalendar],
+    [actualEvents, events, googleCalendar, resultEvents, showResults],
   );
 
   useEffect(() => {
@@ -1513,7 +1669,7 @@ function CalendarPage({
   ]);
 
   useEffect(() => {
-    if (!backlogRef.current) return;
+    if (mobile || !backlogRef.current) return;
     const draggable = new Draggable(backlogRef.current, {
       itemSelector: ".backlog-card",
       eventData: (element) => ({
@@ -1523,7 +1679,7 @@ function CalendarPage({
       }),
     });
     return () => draggable.destroy();
-  }, [unscheduled.length]);
+  }, [mobile, unscheduled.length]);
 
   const viewFor = (nextMode: CalendarMode) =>
     nextMode === "day"
@@ -1533,7 +1689,53 @@ function CalendarPage({
         : "timeGridWeek";
   const changeMode = (nextMode: CalendarMode) => {
     setMode(nextMode);
+    localStorage.setItem(
+      `sasshy-calendar-view-${mobile ? "mobile" : "desktop"}`,
+      nextMode,
+    );
     calendarRef.current?.getApi().changeView(viewFor(nextMode));
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem(
+      `sasshy-calendar-view-${mobile ? "mobile" : "desktop"}`,
+    );
+    const nextMode =
+      saved === "day" || saved === "week" || saved === "month"
+        ? saved
+        : mobile
+          ? "day"
+          : "week";
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    calendarRef.current?.getApi().changeView(viewFor(nextMode));
+  }, [mobile]);
+
+  const openScheduleDraft = (
+    scheduledDate: string,
+    startMinute: number | null,
+    durationMin = 25,
+  ) => {
+    setScheduleEditor({
+      task: null,
+      seed: { scheduledDate, startMinute, durationMin },
+    });
+  };
+
+  const openScheduleMove = (task: Task) => {
+    setScheduleEditor({
+      task,
+      seed: {
+        scheduledDate: task.scheduledDate || activeDate,
+        startMinute: task.startMinute,
+        durationMin: task.durationMin,
+      },
+    });
+  };
+
+  const showMessage = (nextMessage: string) => {
+    setMessage(nextMessage);
+    window.setTimeout(() => setMessage(""), 3600);
   };
 
   const saveEventDate = async (
@@ -1547,14 +1749,24 @@ function CalendarPage({
     const durationMin = end
       ? Math.max(5, Math.round((end.getTime() - start.getTime()) / 60_000))
       : undefined;
-    await updateTask(
-      taskId,
-      {
-        scheduledDate: compactDate(start),
-        startMinute: allDay ? null : start.getHours() * 60 + start.getMinutes(),
-        ...(durationMin ? { durationMin, estimateMin: durationMin } : {}),
-      },
-      label,
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const scheduledDate = compactDate(start);
+    const startMinute = allDay
+      ? null
+      : start.getHours() * 60 + start.getMinutes();
+    if (
+      task.scheduledDate === scheduledDate &&
+      task.startMinute === startMinute &&
+      (!durationMin || task.durationMin === durationMin)
+    ) return;
+    await updateTask(taskId, {
+      scheduledDate,
+      startMinute,
+      ...(durationMin ? { durationMin, estimateMin: durationMin } : {}),
+    }, label);
+    showMessage(
+      `${task.title}を ${scheduledDate} ${formatMinute(startMinute)} へ移動しました`,
     );
     syncNow().catch(() => undefined);
   };
@@ -1612,7 +1824,10 @@ function CalendarPage({
         taskId,
         { durationMin: nextDuration, estimateMin: nextDuration },
         "カレンダーで時間を変更",
-      ).then(() => syncNow().catch(() => undefined));
+      ).then(() => {
+        showMessage(`${task.title}を ${nextDuration}分に変更しました`);
+        syncNow().catch(() => undefined);
+      });
     };
     window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", finish);
@@ -1652,6 +1867,7 @@ function CalendarPage({
   const finishEventDrag = (info: EventDragStopArg) => {
     setInteractionActive(false);
     setDraggingTaskId(null);
+    if (mobile) return;
     const rect = calendarSurfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
     const edgeSize = Math.min(64, rect.width * 0.18);
@@ -1695,62 +1911,82 @@ function CalendarPage({
           </IconButton>
           <strong>{title}</strong>
         </div>
-        <div className="segmented" aria-label="カレンダー表示">
-          {(["day", "week", "month"] as CalendarMode[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={mode === item ? "active" : ""}
-              onClick={() => changeMode(item)}
-            >
-              {item === "day" ? "日" : item === "week" ? "週" : "月"}
-            </button>
-          ))}
+        <div className="calendar-toolbar-actions">
+          <label className="calendar-results-toggle">
+            <input
+              type="checkbox"
+              checked={showResults}
+              onChange={(event) => setShowResults(event.currentTarget.checked)}
+            />
+            結果
+          </label>
+          <div className="segmented" aria-label="カレンダー表示">
+            {(["day", "week", "month"] as CalendarMode[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={mode === item ? "active" : ""}
+                onClick={() => changeMode(item)}
+              >
+                {item === "day" ? "日" : item === "week" ? "週" : "月"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="calendar-layout">
-        <aside className="backlog-panel">
-          <header>
+        <aside className={`backlog-panel${backlogOpen ? " open" : ""}`}>
+          <button
+            className="backlog-toggle"
+            type="button"
+            aria-expanded={mobile ? backlogOpen : true}
+            onClick={() => mobile && setBacklogOpen((value) => !value)}
+          >
             <div>
               <span className="section-kicker">UNSCHEDULED</span>
               <h2>日付なし</h2>
             </div>
             <span>{unscheduled.length}</span>
-          </header>
-          <div className="backlog-search">
-            <Search size={16} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="絞り込み"
-            />
-          </div>
-          <QuickAdd defaultDate={null} />
-          <div ref={backlogRef} className="backlog-list">
-            {unscheduled.map((task) => (
-              <div
-                key={task.id}
-                className="backlog-card"
-                data-task-id={task.id}
-                data-title={task.title}
-                data-duration={task.estimateMin}
-              >
-                <button type="button" onClick={() => onEdit(task)}>
-                  <strong>{task.title}</strong>
-                  <span>{task.estimateMin}分</span>
-                </button>
-                <IconButton label="タイマー" onClick={() => onStart(task)}>
-                  <Play size={16} />
-                </IconButton>
+            {mobile && (backlogOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
+          </button>
+          {(!mobile || backlogOpen) && (
+            <div className="backlog-body">
+              <div className="backlog-search">
+                <Search size={16} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="絞り込み"
+                />
               </div>
-            ))}
-          </div>
+              <QuickAdd defaultDate={null} />
+              <div ref={backlogRef} className="backlog-list">
+                {unscheduled.map((task) => (
+                  <div
+                    key={task.id}
+                    className="backlog-card"
+                    data-task-id={task.id}
+                    data-title={task.title}
+                    data-duration={task.estimateMin}
+                  >
+                    <button type="button" onClick={() => onEdit(task)}>
+                      <strong>{task.title}</strong>
+                      <span>{task.estimateMin}分</span>
+                    </button>
+                    <IconButton label="タイマー" onClick={() => onStart(task)}>
+                      <Play size={16} />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
         <section
           className={`calendar-surface${mode === "day" ? " has-day-order" : ""}`}
           ref={calendarSurfaceRef}
         >
-          {draggingTaskId && (
+          {draggingTaskId && !mobile && (
             <>
               <div className="calendar-edge-drop previous">
                 <ChevronLeft size={20} />
@@ -1774,7 +2010,21 @@ function CalendarPage({
               </div>
             </>
           )}
-          {mode === "day" && visibleDayTasks.length > 0 && (
+          {mode === "day" && visibleDayTasks.length > 0 && mobile && (
+            <button
+              className="calendar-order-toggle"
+              type="button"
+              aria-expanded={orderOpen}
+              onClick={() => setOrderOpen((value) => !value)}
+            >
+              <span>この日の順番</span>
+              <strong>{visibleDayTasks.length}件</strong>
+              {orderOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          )}
+          {mode === "day" &&
+            visibleDayTasks.length > 0 &&
+            (!mobile || orderOpen) && (
             <section className="calendar-day-order" aria-label="表示日のタスク順">
               <header>
                 <strong>この日の順番</strong>
@@ -1784,7 +2034,7 @@ function CalendarPage({
                 {visibleDayTasks.map((task, index) => (
                   <li key={task.id}>
                     <span>{index + 1}</span>
-                    <button type="button" onClick={() => onEdit(task)}>
+                    <button type="button" onClick={() => mobile ? openScheduleMove(task) : onEdit(task)}>
                       <strong>{task.title}</strong>
                       <small>{formatMinute(task.startMinute)} · {task.estimateMin}分</small>
                     </button>
@@ -1808,7 +2058,7 @@ function CalendarPage({
                 ))}
               </ol>
             </section>
-          )}
+            )}
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -1820,8 +2070,9 @@ function CalendarPage({
             editable
             longPressDelay={350}
             eventLongPressDelay={350}
-            selectable
-            droppable
+            selectable={!mobile && mode !== "month"}
+            droppable={!mobile}
+            dragScroll
             eventResizableFromStart
             allDaySlot
             allDayText="時刻なし"
@@ -1830,8 +2081,11 @@ function CalendarPage({
             slotDuration="00:15:00"
             snapDuration="00:05:00"
             scrollTime="08:00:00"
-            height="100%"
+            height={mode === "month" ? "auto" : "100%"}
             dayMaxEvents={4}
+            moreLinkClick={(info) => {
+              setSelectedDate(compactDate(info.date));
+            }}
             events={calendarEvents}
             eventOrder={(a: unknown, b: unknown) => {
               const first = a as { flowOrder?: number };
@@ -1842,26 +2096,50 @@ function CalendarPage({
               );
             }}
             datesSet={(info: DatesSetArg) => {
-              setTitle(info.view.title);
-              setActiveDate(compactDate(info.start));
+              setTitle(formatCalendarTitle(info));
+              const focusedDate = compactDate(info.view.calendar.getDate());
+              setActiveDate(focusedDate);
+              if (mobile && info.view.type === "timeGridWeek") {
+                window.requestAnimationFrame(() => {
+                  const surface = calendarSurfaceRef.current;
+                  const target = surface?.querySelector<HTMLElement>(
+                    `[data-date="${focusedDate}"]`,
+                  );
+                  if (!surface || !target) return;
+                  const surfaceRect = surface.getBoundingClientRect();
+                  const targetRect = target.getBoundingClientRect();
+                  surface.scrollLeft +=
+                    targetRect.left -
+                    surfaceRect.left -
+                    (surface.clientWidth - targetRect.width) / 2;
+                });
+              }
             }}
-            dateClick={(info: DateClickArg) =>
-              createTask({
-                title: "新しいタスク",
-                scheduledDate: info.dateStr.slice(0, 10),
-                startMinute: info.allDay
+            dateClick={(info: DateClickArg) => {
+              const date = info.dateStr.slice(0, 10);
+              if (info.view.type === "dayGridMonth") {
+                setSelectedDate(date);
+                return;
+              }
+              openScheduleDraft(
+                date,
+                info.allDay
                   ? null
                   : info.date.getHours() * 60 + info.date.getMinutes(),
-              }).then(onEdit)
-            }
-            select={(info) =>
-              createTask({
-                title: "新しいタスク",
-                scheduledDate: compactDate(info.start),
-                startMinute: info.allDay
+              );
+            }}
+            select={(info) => {
+              if (mobile || info.view.type === "dayGridMonth") {
+                setSelectedDate(compactDate(info.start));
+                calendarRef.current?.getApi().unselect();
+                return;
+              }
+              openScheduleDraft(
+                compactDate(info.start),
+                info.allDay
                   ? null
                   : info.start.getHours() * 60 + info.start.getMinutes(),
-                durationMin: info.end
+                info.end
                   ? Math.max(
                       5,
                       Math.round(
@@ -1869,8 +2147,9 @@ function CalendarPage({
                       ),
                     )
                   : 25,
-              }).then(onEdit)
-            }
+              );
+              calendarRef.current?.getApi().unselect();
+            }}
             eventContent={(info) => {
               const taskId = info.event.extendedProps.taskId || info.event.id;
               const task = tasks.find((item) => item.id === taskId);
@@ -1885,6 +2164,7 @@ function CalendarPage({
                   </div>
                   {task &&
                     !readOnlyActual &&
+                    !mobile &&
                     !info.event.allDay &&
                     info.view.type.startsWith("timeGrid") && (
                       <span
@@ -1906,7 +2186,14 @@ function CalendarPage({
               if (Date.now() < ignoreEventClickUntil.current) return;
               const taskId = info.event.extendedProps.taskId || info.event.id;
               const task = tasks.find((item) => item.id === taskId);
-              if (task) onEdit(task);
+              if (!task) return;
+              if (
+                mobile &&
+                !info.event.extendedProps.actualSession &&
+                !info.event.extendedProps.manualCompletion &&
+                !info.event.extendedProps.scheduleResult
+              ) openScheduleMove(task);
+              else onEdit(task);
             }}
             eventDragStart={(info) => {
               setInteractionActive(true);
@@ -1954,10 +2241,49 @@ function CalendarPage({
             }
           />
           <div className="calendar-mobile-add">
-            <QuickAdd defaultDate={mode === "day" ? activeDate : todayKey()} />
+            <button
+              className="button primary"
+              type="button"
+              onClick={() =>
+                openScheduleDraft(
+                  mode === "day" ? activeDate : todayKey(),
+                  null,
+                )
+              }
+            >
+              <Plus size={17} />
+              予定を追加
+            </button>
           </div>
+          {selectedDate && (
+            <CalendarDayDetail
+              date={selectedDate}
+              tasks={tasks}
+              history={scheduleHistory}
+              onClose={() => setSelectedDate(null)}
+              onEdit={onEdit}
+              onMove={openScheduleMove}
+            />
+          )}
         </section>
       </div>
+      {scheduleEditor && (
+        <ScheduleEditorSheet
+          key={`${scheduleEditor.task?.id || "new"}:${scheduleEditor.seed.scheduledDate}:${scheduleEditor.seed.startMinute ?? "all-day"}`}
+          task={scheduleEditor.task}
+          seed={scheduleEditor.seed}
+          onClose={() => setScheduleEditor(null)}
+          onSaved={(_task, nextMessage) => {
+            setScheduleEditor(null);
+            showMessage(nextMessage);
+          }}
+          onOpenDetails={(task) => {
+            setScheduleEditor(null);
+            onEdit(task);
+          }}
+        />
+      )}
+      {message && <div className="action-toast">{message}</div>}
     </div>
   );
 }
@@ -2380,6 +2706,14 @@ function SettingsPage({
   }, [tasks.length, memos.length]);
   if (!config || !voiceConfig || !pushConfig || !googleCalendar) return null;
   const pushSupport = getPushSupport();
+  const legacyScheduledNotifications = tasks.filter((task) =>
+    !task.deletedAt
+    && task.status !== "done"
+    && task.status !== "archived"
+    && task.scheduledDate
+    && task.startMinute !== null
+    && task.scheduledStartNotification === undefined,
+  ).length;
   const perform = async (work: () => Promise<unknown>, success: string) => {
     setBusy(true);
     setMessage("");
@@ -2750,7 +3084,7 @@ function SettingsPage({
           <div>
             <h2>iPhoneバックグラウンド通知</h2>
             <p>
-              SASSHYを閉じていても、タスク開始・タイマー終了・メモの時刻に通知します。
+              SASSHYを閉じていても、明示的に選んだ予定・タイマー終了・メモの時刻に通知します。
             </p>
           </div>
         </header>
@@ -2814,8 +3148,17 @@ function SettingsPage({
             通知を停止
           </button>
         </div>
+        {legacyScheduledNotifications > 0 && (
+          <div className="notification-migration-note">
+            <strong>予定通知の選択記録がないタスクが{legacyScheduledNotifications}件あります</strong>
+            <span>
+              服薬など必要な通知を一括停止しないため、旧データは通知ONを一時継続しています。
+              各タスクの編集画面で、必要なものだけON、不要なものはOFFにしてください。
+            </span>
+          </div>
+        )}
         <p className="settings-hint">
-          iPhoneではSafariの共有メニューからホーム画面に追加し、そのSASSHYアイコンから設定してください。毎分の音声読み上げは画面内、終了通知はバックグラウンドでも届きます。
+          新しいタスクの予定開始通知は既定OFFです。iPhoneではSafariの共有メニューからホーム画面に追加し、そのSASSHYアイコンから設定してください。タイマー終了通知は1回だけ届き、無反応を理由に追撃しません。
         </p>
       </section>
       <section className="settings-section">
@@ -3165,6 +3508,14 @@ function App() {
       [],
       [],
     ) || [];
+  const scheduleHistory =
+    useLiveQuery(
+      () => db.scheduleHistory.orderBy("occurredAt").reverse().toArray(),
+      [],
+      [],
+    ) || [];
+  const scheduleOutbox =
+    useLiveQuery(() => db.scheduleOutbox.toArray(), [], []) || [];
   const voice = useLiveQuery(
     () => db.settings.get("voice") as Promise<VoiceConfig | undefined>,
     [],
@@ -3222,6 +3573,13 @@ function App() {
     if (activeSession?.taskId === task.id) {
       if (activeSession.status === "paused")
         await resumeFocusSession(activeSession.id);
+      if (task.workStartSupport?.days[todayKey()]?.enabled)
+        await recordExistingMainWork(
+          task.id,
+          todayKey(),
+          activeSession.startedAt,
+          activeSession.id,
+        );
       setTimerVisible(true);
       if (voice?.enabled)
         speakVoice(
@@ -3337,7 +3695,7 @@ function App() {
         </div>
       </aside>
       <main className="main-area">
-        <header className="topbar">
+        <header className={`topbar${page === "calendar" ? " calendar-context" : ""}`}>
           <IconButton label="メニュー" onClick={() => setMenuOpen(!menuOpen)}>
             <Menu size={21} />
           </IconButton>
@@ -3396,6 +3754,7 @@ function App() {
             <TodayPage
               tasks={tasks}
               sessions={sessions}
+              syncState={syncState}
               onEdit={setEditing}
               onStart={startTimer}
             />
@@ -3404,6 +3763,7 @@ function App() {
             <CalendarPage
               tasks={tasks}
               sessions={sessions}
+              scheduleHistory={scheduleHistory}
               onEdit={setEditing}
               onStart={startTimer}
             />
@@ -3434,8 +3794,14 @@ function App() {
       {editing && (
         <TaskEditor
           key={editing.id}
-          task={editing}
+          task={tasks.find((task) => task.id === editing.id) || editing}
           sessions={sessions}
+          scheduleHistory={scheduleHistory.filter(
+            (entry) => entry.taskId === editing.id,
+          )}
+          scheduleConflicts={scheduleOutbox.filter(
+            (item) => item.taskId === editing.id && item.conflictRevision,
+          )}
           onClose={() => setEditing(null)}
           onStart={startTimer}
         />

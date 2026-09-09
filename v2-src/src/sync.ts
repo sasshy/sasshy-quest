@@ -1,5 +1,6 @@
 import { db } from './db';
 import { announceChange, applyRemoteRecord, markSynced } from './store';
+import { syncScheduleHistory } from './schedule-sync';
 import type { CloudRecord, SyncConfig } from './types';
 
 export interface SyncState {
@@ -123,6 +124,7 @@ async function performSync(force = false): Promise<void> {
 
   setState({ phase: 'syncing', message: '1件ずつ安全同期中', at: config.lastSyncAt });
   try {
+    const scheduleHistoryCount = await syncScheduleHistory(config);
     const queued = await db.outbox.orderBy('createdAt').toArray();
     for (const item of queued) {
       const response = await rpc<CloudRecord[]>(config, 'sasshy_v2_push', {
@@ -140,13 +142,16 @@ async function performSync(force = false): Promise<void> {
     const remote = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey });
     for (const record of remote || []) {
       const pending = await db.outbox.where('[entityType+entityId]').equals([record.record_type, record.id]).first();
-      if (pending) continue;
+      const pendingSchedule = record.record_type === 'task'
+        ? await db.scheduleOutbox.where('taskId').equals(record.id).first()
+        : undefined;
+      if (pending || pendingSchedule) continue;
       await applyRemoteRecord(record.record_type, record.payload, record.deleted, record.updated_at);
     }
 
     const at = new Date().toISOString();
     await saveSyncConfig({ lastSyncAt: at, lastError: '' });
-    setState({ phase: 'ok', message: `クラウド保存済み・${remote?.length || 0}件確認`, at });
+    setState({ phase: 'ok', message: `クラウド保存済み・${remote?.length || 0}件／予定履歴${scheduleHistoryCount}件確認`, at });
     announceChange();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
