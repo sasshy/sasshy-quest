@@ -62,8 +62,8 @@ import {
   Undo2,
 } from "lucide-react";
 import { db } from "./db";
+import { createBackup, downloadBackup } from "./backup";
 import {
-  cloneForExport,
   compactDate,
   completeTask,
   createManualFocusSession,
@@ -2693,6 +2693,8 @@ function SettingsPage({
   const [googleCalendar, setGoogleCalendar] =
     useState<GoogleCalendarConfig | null>(null);
   const [legacy, setLegacy] = useState<LegacySummary | null>(null);
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -2731,24 +2733,22 @@ function SettingsPage({
     setConfig(next);
   };
   const exportData = async () => {
-    const payload = cloneForExport({
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      tasks: await db.tasks.toArray(),
-      memos: await db.memos.toArray(),
-      sessions: await db.sessions.toArray(),
-      history: await db.history.toArray(),
-    });
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json",
-      }),
-    );
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `sasshy-v2-backup-${todayKey()}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    if (backupBusy) return;
+    setBackupBusy(true);
+    setBackupMessage("");
+    try {
+      const backup = await createBackup(db);
+      downloadBackup(backup);
+      const pending = backup.pending.records + backup.pending.schedules;
+      setBackupMessage(
+        `未送信${pending}件を含むバックアップの保存を開始しました。ダウンロードしたファイルを確認してください。`
+        + (backup.references.missing.length ? ` 参照先が見つからない情報${backup.references.missing.length}件も、そのまま保存しています。` : ""),
+      );
+    } catch {
+      setBackupMessage("バックアップを作成できませんでした。データと未送信の編集はそのままです。もう一度お試しください。");
+    } finally {
+      setBackupBusy(false);
+    }
   };
   return (
     <div className="page-content settings-page">
@@ -3207,7 +3207,7 @@ function SettingsPage({
           <Download size={20} />
           <div>
             <h2>バックアップ</h2>
-            <p>現在の状態と履歴をJSONで保存します。</p>
+            <p>未送信の編集・予定履歴・ゴミ箱を含め、JSONで保存します。</p>
           </div>
         </header>
         <div className="data-summary">
@@ -3221,10 +3221,15 @@ function SettingsPage({
             作業記録<strong>{sessions.length}</strong>
           </span>
         </div>
-        <button className="button secondary" type="button" onClick={exportData}>
+        <p className="settings-hint">
+          音声設定も保存します。同期キー・通知の購読情報・カレンダーの接続URLは含みません。接続設定は再設定が必要です。
+          ファイルにはタスクやメモの内容が含まれます。
+        </p>
+        <button className="button secondary" type="button" disabled={backupBusy} onClick={exportData}>
           <Download size={17} />
-          バックアップを書き出す
+          {backupBusy ? "バックアップを作成中…" : "バックアップを書き出す"}
         </button>
+        {backupMessage && <p className="settings-message" role="status">{backupMessage}</p>}
       </section>
     </div>
   );
