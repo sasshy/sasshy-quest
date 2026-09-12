@@ -1,25 +1,36 @@
 #!/usr/bin/env python3
-"""Synthetic tests only. Reuses P1's fresh socket-only PostgreSQL runner; no remote DB option."""
+"""Synthetic tests only. Creates a fresh socket-only PostgreSQL cluster; no remote DB option."""
 from pathlib import Path
-import importlib.util
+import argparse
+import os
+import subprocess
+import tempfile
+import unittest
 import hashlib
 import json
 import pg8000.native
 
 HERE=Path(__file__).resolve().parent
 WEB=HERE.parents[2]
-spec=importlib.util.spec_from_file_location('p1',HERE.parent/'p1/test_legacy_access.py')
-p1=importlib.util.module_from_spec(spec); spec.loader.exec_module(p1)
 OLD='synthetic-original-key-1234'
 NEW='synthetic-new-random-key-5678'
 OTHER='synthetic-unrelated-key-7890'
 def sha(s): return hashlib.sha256(s.encode()).hexdigest()
 MIGRATION=next((WEB/'supabase/migrations').glob('*_separate_workspace_credentials.sql')).read_text()
 
-class Credentials(p1.LegacyAccess):
-    # Inherit only fixtures/helpers and runner, not P1 test cases.
+class Credentials(unittest.TestCase):
+    socket_path = None
+    serial = 0
     def setUp(self):
-        super().setUp()
+        type(self).serial += 1
+        self.name = f'p3_test_{self.serial}'
+        admin = pg8000.native.Connection('postgres', unix_sock=self.socket_path, database='postgres')
+        admin.run(f'create database {self.name}')
+        admin.close()
+        self.db = pg8000.native.Connection('postgres', unix_sock=self.socket_path, database=self.name)
+        self.db.run((HERE/'fixture.sql').read_text())
+        self.db.run((WEB/'supabase-setup.sql').read_text())
+        self.db.run((WEB/'supabase-calendar-history.sql').read_text())
         self.db.run((HERE/'live-functions.sql').read_text())
         self.db.run('revoke all on function public.sasshy_v2_ingest_voice_task(text,text,text,jsonb) from public,anon,authenticated; grant execute on function public.sasshy_v2_ingest_voice_task(text,text,text,jsonb) to service_role')
         for key,id in [(OLD,'task-a'),(OTHER,'task-b')]:
@@ -27,6 +38,23 @@ class Credentials(p1.LegacyAccess):
             self.db.run('insert into public.sasshy_v2_records(workspace_hash,record_type,id,payload) values(:hash,\'task\',:id,cast(:payload as jsonb))',hash=sha(key),id=id,payload=json.dumps(payload))
         self.before=self.business()
         self.db.run((WEB/'supabase/operations/p3-deploy.sql').read_text())
+
+    def tearDown(self):
+        self.db.close()
+        admin = pg8000.native.Connection('postgres', unix_sock=self.socket_path, database='postgres')
+        admin.run(f'drop database {self.name}')
+        admin.close()
+
+    def role(self,name,sql):
+        self.db.run('begin')
+        try:
+            self.db.run(f'set local role {name}')
+            return self.db.run(sql)
+        finally: self.db.run('rollback')
+
+    def denied(self,role,sql):
+        with self.assertRaises(pg8000.exceptions.DatabaseError) as error: self.role(role,sql)
+        self.assertEqual(error.exception.args[0]['C'],'42501')
 
     def business(self):
         tables=['records','history','ingest_requests','schedule_history','push_subscriptions','push_deliveries']
@@ -102,8 +130,40 @@ class Credentials(p1.LegacyAccess):
         self.assertEqual(before['task']['id'],after['task']['id'])
         self.assertTrue(after['duplicate'])
 
-# unittest discovers inherited methods; hide unrelated P1 cases without changing its runner.
-for name in dir(p1.LegacyAccess):
-    if name.startswith('test_'): setattr(Credentials,name,None)
-p1.LegacyAccess=Credentials
-if __name__=='__main__': raise SystemExit(p1.main())
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--pg-bin', type=Path, required=True)
+    args = parser.parse_args()
+    bin_dir = args.pg_bin.resolve()
+    env = {k:v for k,v in os.environ.items() if not k.startswith('PG')}
+    with tempfile.TemporaryDirectory(prefix='sasshy-p3-', dir='/tmp') as temporary:
+        root = Path(temporary)
+        data = root/'data'
+        def command(name, *options):
+            result = subprocess.run([str(bin_dir/name), *map(str,options)], env=env,
+                                    capture_output=True, text=True, timeout=60)
+            if result.returncode:
+                raise RuntimeError(result.stdout+result.stderr)
+            return result.stdout
+        print(command('postgres', '--version').strip(), flush=True)
+        command('initdb', '-D', data, '-U', 'p3_test_super', '--auth=trust', '--no-locale', '--encoding=UTF8')
+        started = False
+        try:
+            # A fresh private directory and no TCP listener. No external DB credentials used.
+            command('pg_ctl','-D',data,'-l',root/'server.log','-o',
+                    f"-c listen_addresses='' -c unix_socket_directories='{root}' -c unix_socket_permissions=0700",'-w','start')
+            started = True
+            Credentials.socket_path = str(root/'.s.PGSQL.5432')
+            db = pg8000.native.Connection('p3_test_super', unix_sock=Credentials.socket_path, database='postgres')
+            db.run('create role postgres login superuser; create role anon; create role authenticated; create role service_role bypassrls')
+            db.close()
+            result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(Credentials))
+            return 0 if result.wasSuccessful() else 1
+        finally:
+            if started:
+                command('pg_ctl','-D',data,'-m','immediate','-w','stop')
+            elif (root/'server.log').exists():
+                print((root/'server.log').read_text())
+
+if __name__ == '__main__':
+    raise SystemExit(main())
