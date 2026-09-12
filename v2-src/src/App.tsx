@@ -158,7 +158,9 @@ import {
 import baseSetupSql from "../supabase-setup.sql?raw";
 import calendarHistorySql from "../supabase-calendar-history.sql?raw";
 
-const setupSql = `${baseSetupSql}\n\n${calendarHistorySql}`;
+import credentialSetupSql from "../supabase/migrations/20260912150411_separate_workspace_credentials.sql?raw";
+
+const setupSql = `${baseSetupSql}\n\n${calendarHistorySql}\n\n${credentialSetupSql}`;
 
 type Page =
   | "today"
@@ -2790,6 +2792,7 @@ function SettingsPage({
           <label>
             <span>同期キー</span>
             <input
+              type="password"
               value={config.syncKey}
               onChange={(event) =>
                 setConfig({ ...config, syncKey: event.target.value })

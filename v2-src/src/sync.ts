@@ -98,9 +98,40 @@ export async function saveSyncConfig(input: Partial<SyncConfig>): Promise<SyncCo
     apiKey: cleanKey(input.apiKey ?? current.apiKey),
     syncKey: (input.syncKey ?? current.syncKey).trim(),
   };
-  await db.settings.put(next as unknown as import('./types').AppSetting);
+  const changesCredential = Boolean(current.syncKey) &&
+    (next.syncKey !== current.syncKey || next.url !== current.url);
+  if (changesCredential) {
+    if (next.url !== current.url) throw new Error('同期先URLの変更は移行手順で行ってください。端末のデータと設定は保持されています');
+    validate(next);
+    const oldWorkspace = current.workspaceId ?? await connectionWorkspace(current);
+    const newWorkspace = await connectionWorkspace(next);
+    if (oldWorkspace !== newWorkspace) throw new Error('新しい同期キーは別の保存先です。端末のデータと設定は変更していません');
+    next.workspaceId = oldWorkspace;
+  } else {
+    // The permanent workspace identity is server-verified, never editable input.
+    next.workspaceId = current.workspaceId;
+  }
+  await db.transaction('rw', db.settings, async () => {
+    const latest = await getSyncConfig();
+    if (latest.syncKey !== current.syncKey || latest.url !== current.url) {
+      throw new Error('同期設定が別の操作で変わりました。画面を開き直してください');
+    }
+    next.lastSyncAt = input.lastSyncAt !== undefined ? input.lastSyncAt : latest.lastSyncAt;
+    next.lastError = input.lastError !== undefined ? input.lastError : latest.lastError;
+    await db.settings.put(next as unknown as import('./types').AppSetting);
+  });
   announceChange();
   return next;
+}
+
+async function connectionWorkspace(config: SyncConfig): Promise<string> {
+  let info: { workspaceId?: string };
+  try { info = await rpc(config, 'sasshy_v2_connection_info', { p_sync_key: config.syncKey }); }
+  catch { throw new Error('同期キーの保存先を確認できませんでした。端末のデータと設定は保持されています'); }
+  if (!info || typeof info.workspaceId !== 'string' || !/^[a-f0-9]{64}$/.test(info.workspaceId)) {
+    throw new Error('同期先の確認に対応したサーバーが必要です。設定は変更していません');
+  }
+  return info.workspaceId;
 }
 
 function validate(config: SyncConfig): void {

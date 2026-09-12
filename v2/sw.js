@@ -1,4 +1,4 @@
-const CACHE = 'sasshy-v2-2.6.1-backup';
+const CACHE = 'sasshy-v2-2.6.2-credentials';
 const APP_SHELL = ['./', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {

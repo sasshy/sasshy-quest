@@ -1,4 +1,3 @@
-import { resolveWorkspace } from '../_shared/workspace-auth.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
 import {
@@ -241,9 +240,7 @@ Deno.serve(async (request: Request) => {
   }
   const syncKey = text(body.syncKey, 300);
   if (syncKey.length < 12) return respond(request, 400, { error: '同期キーを確認してください' });
-  const resolved = await resolveWorkspace(client, syncKey);
-  if (!resolved.workspace) return respond(request, resolved.status, { error: '同期先を認証できません。端末のデータは保持されています' });
-  const workspaceHash = resolved.workspace;
+  const workspaceHash = await sha256(syncKey);
 
   if (action === 'work-start-status') {
     const taskId = text(body.taskId, 200);

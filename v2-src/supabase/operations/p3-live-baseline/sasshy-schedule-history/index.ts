@@ -1,4 +1,3 @@
-import { resolveWorkspace } from '../_shared/workspace-auth.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 type Json = Record<string, unknown>;
@@ -40,6 +39,11 @@ function endpoint(request: Request): string {
 
 function text(value: unknown, maximum: number): string {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : '';
+}
+
+async function sha256(value: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function mapHistory(row: Json): Json {
@@ -84,8 +88,6 @@ Deno.serve(async (request: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const action = endpoint(request);
-  const resolved = await resolveWorkspace(client, syncKey);
-  if (!resolved.workspace) return respond(request, resolved.status, { error: '同期先を認証できません。端末のデータは保持されています' });
 
   if (action === 'apply') {
     const operationId = text(body.operationId, 240);
@@ -105,12 +107,12 @@ Deno.serve(async (request: Request) => {
       p_update_task: body.updateTask === true,
       p_history: body.history,
     });
-    if (error) return respond(request, error.code === '28000' ? 401 : 500, { error: '予定履歴を保存できませんでした' });
+    if (error) return respond(request, 500, { error: '予定履歴を保存できませんでした' });
     return respond(request, 200, data);
   }
 
   if (action === 'list') {
-    const workspaceHash = resolved.workspace;
+    const workspaceHash = await sha256(syncKey);
     const { data, error } = await client
       .from('sasshy_v2_schedule_history')
       .select('id,task_id,operation_group_id,before_version_id,after_version_id,target_version_id,operation,result,before_schedule,after_schedule,title,occurred_at,received_at,device_id,source,related_entry_id,reason')

@@ -209,6 +209,7 @@ export interface SyncConfig {
   url: string;
   apiKey: string;
   syncKey: string;
+  workspaceId?: string;
   lastSyncAt: string | null;
   lastError: string;
 }

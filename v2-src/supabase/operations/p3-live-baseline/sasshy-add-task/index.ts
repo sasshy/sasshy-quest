@@ -1,4 +1,3 @@
-import { resolveWorkspace } from '../_shared/workspace-auth.ts';
 import { parseVoiceInput, extractVoiceTask } from './voice.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { parseTaskRequest, type AddTaskRequest } from './validation.ts';
@@ -101,18 +100,13 @@ Deno.serve(async (request: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const resolved = await resolveWorkspace(client, syncKey);
-  if (!resolved.workspace) return respond(request, resolved.status, { error: '受付の同期先を認証できません' });
-
   try {
     if (action === 'voice') {
       const input = parseVoiceInput(body);
       const workspace = (body as Record<string, unknown>).workspace;
       if (workspace !== undefined) {
-        if (typeof workspace !== 'string' || !/^[a-f0-9]{64}$/.test(workspace)) return respond(request, 409, { error: 'iPhoneの同期先を確認してください' });
-        const native = await resolveWorkspace(client, workspace, true);
-        if (!native.workspace) return respond(request, native.status, { error: 'iPhoneの同期先を認証できません' });
-        if (!(await tokensMatch(native.workspace, resolved.workspace))) return respond(request, 409, { error: 'iPhoneの同期先と受付キーの保存先が一致しません。設定を確認してください' });
+        const digest = Array.from(await tokenDigest(syncKey)).map(b => b.toString(16).padStart(2, '0')).join('');
+        if (typeof workspace !== 'string' || !(await tokensMatch(workspace, digest))) return respond(request, 409, { error: 'iPhoneの同期先と受付キーの保存先が一致しません。設定を確認してください' });
       }
       // Check before AI: a retry does not pay for extraction again or change relative dates.
       const args = { p_sync_key: syncKey, p_idempotency_key: input.idempotency_key, p_transcript: input.transcript };
@@ -189,7 +183,6 @@ Deno.serve(async (request: Request) => {
         ? String(error.message)
         : '';
     console.error('sasshy task action failed');
-    if (error && typeof error === 'object' && 'code' in error && error.code === '28000') return respond(request, 401, { error: '受付の同期先を認証できません' });
     if (message.includes('idempotency key')) return respond(request, 409, { error: '同じ受付番号が別の内容に使われています。新しい受付番号で送信してください' });
     if (message.includes('task was changed')) {
       return respond(request, 409, {

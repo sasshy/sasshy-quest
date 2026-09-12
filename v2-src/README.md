@@ -81,3 +81,7 @@ v2.3では、ホーム画面へ追加したiPhone PWAへWeb Pushを送ります�
 ## 公開先
 
 GitHub Pagesの `/v2/` 配下へ `dist/` の内容を配置します。旧版のルート `/sasshy-quest/` はそのまま残します。
+
+## P3 認証キーの移行
+
+サーバー互換対応と、キー変更時の接続先照合を追加しました。旧キーの失効には端末ごとの保全・切替確認が必要です。[移行手順と現状](supabase/operations/P3_CREDENTIAL_MIGRATION.md)を参照してください。
