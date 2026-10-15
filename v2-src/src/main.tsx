@@ -3,14 +3,21 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles.css';
 import { ensureDefaults } from './db';
+import { startNativeWork } from './native-work';
+import { startOpenLog } from './open-log';
 
 async function boot(): Promise<void> {
-  await ensureDefaults();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <App />
     </React.StrictMode>,
   );
+
+  // WKWebView may take time to restore IndexedDB after an app update. Keep
+  // that work from blocking the entire task screen.
+  startNativeWork();
+  startOpenLog();
+  await ensureDefaults();
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('./sw.js').catch(() => undefined);

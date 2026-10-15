@@ -96,8 +96,8 @@ export function parseTaskLink(url: string): TaskLinkResult {
       startMinute = Number(match[1]) * 60 + Number(match[2]);
     }
 
-    const durationMin = raw.durationMin === undefined ? 25 : raw.durationMin;
-    if (!Number.isInteger(durationMin) || Number(durationMin) < 5 || Number(durationMin) > 720) {
+    const durationMin = raw.durationMin === undefined ? 5 : raw.durationMin;
+    if (!Number.isInteger(durationMin) || Number(durationMin) < 1 || Number(durationMin) > 720) {
       throw new Error('所要時間が正しくありません');
     }
     const horizon = raw.horizon === undefined ? 'now' : raw.horizon;

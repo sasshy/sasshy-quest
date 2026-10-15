@@ -21,6 +21,8 @@ export interface Task {
   horizon: TaskHorizon;
   scheduledDate: string | null;
   startMinute: number | null;
+  /** A real-world anchor that the automatic runway must never move. */
+  isFixed?: boolean;
   flowOrder?: number;
   durationMin: number;
   estimateMin: number;
@@ -105,6 +107,8 @@ export interface OutboxItem {
   deleted: boolean;
   createdAt: string;
   attempts: number;
+  lastError?: string;
+  lastAttemptAt?: string;
 }
 
 export interface SyncConfig {
@@ -113,6 +117,7 @@ export interface SyncConfig {
   url: string;
   apiKey: string;
   syncKey: string;
+  workspaceId?: string;
   lastSyncAt: string | null;
   lastError: string;
 }
@@ -120,6 +125,8 @@ export interface SyncConfig {
 export interface VoiceConfig {
   id: 'voice';
   enabled: boolean;
+  coachEnabled?: boolean;
+  defaultPreparationMin?: number;
   rate: number;
   volume: number;
   announcements: number[];

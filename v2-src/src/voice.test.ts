@@ -13,12 +13,16 @@ const config: VoiceConfig = {
 };
 
 describe('voice countdown', () => {
-  it('announces every minute and increasingly often near zero', () => {
-    expect(announcementThresholds(config, 7)).toEqual([360, 300, 240, 180, 120, 60, 30, 10, 5, 4, 3, 2, 1]);
+  it('announces every 30 seconds and increasingly often near zero', () => {
+    const thresholds = announcementThresholds(config, 7);
+    expect(thresholds.slice(0, 4)).toEqual([390, 360, 330, 300]);
+    expect(thresholds.slice(-7)).toEqual([30, 10, 5, 4, 3, 2, 1]);
+    expect(thresholds).toContain(90);
   });
 
   it('uses short speech during the final five seconds', () => {
     expect(announcementText(60)).toBe('残り1分です');
+    expect(announcementText(90)).toBe('残り1分30秒です');
     expect(announcementText(30)).toBe('残り30秒です');
     expect(announcementText(5)).toBe('5秒');
   });
@@ -27,5 +31,6 @@ describe('voice countdown', () => {
     expect(remainingStatusText(125)).toBe('残り2分5秒です');
     expect(remainingStatusText(30)).toBe('残り30秒です');
     expect(remainingStatusText(-8)).toBe('予定を8秒超過しています');
+    expect(remainingStatusText(-90)).toBe('予定を1分30秒超過しています');
   });
 });

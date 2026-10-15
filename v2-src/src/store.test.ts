@@ -14,6 +14,16 @@ beforeEach(async () => {
 });
 
 describe('record safe mutations', () => {
+  it('defaults new tasks to five minutes and accepts a three-minute task', async () => {
+    const defaultTask = await createTask({ title: '基本のタスク' });
+    const shortTask = await createTask({ title: '短いタスク', estimateMin: 3, durationMin: 3 });
+
+    expect(defaultTask.estimateMin).toBe(5);
+    expect(defaultTask.durationMin).toBe(5);
+    expect(shortTask.estimateMin).toBe(3);
+    expect(shortTask.durationMin).toBe(3);
+  });
+
   it('updates one task without replacing another task', async () => {
     const first = await createTask({ title: 'Macで追加したタスク' });
     const second = await createTask({ title: 'iPhoneで追加する予定のタスク' });

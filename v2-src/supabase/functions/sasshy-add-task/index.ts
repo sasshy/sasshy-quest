@@ -63,7 +63,9 @@ Deno.serve(async (request: Request) => {
   }
   if (request.method !== 'POST') return respond(request, 405, { error: 'POSTのみ利用できます' });
 
+  const action = endpoint(request);
   const expectedToken = Deno.env.get('SASSHY_TASK_INGEST_TOKEN') || '';
+  const iosVoiceToken = action === 'voice' ? Deno.env.get('SASSHY_IOS_VOICE_TOKEN') || '' : '';
   const syncKey = Deno.env.get('SASSHY_SYNC_KEY') || '';
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -73,7 +75,11 @@ Deno.serve(async (request: Request) => {
 
   const authorization = request.headers.get('Authorization') || '';
   const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
-  if (!suppliedToken || !(await tokensMatch(suppliedToken, expectedToken))) {
+  const accepted = suppliedToken && (
+    await tokensMatch(suppliedToken, expectedToken)
+    || Boolean(iosVoiceToken) && await tokensMatch(suppliedToken, iosVoiceToken)
+  );
+  if (!accepted) {
     return respond(request, 401, { error: '認証できません' });
   }
 
@@ -93,11 +99,15 @@ Deno.serve(async (request: Request) => {
   const client = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const action = endpoint(request);
 
   try {
     if (action === 'voice') {
       const input = parseVoiceInput(body);
+      const workspace = (body as Record<string, unknown>).workspace;
+      if (workspace !== undefined) {
+        const digest = Array.from(await tokenDigest(syncKey)).map(b => b.toString(16).padStart(2, '0')).join('');
+        if (typeof workspace !== 'string' || !(await tokensMatch(workspace, digest))) return respond(request, 409, { error: 'iPhoneの同期先と受付キーの保存先が一致しません。設定を確認してください' });
+      }
       // Check before AI: a retry does not pay for extraction again or change relative dates.
       const args = { p_sync_key: syncKey, p_idempotency_key: input.idempotency_key, p_transcript: input.transcript };
       const existing = await client.rpc('sasshy_v2_ingest_voice_task', { ...args, p_task: null });
