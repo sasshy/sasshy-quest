@@ -3,6 +3,7 @@ import { db, getDeviceId, makeId, nowIso } from './db';
 import { predictDuration, routineEstimateHint } from './insights';
 import { classifyScheduleOperation, latestResultsByVersion, scheduleSnapshot } from './schedule-history';
 import { notifyNativeAlarm } from './native-alarm';
+import { isNativeApp } from './native-app';
 import type {
   FocusSession, HistoryEntry, Memo, MorningProgress, OutboxItem, ScheduleHistoryEntry, ScheduleOperation, ScheduleOutboxItem,
   ScheduleResult, Task, TaskHorizon, TaskUndoAction, UndoRedoSetting, WorkStartDay,
@@ -78,6 +79,12 @@ async function queueScheduleEntry(
   entry: ScheduleHistoryEntry,
   updateTask = true,
 ): Promise<void> {
+  if (isNativeApp()) {
+    // iPhone app: the schedule-history service is browser-only (CORS), so send the
+    // task itself through normal record sync. The history entry stays on this device.
+    if (updateTask) await queueRecord('task', after);
+    return;
+  }
   await db.outbox.where('[entityType+entityId]').equals(['task', after.id]).delete();
   const item: ScheduleOutboxItem = {
     operationId: entry.id,

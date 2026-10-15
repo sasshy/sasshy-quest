@@ -1,3 +1,4 @@
+import { isNativeApp } from './native-app';
 import { db } from './db';
 import type { ScheduleHistoryEntry, ScheduleOutboxItem, SyncConfig, Task } from './types';
 
@@ -63,6 +64,12 @@ async function markConflict(item: ScheduleOutboxItem, response: ApplyResponse): 
 }
 
 export async function syncScheduleHistory(config: SyncConfig): Promise<number> {
+  if (isNativeApp()) {
+    // iPhone app cannot reach the schedule-history service. Move anything queued
+    // there (e.g. by 0.4.0 before this fix) into normal record sync instead.
+    await moveScheduleQueueToRecordSync();
+    return 0;
+  }
   const queued = await db.scheduleOutbox.orderBy('createdAt').toArray();
   const revisionByTask = new Map<string, string | null>();
   for (const item of queued) {
@@ -116,4 +123,28 @@ export async function syncScheduleHistory(config: SyncConfig): Promise<number> {
   if (!pulled.ok) throw new Error(pulled.error || '予定履歴を取得できませんでした');
   if (pulled.history?.length) await db.scheduleHistory.bulkPut(pulled.history);
   return pulled.history?.length || 0;
+}
+
+/** iPhone app: hand queued schedule changes to normal per-record sync (nothing is dropped). */
+export async function moveScheduleQueueToRecordSync(): Promise<number> {
+  const queued = await db.scheduleOutbox.orderBy('createdAt').toArray();
+  if (!queued.length) return 0;
+  await db.transaction('rw', db.tasks, db.outbox, db.scheduleOutbox, async () => {
+    const latestByTask = new Map<string, ScheduleOutboxItem>();
+    for (const item of queued) if (item.updateTask) latestByTask.set(item.taskId, item);
+    for (const [taskId, item] of latestByTask) {
+      const current = (await db.tasks.get(taskId)) || item.taskPayload;
+      await db.outbox.where('[entityType+entityId]').equals(['task', taskId]).delete();
+      await db.outbox.add({
+        entityType: 'task',
+        entityId: taskId,
+        payload: current,
+        deleted: Boolean(current.deletedAt),
+        createdAt: item.createdAt,
+        attempts: 0,
+      });
+    }
+    await db.scheduleOutbox.bulkDelete(queued.map((item) => item.id!).filter((id) => id !== undefined));
+  });
+  return queued.length;
 }
