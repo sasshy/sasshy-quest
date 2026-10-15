@@ -56,8 +56,8 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function roundToFive(value: number): number {
-  return Math.max(5, Math.min(240, Math.round(value / 5) * 5));
+function roundToMinute(value: number): number {
+  return Math.max(1, Math.min(240, Math.round(value)));
 }
 
 export function routineEstimateHint(title: string): number | null {
@@ -86,7 +86,7 @@ export function predictDuration(title: string, sessions: FocusSession[], exclude
     .map((items) => {
       const seconds = items.reduce((sum, session) => sum + (sessionActiveSeconds(session) || 0), 0);
       const activeMin = Math.max(1, Math.round(seconds / 60));
-      const plannedMin = Math.max(...items.map((session) => session.plannedMin), 5);
+      const plannedMin = Math.max(...items.map((session) => session.plannedMin), 1);
       const reasonableMax = reasonableDurationMax(plannedMin, items[0]?.taskTitle || title);
       return { activeMin, reliable: seconds >= 30 && activeMin <= reasonableMax, latest: items.map((session) => session.startedAt).sort().at(-1) || '' };
     })
@@ -101,8 +101,8 @@ export function predictDuration(title: string, sessions: FocusSession[], exclude
   }
   return {
     predictedMin: routineHint
-      ? Math.min(routineHint * 2, roundToFive(median(reliable)))
-      : roundToFive(median(reliable)),
+      ? Math.min(routineHint * 2, roundToMinute(median(reliable)))
+      : roundToMinute(median(reliable)),
     sampleSize: reliable.length,
     ignoredCount,
   };

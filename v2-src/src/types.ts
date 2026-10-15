@@ -38,6 +38,13 @@ export interface Task {
   id: string;
   title: string;
   notes: string;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  counterparty?: string;
+  requestSource?: string;
+  voiceTranscript?: string;
+  reminderEnabled?: boolean;
+  reminderAfter?: string | null;
   status: TaskStatus;
   horizon: TaskHorizon;
   scheduledDate: string | null;
@@ -50,6 +57,8 @@ export interface Task {
    * silently disabling a possibly important existing notification.
    */
   scheduledStartNotification?: boolean;
+  /** A real-world anchor that the automatic runway must never move. */
+  isFixed?: boolean;
   flowOrder?: number;
   durationMin: number;
   estimateMin: number;
@@ -219,6 +228,8 @@ export interface SyncConfig {
 export interface VoiceConfig {
   id: 'voice';
   enabled: boolean;
+  coachEnabled?: boolean;
+  defaultPreparationMin?: number;
   rate: number;
   volume: number;
   announcements: number[];

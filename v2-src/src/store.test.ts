@@ -17,6 +17,16 @@ beforeEach(async () => {
 });
 
 describe('record safe mutations', () => {
+  it('defaults new tasks to five minutes and accepts a three-minute task', async () => {
+    const defaultTask = await createTask({ title: '基本のタスク' });
+    const shortTask = await createTask({ title: '短いタスク', estimateMin: 3, durationMin: 3 });
+
+    expect(defaultTask.estimateMin).toBe(5);
+    expect(defaultTask.durationMin).toBe(5);
+    expect(shortTask.estimateMin).toBe(3);
+    expect(shortTask.durationMin).toBe(3);
+  });
+
   it('updates one task without replacing another task', async () => {
     const first = await createTask({ title: 'Macで追加したタスク' });
     const second = await createTask({ title: 'iPhoneで追加する予定のタスク' });
@@ -28,22 +38,20 @@ describe('record safe mutations', () => {
     expect(await db.outbox.count()).toBe(2);
   });
 
-  it('creates scheduled tasks with their start notification off by default', async () => {
-    const defaultOff = await createTask({
+  it('notifies timed tasks at their start by default, unless turned off or untimed', async () => {
+    const timed = await createTask({ title: '打合せ', scheduledDate: '2026-09-08', startMinute: 600 });
+    const explicitOff = await createTask({
       title: '通知は不要',
       scheduledDate: '2026-09-08',
-      startMinute: 600,
-    });
-    const explicitOn = await createTask({
-      title: '服薬',
-      scheduledDate: '2026-09-08',
       startMinute: 660,
-      scheduledStartNotification: true,
+      scheduledStartNotification: false,
     });
+    const untimed = await createTask({ title: 'いつか', scheduledDate: '2026-09-08' });
 
-    expect(defaultOff.scheduledStartNotification).toBe(false);
-    expect(explicitOn.scheduledStartNotification).toBe(true);
-    expect((await db.scheduleOutbox.where('taskId').equals(defaultOff.id).first())?.taskPayload)
+    expect(timed.scheduledStartNotification).toBe(true);
+    expect(explicitOff.scheduledStartNotification).toBe(false);
+    expect(untimed.scheduledStartNotification).toBe(false);
+    expect((await db.scheduleOutbox.where('taskId').equals(explicitOff.id).first())?.taskPayload)
       .toMatchObject({ scheduledStartNotification: false });
   });
 
@@ -390,3 +398,19 @@ function workStartDay(overrides: Partial<WorkStartDay> = {}, dateKey = localDate
     ...overrides,
   };
 }
+it('retains voice fields through edits and completion and does not reactivate reminders on active edits', async () => {
+  const task = await createTask({ title: '音声テスト' });
+  await updateTask(task.id, { dueDate: '2026-09-07', dueTime: '15:00', counterparty: 'テスト先', requestSource: '電話', voiceTranscript: '見積を送る', reminderEnabled: true });
+  const voiceTask = (await db.tasks.get(task.id))!;
+  await startFocusSession(voiceTask);
+  await updateTask(task.id, { notes: '金額を確認' });
+  expect((await db.tasks.get(task.id))?.status).toBe('active');
+  await completeTask(task.id, true);
+  const saved = (await db.tasks.get(task.id))!;
+  expect(saved.status).toBe('done');
+  expect(saved.counterparty).toBe('テスト先');
+  expect(saved.dueDate).toBe('2026-09-07');
+  expect(saved.voiceTranscript).toBe('見積を送る');
+  const queued = await db.outbox.where('[entityType+entityId]').equals(['task', task.id]).first();
+  expect((queued?.payload as Task).dueTime).toBe('15:00');
+});

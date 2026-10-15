@@ -2,6 +2,7 @@ import Dexie from 'dexie';
 import { db, getDeviceId, makeId, nowIso } from './db';
 import { predictDuration, routineEstimateHint } from './insights';
 import { classifyScheduleOperation, latestResultsByVersion, scheduleSnapshot } from './schedule-history';
+import { notifyNativeAlarm } from './native-alarm';
 import type {
   FocusSession, HistoryEntry, Memo, MorningProgress, OutboxItem, ScheduleHistoryEntry, ScheduleOperation, ScheduleOutboxItem,
   ScheduleResult, Task, TaskHorizon, TaskUndoAction, UndoRedoSetting, WorkStartDay,
@@ -228,6 +229,7 @@ export interface NewTaskInput {
   scheduledDate?: string | null;
   startMinute?: number | null;
   scheduledStartNotification?: boolean;
+  isFixed?: boolean;
   durationMin?: number;
   estimateMin?: number;
   importance?: 0 | 1 | 2;
@@ -244,7 +246,7 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
   const prediction = requestedEstimate === undefined
     ? predictDuration(input.title, await db.sessions.toArray())
     : null;
-  const estimateMin = Math.max(5, requestedEstimate ?? prediction?.predictedMin ?? routineEstimateHint(input.title) ?? 25);
+  const estimateMin = Math.max(1, requestedEstimate ?? prediction?.predictedMin ?? routineEstimateHint(input.title) ?? 5);
   const task: Task = {
     id: makeId('task'),
     title: input.title.trim(),
@@ -254,8 +256,12 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
     scheduledDate,
     startMinute: input.startMinute ?? null,
     scheduleVersionId: scheduledDate ? makeId('schedule-version') : null,
-    scheduledStartNotification: input.scheduledStartNotification ?? false,
-    durationMin: Math.max(5, input.durationMin ?? estimateMin),
+    // A task with a fixed start time notifies at that time unless turned off
+    // (iPhone behaviour); untimed tasks stay quiet.
+    isFixed: input.isFixed ?? (input.startMinute !== undefined && input.startMinute !== null),
+    scheduledStartNotification: input.scheduledStartNotification
+      ?? (input.isFixed ?? (input.startMinute !== undefined && input.startMinute !== null)),
+    durationMin: Math.max(1, input.durationMin ?? estimateMin),
     estimateMin,
     importance: input.importance || 0,
     urgency: input.urgency || 0,
@@ -293,7 +299,7 @@ export async function updateTask(
     let next: Task = {
       ...before,
       ...changes,
-      status: changes.status || (before.status === 'done' || before.status === 'archived' ? before.status : scheduledDate ? 'planned' : 'inbox'),
+      status: changes.status || (before.status === 'done' || before.status === 'archived' || before.status === 'active' ? before.status : scheduledDate ? 'planned' : 'inbox'),
       scheduledDate,
       updatedAt: nowIso(),
       sync: { ...before.sync, deviceId },
@@ -490,21 +496,49 @@ export async function reorderTasksForDay(
   announceChange();
 }
 
+export async function setTasksFlowOrder(orderedTaskIds: string[]): Promise<void> {
+  const records = await db.tasks.bulkGet(orderedTaskIds);
+  const byId = new Map(
+    records.filter((task): task is Task => Boolean(task)).map((task) => [task.id, task]),
+  );
+  for (const [flowOrder, taskId] of orderedTaskIds.entries()) {
+    const task = byId.get(taskId);
+    if (!task || task.flowOrder === flowOrder) continue;
+    await updateTask(
+      task.id,
+      { flowOrder },
+      "今日の順番をドラッグで変更",
+      flowOrder === 0,
+    );
+  }
+}
+
 export async function completeTask(id: string, done: boolean): Promise<Task | null> {
   const task = await db.tasks.get(id);
+  let updated: Task | null = null;
+  let handled = false;
   if (task?.scheduledDate) {
-    if (done) return recordScheduleResult(id, task.scheduleVersionId || null, 'completed');
-    if (task.scheduleVersionId) {
+    if (done) {
+      updated = await recordScheduleResult(id, task.scheduleVersionId || null, 'completed');
+      handled = true;
+    } else if (task.scheduleVersionId) {
       const entries = await db.scheduleHistory.where('taskId').equals(id).toArray();
       if (latestResultsByVersion(entries).get(task.scheduleVersionId) === 'completed') {
-        return recordScheduleResult(id, task.scheduleVersionId, 'unconfirmed');
+        updated = await recordScheduleResult(id, task.scheduleVersionId, 'unconfirmed');
+        handled = true;
       }
     }
   }
-  return updateTask(id, {
+  if (!handled) updated = await updateTask(id, {
     status: done ? 'done' : 'planned',
     completedAt: done ? nowIso() : null,
   }, done ? 'タスクを完了' : '完了を取り消し');
+  if (done && updated && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sasshy-task-completed', {
+      detail: { taskId: id },
+    }));
+  }
+  return updated;
 }
 
 export async function softDeleteTask(id: string): Promise<Task | null> {
@@ -913,6 +947,8 @@ export async function startFocusSession(task: Task, plannedMin = task.estimateMi
     }
   });
   announceChange();
+  // iPhone app: start the system alarm only for a newly started session.
+  if (result === session) notifyNativeAlarm('start', session);
   return result;
 }
 
@@ -966,6 +1002,16 @@ export async function updateSession(id: string, changes: Partial<FocusSession>, 
     result = next;
   });
   announceChange();
+  if (result) {
+    const session = result as FocusSession;
+    if (session.status === 'paused') {
+      notifyNativeAlarm(changes.plannedMin === undefined ? 'pause' : 'updatePaused', session);
+    } else if (session.status === 'running') {
+      notifyNativeAlarm(changes.plannedMin === undefined ? 'resume' : 'update', session);
+    } else {
+      notifyNativeAlarm('cancel', session);
+    }
+  }
   return result;
 }
 

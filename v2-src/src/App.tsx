@@ -42,7 +42,10 @@ import {
   Menu,
   MessageSquareText,
   MoreHorizontal,
+  GripVertical,
   GripHorizontal,
+  Lock,
+  Maximize2,
   Pause,
   Pencil,
   Play,
@@ -75,6 +78,7 @@ import {
   recordExistingMainWork,
   redoLatestTaskChange,
   reorderTasksForDay,
+  setTasksFlowOrder,
   restoreTask,
   resumeFocusSession,
   setFocusSessionPlannedMinutes,
@@ -137,6 +141,7 @@ import {
   speakVoice,
   stopVoice,
 } from "./voice";
+import { buildDayRunway, type RunwayEntry } from "./day-runway";
 import {
   predictDuration,
   sessionDuration,
@@ -155,6 +160,8 @@ import {
   parseTaskLink,
   type ParsedTaskLink,
 } from "./task-link";
+import { buildCoachPlan, completionCoachText } from "./coach";
+import { syncNativeCoach } from "./native-alarm";
 import baseSetupSql from "../supabase-setup.sql?raw";
 import calendarHistorySql from "../supabase-calendar-history.sql?raw";
 
@@ -473,6 +480,92 @@ function PriorityMarks({ task }: { task: Task }) {
   );
 }
 
+function SwipeableTask({
+  task,
+  children,
+}: {
+  task: Task;
+  children: ReactNode;
+}) {
+  const [offset, setOffset] = useState(0);
+  const offsetRef = useRef(0);
+  const gesture = useRef<{
+    startX: number;
+    startY: number;
+    initialOffset: number;
+    horizontal: boolean;
+    moved: boolean;
+  } | null>(null);
+  const setSwipeOffset = (value: number) => {
+    const clamped = Math.max(-88, Math.min(0, value));
+    offsetRef.current = clamped;
+    setOffset(clamped);
+  };
+  const finishSwipe = () => {
+    const current = gesture.current;
+    if (!current) return;
+    const shouldOpen = current.horizontal && offsetRef.current < -38;
+    setSwipeOffset(shouldOpen ? -82 : 0);
+    window.setTimeout(() => {
+      gesture.current = null;
+    }, 0);
+  };
+  return (
+    <div className={`task-swipe-shell${offset < 0 ? " open" : ""}`}>
+      <button
+        className="task-swipe-delete"
+        type="button"
+        aria-label={`${task.title}を削除`}
+        onClick={async () => {
+          await softDeleteTask(task.id);
+          syncNow().catch(() => undefined);
+        }}
+      >
+        <Trash2 size={18} />
+        削除
+      </button>
+      <div
+        className="task-swipe-surface"
+        style={{ transform: `translateX(${offset}px)` }}
+        onPointerDown={(event) => {
+          gesture.current = {
+            startX: event.clientX,
+            startY: event.clientY,
+            initialOffset: offsetRef.current,
+            horizontal: false,
+            moved: false,
+          };
+        }}
+        onPointerMove={(event) => {
+          const current = gesture.current;
+          if (!current) return;
+          const dx = event.clientX - current.startX;
+          const dy = event.clientY - current.startY;
+          if (!current.horizontal) {
+            if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
+            current.horizontal = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+          current.moved = current.moved || Math.abs(dx) > 10;
+          setSwipeOffset(current.initialOffset + dx);
+        }}
+        onPointerUp={finishSwipe}
+        onPointerCancel={finishSwipe}
+        onClickCapture={(event) => {
+          const current = gesture.current;
+          if (current?.moved || offsetRef.current < 0) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!current?.moved) setSwipeOffset(0);
+          }
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function TaskRow({
   task,
   onEdit,
@@ -491,9 +584,10 @@ function TaskRow({
   const done = task.status === "done";
   const delta = actualMin === undefined ? null : actualMin - task.estimateMin;
   return (
-    <div
-      className={`task-row${done ? " done" : ""}${compact ? " compact" : ""}`}
-    >
+    <SwipeableTask task={task}>
+      <div
+        className={`task-row${done ? " done" : ""}${compact ? " compact" : ""}`}
+      >
       <button
         className="task-check"
         type="button"
@@ -515,6 +609,9 @@ function TaskRow({
           {task.startMinute !== null && (
             <span>{formatMinute(task.startMinute)}</span>
           )}
+          {task.dueDate && <span>期限 {task.dueDate} {task.dueTime || ""}</span>}
+          {task.counterparty && <span>{task.counterparty}</span>}
+          {task.reminderEnabled && !done && <span>再通知ON</span>}
           <span>予測 {task.estimateMin}分</span>
           {actualMin !== undefined && (
             <span className={`actual-chip${actualReliable ? "" : " suspect"}`}>
@@ -547,7 +644,8 @@ function TaskRow({
       <IconButton label="編集" onClick={() => onEdit(task)}>
         <Pencil size={17} />
       </IconButton>
-    </div>
+      </div>
+    </SwipeableTask>
   );
 }
 
@@ -694,14 +792,21 @@ function TaskEditor({
         {
           title: draft.title.trim() || task.title,
           notes: draft.notes,
+          dueDate: draft.dueDate || null,
+          dueTime: draft.dueDate ? draft.dueTime || null : null,
+          counterparty: draft.counterparty || '',
+          requestSource: draft.requestSource || '',
+          reminderEnabled: Boolean(draft.reminderEnabled),
+          reminderAfter: draft.reminderAfter || null,
           horizon: draft.horizon,
           scheduledDate: draft.scheduledDate,
           startMinute: draft.startMinute,
           scheduledStartNotification: draft.scheduledStartNotification,
-          estimateMin: Math.max(5, Number(draft.estimateMin) || 25),
+          isFixed: Boolean(draft.startMinute !== null && draft.isFixed !== false),
+          estimateMin: Math.max(1, Number(draft.estimateMin) || 5),
           durationMin: Math.max(
-            5,
-            Number(draft.durationMin) || Number(draft.estimateMin) || 25,
+            1,
+            Number(draft.durationMin) || Number(draft.estimateMin) || 5,
           ),
           importance: draft.importance,
           urgency: draft.urgency,
@@ -777,6 +882,24 @@ function TaskEditor({
               rows={4}
             />
           </label>
+          <details className="work-task-fields" open={Boolean(draft.voiceTranscript || draft.reminderEnabled || draft.dueDate)}>
+            <summary>仕事の期限・相手・再通知</summary>
+            <div className="form-stack">
+              <div className="form-grid">
+                <label><span>期限日</span><input type="date" value={draft.dueDate || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, dueDate: value || null, dueTime: value ? current.dueTime : null })); }} /></label>
+                <label><span>期限時刻（日本時間）</span><input type="time" disabled={!draft.dueDate} value={draft.dueTime || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, dueTime: value || null })); }} /></label>
+                <label><span>相手</span><input maxLength={200} value={draft.counterparty || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, counterparty: value })); }} /></label>
+                <label><span>依頼元</span><input maxLength={200} placeholder="例：善之さん／電話" value={draft.requestSource || ""} onChange={event => { const value = event.currentTarget.value; setDraft(current => ({ ...current, requestSource: value })); }} /></label>
+              </div>
+              <label className="checkbox-row"><input type="checkbox" checked={Boolean(draft.reminderEnabled)} onChange={event => { const value = event.currentTarget.checked; setDraft(current => ({ ...current, reminderEnabled: value })); }} /><span>未対応なら再通知</span></label>
+              {draft.reminderEnabled && <>
+                <p className="muted">平日9〜18時（日本時間）に1時間おき。期限の時刻から、時刻なしは17時から、期限なしは登録1時間後から通知します。作業開始・完了・ゴミ箱移動で停止します。先7日・最大48件をiPhoneに予約し、アプリを開くと補充します。他端末の変更はこのアプリの同期後に反映します。</p>
+                <p className="muted">延期：{draft.reminderAfter ? new Date(draft.reminderAfter).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) + "まで" : "なし"}</p>
+                <div className="button-row"><button className="button" type="button" onClick={() => setDraft(current => ({ ...current, reminderAfter: new Date(Date.now() + 3_600_000).toISOString() }))}>今から1時間延期</button><button className="button" type="button" onClick={() => setDraft(current => ({ ...current, reminderAfter: new Date(Date.now() + 86_400_000).toISOString() }))}>今から1日延期</button><button className="button" type="button" onClick={() => setDraft(current => ({ ...current, reminderAfter: null }))}>延期を解除</button></div>
+              </>}
+              {draft.voiceTranscript && <details><summary>元の音声メモ</summary><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.voiceTranscript}</p></details>}
+            </div>
+          </details>
           <div className="form-grid">
             <div className="task-date-editor">
               <label>
@@ -839,6 +962,7 @@ function TaskEditor({
                       ...current,
                       scheduledDate: null,
                       startMinute: null,
+                      isFixed: false,
                     }))
                   }
                 >
@@ -861,6 +985,7 @@ function TaskEditor({
                   setDraft((current) => ({
                     ...current,
                     startMinute: parseMinute(value),
+                    isFixed: value ? current.isFixed !== false : false,
                   }));
                 }}
               />
@@ -897,12 +1022,28 @@ function TaskEditor({
                   : "このタスクだけの通知設定です"}
               </small>
             </label>
+            {draft.startMinute !== null && (
+              <label className="fixed-time-toggle">
+                <input
+                  type="checkbox"
+                  checked={draft.isFixed !== false}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    setDraft((current) => ({ ...current, isFixed: checked }));
+                  }}
+                />
+                <span>
+                  <Lock size={14} />
+                  この時刻は固定（自動でずらさない）
+                </span>
+              </label>
+            )}
             <label>
               <span>予定時間</span>
               <input
                 type="number"
-                min="5"
-                step="5"
+                min="1"
+                step="1"
                 value={draft.estimateMin}
                 onChange={(event) => {
                   const value = Number(event.currentTarget.value);
@@ -1141,6 +1282,12 @@ function TodayPage({
   onEdit: (task: Task) => void;
   onStart: (task: Task) => Promise<void>;
 }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [runwayOpen, setRunwayOpen] = useState(false);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const today = todayKey();
   const dayTasks = tasks
     .filter(
@@ -1153,14 +1300,64 @@ function TodayPage({
       compareDayFlowTasks(a, b),
     );
   const due = dayTasks.filter((task) => task.status !== "done");
-  const moveTodayTask = async (taskId: string, direction: -1 | 1) => {
-    await reorderTasksForDay(
-      due.map((task) => task.id),
-      taskId,
-      direction,
-    );
+  const fixedTasks = due.filter(
+    (task) => task.startMinute !== null && task.isFixed !== false,
+  );
+  const flexibleTasks = due.filter(
+    (task) => task.startMinute === null || task.isFixed === false,
+  );
+  const reorderFlexibleTasks = async (ids: string[]) => {
+    await setTasksFlowOrder(ids);
     syncNow().catch(() => undefined);
   };
+  const googleCalendar =
+    useLiveQuery(() => getGoogleCalendarConfig(), [], emptyGoogleCalendar) ||
+    emptyGoogleCalendar;
+  const calendarAnchors = googleCalendar.enabled
+    ? googleCalendar.events
+        .filter((event) => !event.allDay && compactDate(new Date(event.start)) === today)
+        .map((event) => {
+          const start = new Date(event.start);
+          const end = event.end ? new Date(event.end) : null;
+          return {
+            id: `google:${event.id}`,
+            title: event.title,
+            durationMin: Math.max(
+              1,
+              end && Number.isFinite(end.getTime())
+                ? Math.round((end.getTime() - start.getTime()) / 60_000)
+                : 30,
+            ),
+            fixed: true,
+            startMinute: start.getHours() * 60 + start.getMinutes(),
+            kind: "calendar" as const,
+          };
+        })
+    : [];
+  const current = new Date(now);
+  const nowMinute = current.getHours() * 60 + current.getMinutes();
+  const runway = buildDayRunway(
+    [
+      ...flexibleTasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        durationMin: task.estimateMin,
+        fixed: false,
+        startMinute: null,
+        kind: "task" as const,
+      })),
+      ...fixedTasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        durationMin: task.estimateMin,
+        fixed: true,
+        startMinute: task.startMinute,
+        kind: "task" as const,
+      })),
+      ...calendarAnchors,
+    ],
+    { nowMinute, dayEndMinute: 22 * 60, preparationMin: 10 },
+  );
   const overdue = tasks
     .filter(
       (task) =>
@@ -1188,24 +1385,164 @@ function TodayPage({
         compactDate(new Date(task.completedAt)) === today,
     )
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
-  const focus = [...due, ...overdue, ...inbox][0];
+  const activeSession = sessions
+    .filter((session) =>
+      !session.deletedAt && (session.status === "running" || session.status === "paused"))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  const activeTask = activeSession
+    ? tasks.find((task) => task.id === activeSession.taskId)
+    : undefined;
+  const focus = activeTask || flexibleTasks[0] || fixedTasks[0] || overdue[0] || inbox[0];
+  const nextAnchor = runway.nextAnchor;
+  const untilAnchor = nextAnchor ? Math.max(0, nextAnchor.startMinute - nowMinute) : null;
+  const activeRemaining = activeSession
+    ? (() => {
+        const at = activeSession.status === "paused" && activeSession.pausedAt
+          ? new Date(activeSession.pausedAt).getTime()
+          : now;
+        const elapsed = Math.max(
+          0,
+          Math.floor(
+            (at - new Date(activeSession.startedAt).getTime()) / 1000 -
+              activeSession.pausedTotalSec,
+          ),
+        );
+        return activeSession.plannedMin * 60 - (activeSession.carriedElapsedSec || 0) - elapsed;
+      })()
+    : null;
+  const finishActive = async (complete: boolean) => {
+    if (!activeSession) return;
+    await updateSession(activeSession.id, {
+      status: complete ? "completed" : "interrupted",
+      endedAt: new Date().toISOString(),
+      pausedAt: null,
+    }, complete ? "作業を完了" : "次の作業へ切り替え");
+    if (complete && activeTask) await completeTask(activeTask.id, true);
+    syncNow().catch(() => undefined);
+  };
+  const startNext = async () => {
+    const next = flexibleTasks.find((task) => task.id !== activeTask?.id) || fixedTasks[0];
+    await finishActive(false);
+    if (next) onStart(next);
+  };
   return (
     <div className="page-content today-page">
       <QuickAdd defaultDate={today} />
-      <WorkStartPanel
-        tasks={tasks}
-        sessions={sessions}
-        fallbackTask={focus || null}
-        syncState={syncState}
-        onStart={onStart}
-      />
-      {dayTasks.length > 0 && (
-        <DayFlow
-          tasks={dayTasks}
-          onEdit={onEdit}
-          onStart={onStart}
-          onMove={moveTodayTask}
-        />
+      <section className="runway-status" aria-label="今日の見通し">
+        <div className="runway-clock">
+          <span>いま</span>
+          <strong>{formatMinute(nowMinute)}</strong>
+        </div>
+        <div className="runway-next-anchor">
+          <span>{nextAnchor ? "次の固定予定" : "このあとの固定予定"}</span>
+          <strong>{nextAnchor ? nextAnchor.title : "なし"}</strong>
+          <small>
+            {nextAnchor
+              ? `${flowTimeLabel(nextAnchor.startMinute)}まで${formatRelativeMinutes(untilAnchor || 0)}・使えるのは約${runway.usableBeforeNext}分`
+              : `22:00まで約${runway.usableBeforeNext}分`}
+          </small>
+        </div>
+        <div className={`runway-capacity${runway.overflowMin ? " overloaded" : ""}`}>
+          <span>今日の見込み</span>
+          <strong>{runway.bufferedFlexibleMin}分</strong>
+          <small>
+            {runway.overflowMin
+              ? `約${runway.overflowMin}分入りきりません`
+              : `${flowTimeLabel(runway.finishMinute)}ごろ終了`}
+          </small>
+        </div>
+      </section>
+      <section className="runway-now-card">
+        <header>
+          <span className="eyebrow">NOW</span>
+          <h2>{activeSession ? "いま進めていること" : "次はこれだけ"}</h2>
+        </header>
+        {focus ? (
+          <div className="runway-now-task">
+            <div>
+              <strong>{focus.title}</strong>
+              <span>
+                {activeSession && activeRemaining !== null
+                  ? activeRemaining < 0
+                    ? `${Math.ceil(Math.abs(activeRemaining) / 60)}分オーバーしています`
+                    : `あと約${Math.max(1, Math.ceil(activeRemaining / 60))}分`
+                  : `${focus.estimateMin}分だけ、ここから始める`}
+              </span>
+            </div>
+            <button
+              className="start-button"
+              type="button"
+              onClick={() => onStart(focus)}
+            >
+              <Play size={22} fill="currentColor" />
+              {activeSession ? "タイマー" : "開始"}
+            </button>
+          </div>
+        ) : (
+          <div className="focus-empty">
+            <Sparkles size={28} />
+            <div>
+              <strong>まず、やることを1つ追加</strong>
+              <span>上の入力欄に書くだけで始められます</span>
+            </div>
+          </div>
+        )}
+        {activeSession && activeRemaining !== null && activeRemaining < 0 && (
+          <div className="runway-recovery">
+            <div>
+              <strong>予定より長引いています</strong>
+              <span>全部を後ろへ押さず、ここで決め直せます。</span>
+            </div>
+            <div>
+              <button type="button" onClick={() => {
+                setFocusSessionPlannedMinutes(activeSession.id, activeSession.plannedMin + 5)
+                  .then(() => syncNow().catch(() => undefined));
+              }}>あと5分</button>
+              <button type="button" onClick={() => finishActive(true)}>ここで完了</button>
+              <button type="button" onClick={startNext}>次へ</button>
+              {activeTask && (
+                <button type="button" onClick={async () => {
+                  await finishActive(false);
+                  await updateTask(activeTask.id, {
+                    scheduledDate: null,
+                    startMinute: null,
+                    isFixed: false,
+                    status: "inbox",
+                  }, "今日から外す");
+                  syncNow().catch(() => undefined);
+                }}>今日から外す</button>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+      {due.length > 0 && (
+        <section className="runway-board">
+          <header>
+            <div>
+              <span className="section-kicker">DAY RUNWAY</span>
+              <h2>このあとの流れ</h2>
+              <p>固定予定は動かさず、その間に作業を入れます。</p>
+            </div>
+            <button className="runway-expand" type="button" onClick={() => setRunwayOpen(true)}>
+              <Maximize2 size={17} />
+              1日を広く見る
+            </button>
+          </header>
+          <div className="runway-columns">
+            <div>
+              <h3>やる順番</h3>
+              <p className="runway-help">つまみで並べ替え・左へスワイプで削除</p>
+              <DraggableTaskQueue
+                tasks={flexibleTasks}
+                onEdit={onEdit}
+                onStart={onStart}
+                onReorder={reorderFlexibleTasks}
+              />
+            </div>
+            <RunwayTimeline entries={runway.entries} tasks={tasks} onEdit={onEdit} onStart={onStart} />
+          </div>
+        </section>
       )}
       {overdue.length > 0 && (
         <section className="task-section overdue-section">
@@ -1228,32 +1565,6 @@ function TodayPage({
           </div>
         </section>
       )}
-      <section className="task-section">
-        <header>
-          <div>
-            <span className="section-kicker">TODAY</span>
-            <h2>今日の予定</h2>
-          </div>
-          <span>{due.length}件</span>
-        </header>
-        {due.length ? (
-          <div className="task-list">
-            {due.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onEdit={onEdit}
-                onStart={onStart}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="予定はまだありません"
-            detail="上の入力欄から、今日やることを追加できます"
-          />
-        )}
-      </section>
       {completedToday.length > 0 && (
         <section className="task-section completed-section">
           <header>
@@ -1281,15 +1592,15 @@ function TodayPage({
           </div>
         </section>
       )}
-      <section className="task-section">
-        <header>
-          <div>
-            <span className="section-kicker">INBOX</span>
-            <h2>日付なし</h2>
-          </div>
-          <span>{inbox.length}件</span>
-        </header>
-        {inbox.length ? (
+      {inbox.length > 0 && (
+        <section className="task-section inbox-preview">
+          <header>
+            <div>
+              <span className="section-kicker">INBOX</span>
+              <h2>あとで整理</h2>
+            </div>
+            <span>{inbox.length}件</span>
+          </header>
           <div className="task-list">
             {inbox.slice(0, 8).map((task) => (
               <TaskRow
@@ -1301,15 +1612,42 @@ function TodayPage({
               />
             ))}
           </div>
-        ) : (
-          <EmptyState
-            title="受信箱は空です"
-            detail="思いつきを忘れず捕まえられています"
-          />
-        )}
-      </section>
+        </section>
+      )}
+      {runwayOpen && (
+        <div className="runway-fullscreen" role="dialog" aria-modal="true" aria-label="今日の流れを広く見る">
+          <header>
+            <div>
+              <span className="section-kicker">TODAY · {formatMinute(nowMinute)}</span>
+              <h2>今日の流れ</h2>
+              <p>固定予定の間に、無理なく入る順番です。</p>
+            </div>
+            <IconButton label="閉じる" onClick={() => setRunwayOpen(false)}><X size={22} /></IconButton>
+          </header>
+          <div className="runway-fullscreen-grid">
+            <section>
+              <h3>順番を組み替える</h3>
+              <DraggableTaskQueue
+                tasks={flexibleTasks}
+                onEdit={onEdit}
+                onStart={onStart}
+                onReorder={reorderFlexibleTasks}
+              />
+            </section>
+            <RunwayTimeline entries={runway.entries} tasks={tasks} onEdit={onEdit} onStart={onStart} expanded />
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function formatRelativeMinutes(minutes: number): string {
+  if (minutes < 1) return "まもなく";
+  if (minutes < 60) return `あと${minutes}分`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `あと${hours}時間${rest ? `${rest}分` : ""}`;
 }
 
 function flowTimeLabel(minute: number): string {
@@ -1319,89 +1657,124 @@ function flowTimeLabel(minute: number): string {
   return dayOffset > 0 ? `翌日 ${time}` : time;
 }
 
-function DayFlow({
+function DraggableTaskQueue({
   tasks,
   onEdit,
   onStart,
-  onMove,
+  onReorder,
 }: {
   tasks: Task[];
   onEdit: (task: Task) => void;
   onStart: (task: Task) => void;
-  onMove: (taskId: string, direction: -1 | 1) => void;
+  onReorder: (ids: string[]) => void;
 }) {
-  const remaining = tasks.filter((task) => task.status !== "done");
-  const totalMin = remaining.reduce((sum, task) => sum + task.estimateMin, 0);
-  const bufferedMin = Math.ceil((totalMin * 1.25) / 5) * 5;
-  const current = new Date();
-  let cursor = Math.ceil((current.getHours() * 60 + current.getMinutes()) / 5) * 5;
-  const entries = tasks.map((task) => {
-    const start = task.status === "done"
-      ? task.startMinute
-      : task.startMinute === null
-        ? cursor
-        : Math.max(cursor, task.startMinute);
-    if (task.status !== "done") cursor = (start ?? cursor) + task.estimateMin;
-    return { task, start };
-  });
+  const [orderedIds, setOrderedIds] = useState(() => tasks.map((task) => task.id));
+  const orderedIdsRef = useRef(orderedIds);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const draggingRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (draggingRef.current) return;
+    const nextIds = tasks.map((task) => task.id);
+    orderedIdsRef.current = nextIds;
+    setOrderedIds(nextIds);
+  }, [tasks]);
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const ordered = orderedIds.map((id) => byId.get(id)).filter((task): task is Task => Boolean(task));
+  const pointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const id = draggingRef.current;
+    if (!id) return;
+    const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-runway-task]"));
+    const target = elements.find((element) => {
+      const rect = element.getBoundingClientRect();
+      return event.clientY < rect.top + rect.height / 2;
+    });
+    const targetId = target?.dataset.runwayTask;
+    if (targetId === id) return;
+    setOrderedIds((currentIds) => {
+      const next = currentIds.filter((item) => item !== id);
+      const targetIndex = targetId ? next.indexOf(targetId) : -1;
+      next.splice(targetIndex < 0 ? next.length : targetIndex, 0, id);
+      orderedIdsRef.current = next;
+      return next;
+    });
+  };
+  const finishDrag = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = null;
+    setDragging(null);
+    onReorder(orderedIdsRef.current);
+  };
   return (
-    <section className="day-flow" aria-labelledby="day-flow-title">
-      <header>
-        <div>
-          <span className="section-kicker">DAY FLOW</span>
-          <h2 id="day-flow-title">今日の流れ</h2>
-        </div>
-        <div className="day-flow-summary">
-          <span>残り <strong>{remaining.length}件</strong></span>
-          <span>集中 <strong>{totalMin}分</strong></span>
-          <span>余白込み <strong>{bufferedMin}分</strong></span>
-        </div>
-      </header>
-      <ol className="day-flow-list">
-        {entries.map(({ task, start }, index) => {
-          const remainingIndex = remaining.findIndex((item) => item.id === task.id);
+    <div
+      className="runway-queue"
+      onPointerMove={pointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+    >
+      {ordered.map((task, index) => (
+        <SwipeableTask task={task} key={task.id}>
+          <article className={`runway-queue-item${dragging === task.id ? " dragging" : ""}`} data-runway-task={task.id}>
+          <button
+            className="runway-drag-handle"
+            type="button"
+            aria-label={`${task.title}の順番を移動`}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              draggingRef.current = task.id;
+              setDragging(task.id);
+            }}
+          ><GripVertical size={20} /></button>
+          <button className="runway-queue-main" type="button" onClick={() => onEdit(task)}>
+            <span>{index + 1}</span>
+            <strong>{task.title}</strong>
+            <small>{task.estimateMin}分</small>
+          </button>
+          <IconButton label={`${task.title}を開始`} onClick={() => onStart(task)}><Play size={16} /></IconButton>
+          </article>
+        </SwipeableTask>
+      ))}
+      {!ordered.length && <div className="runway-queue-empty">固定予定以外のタスクはありません</div>}
+    </div>
+  );
+}
+
+function RunwayTimeline({
+  entries,
+  tasks,
+  onEdit,
+  onStart,
+  expanded = false,
+}: {
+  entries: RunwayEntry[];
+  tasks: Task[];
+  onEdit: (task: Task) => void;
+  onStart: (task: Task) => void;
+  expanded?: boolean;
+}) {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  return (
+    <div className={`runway-timeline${expanded ? " expanded" : ""}`}>
+      <h3>時間の見通し</h3>
+      <ol>
+        {entries.map((entry) => {
+          const task = entry.kind === "task" ? byId.get(entry.id) : undefined;
           return (
-          <li className={task.status === "done" ? "done" : ""} key={task.id}>
-            <span className="day-flow-index">
-              {task.status === "done" ? <Check size={14} /> : index + 1}
-            </span>
-            <button type="button" onClick={() => onEdit(task)}>
-              <span>{start === null ? "時刻なし" : flowTimeLabel(start)}</span>
-              <strong>{task.title}</strong>
-              <small>{task.estimateMin}分</small>
-            </button>
-            {task.status !== "done" && (
-              <div className="day-flow-actions">
-                <IconButton
-                  label={`${task.title}を上へ`}
-                  disabled={remainingIndex === 0}
-                  onClick={() => onMove(task.id, -1)}
-                >
-                  <ChevronUp size={15} />
-                </IconButton>
-                <IconButton
-                  label={`${task.title}を下へ`}
-                  disabled={remainingIndex === remaining.length - 1}
-                  onClick={() => onMove(task.id, 1)}
-                >
-                  <ChevronDown size={15} />
-                </IconButton>
-                <IconButton label={`${task.title}を開始`} onClick={() => onStart(task)}>
-                  <Play size={16} />
-                </IconButton>
-              </div>
-            )}
-          </li>
+            <li className={`${entry.fixed ? "fixed" : "flexible"}${entry.conflict ? " conflict" : ""}`} key={entry.id}>
+              <span className="runway-time">{flowTimeLabel(entry.startMinute)}</span>
+              <button type="button" disabled={!task} onClick={() => task && onEdit(task)}>
+                <span>{entry.fixed ? <Lock size={13} /> : <span className="runway-dot" />}</span>
+                <strong>{entry.title}</strong>
+                <small>{entry.durationMin}分{entry.kind === "calendar" ? "・カレンダー" : ""}</small>
+              </button>
+              {task && !entry.fixed && (
+                <IconButton label={`${task.title}を開始`} onClick={() => onStart(task)}><Play size={15} /></IconButton>
+              )}
+            </li>
           );
         })}
       </ol>
-      {remaining.length > 0 && (
-        <footer>
-          <Clock3 size={15} />
-          今から順に進めた目安終了 {flowTimeLabel(cursor)}
-        </footer>
-      )}
-    </section>
+      {!entries.length && <div className="runway-queue-empty">予定を追加すると、ここに1日の流れが見えます</div>}
+    </div>
   );
 }
 
@@ -1528,7 +1901,7 @@ function CalendarPage({
         const endedAt = new Date(session.endedAt);
         const visibleMinutes = actual.reliable
           ? actual.wallMin
-          : Math.min(60, Math.max(5, session.plannedMin));
+          : Math.min(60, Math.max(1, session.plannedMin));
         const startedAt = actual.reliable
           ? new Date(session.startedAt)
           : new Date(endedAt.getTime() - visibleMinutes * 60_000);
@@ -1677,7 +2050,7 @@ function CalendarPage({
       eventData: (element) => ({
         id: element.dataset.taskId,
         title: element.dataset.title,
-        duration: { minutes: Number(element.dataset.duration) || 25 },
+        duration: { minutes: Number(element.dataset.duration) || 5 },
       }),
     });
     return () => draggable.destroy();
@@ -1749,7 +2122,7 @@ function CalendarPage({
   ) => {
     if (!start) return;
     const durationMin = end
-      ? Math.max(5, Math.round((end.getTime() - start.getTime()) / 60_000))
+      ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000))
       : undefined;
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
@@ -1791,7 +2164,7 @@ function CalendarPage({
     const pointerId = pointer.pointerId;
     const startY = pointer.clientY;
     const startHeight = eventElement.getBoundingClientRect().height;
-    const startDuration = Math.max(5, task.durationMin);
+    const startDuration = Math.max(1, task.durationMin);
     const slotHeight = Math.max(1, slotElement.getBoundingClientRect().height);
     let nextDuration = startDuration;
     let moved = false;
@@ -1803,9 +2176,10 @@ function CalendarPage({
     const move = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
       event.preventDefault();
-      const deltaMinutes =
-        Math.round((((event.clientY - startY) / slotHeight) * 15) / 5) * 5;
-      nextDuration = Math.max(5, Math.min(720, startDuration + deltaMinutes));
+      const deltaMinutes = Math.round(
+        ((event.clientY - startY) / slotHeight) * 15,
+      );
+      nextDuration = Math.max(1, Math.min(720, startDuration + deltaMinutes));
       moved ||= Math.abs(event.clientY - startY) > 3;
       eventElement.style.height = `${Math.max(12, startHeight + ((nextDuration - startDuration) / 15) * slotHeight)}px`;
       handle.dataset.duration = `${nextDuration}分`;
@@ -2081,7 +2455,7 @@ function CalendarPage({
             slotMinTime="06:00:00"
             slotMaxTime="25:00:00"
             slotDuration="00:15:00"
-            snapDuration="00:05:00"
+            snapDuration="00:01:00"
             scrollTime="08:00:00"
             height={mode === "month" ? "auto" : "100%"}
             dayMaxEvents={4}
@@ -2143,12 +2517,12 @@ function CalendarPage({
                   : info.start.getHours() * 60 + info.start.getMinutes(),
                 info.end
                   ? Math.max(
-                      5,
+                      1,
                       Math.round(
                         (info.end.getTime() - info.start.getTime()) / 60_000,
                       ),
                     )
-                  : 25,
+                  : 5,
               );
               calendarRef.current?.getApi().unselect();
             }}
@@ -2936,7 +3310,7 @@ function SettingsPage({
           <SlidersHorizontal size={20} />
           <div>
             <h2>音声タイマー</h2>
-            <p>画面を開いている間の読み上げを調整します。</p>
+            <p>画面を閉じた状態を含む読み上げを調整します。</p>
           </div>
         </header>
         <div className="form-stack">
@@ -2958,8 +3332,41 @@ function SettingsPage({
           </label>
           <label className="toggle-row">
             <span>
-              <strong>1分ごとの時間案内</strong>
-              <small>開始後、残り1分まで毎分読み上げます</small>
+              <strong>少なめ音声コーチ</strong>
+              <small>アプリを閉じていても、予定前などに最大3回/日だけ声をかけます</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={voiceConfig.coachEnabled !== false}
+              onChange={(event) =>
+                setVoiceConfig({
+                  ...voiceConfig,
+                  coachEnabled: event.target.checked,
+                })
+              }
+            />
+          </label>
+          <label>
+            <span>通常の予定で準備を始める時間（分前）</span>
+            <input
+              type="number"
+              min="5"
+              max="180"
+              step="5"
+              value={voiceConfig.defaultPreparationMin ?? 20}
+              onChange={(event) =>
+                setVoiceConfig({
+                  ...voiceConfig,
+                  defaultPreparationMin: Math.min(180, Math.max(5, Number(event.target.value) || 20)),
+                })
+              }
+            />
+            <small>通院・外出・電車・オンライン会議などは予定名から早め／短めに推測します</small>
+          </label>
+          <label className="toggle-row">
+            <span>
+              <strong>30秒ごとの時間案内</strong>
+              <small>開始後、残り30秒まで30秒ごとに読み上げます</small>
             </span>
             <input
               type="checkbox"
@@ -3049,6 +3456,8 @@ function SettingsPage({
                   db.settings.put({
                     id: "voice",
                     enabled: voiceConfig.enabled,
+                    coachEnabled: voiceConfig.coachEnabled !== false,
+                    defaultPreparationMin: voiceConfig.defaultPreparationMin ?? 20,
                     rate: voiceConfig.rate,
                     volume: voiceConfig.volume,
                     announcements: voiceConfig.announcements,
@@ -3085,9 +3494,9 @@ function SettingsPage({
         <header>
           <Bell size={20} />
           <div>
-            <h2>iPhoneバックグラウンド通知</h2>
+            <h2>iPhoneバックグラウンド通知</h2><p className="settings-hint">音声追加の設定は画面上部の「Siri・仕事追加」を開いてください。</p>
             <p>
-              SASSHYを閉じていても、明示的に選んだ予定・タイマー終了・メモの時刻に通知します。
+              SASSHYを閉じていても、通知ONにした予定の開始・タイマー終了・メモの時刻と、設定した仕事の未対応を通知します。
             </p>
           </div>
         </header>
@@ -3254,6 +3663,7 @@ function TimerDock({
   const [durationDraft, setDurationDraft] = useState(String(session.plannedMin));
   const announced = useRef(new Set<number>());
   const previous = useRef<number | null>(null);
+  const previousPlannedMinutes = useRef(session.plannedMin);
   const paused = session.status === "paused";
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 500);
@@ -3301,19 +3711,29 @@ function TimerDock({
   };
   const remainingSec = remainingAt(now);
   useEffect(() => {
-    if (!voice.enabled || paused || remainingSec < 0) {
+    if (previousPlannedMinutes.current === session.plannedMin) return;
+    // 延長前に読み上げ済みだった「残り30秒」などを、新しい期限でも
+    // 読み上げられるようにリセットする。
+    announced.current.clear();
+    previous.current = remainingAt(Date.now());
+    previousPlannedMinutes.current = session.plannedMin;
+  }, [session.plannedMin]);
+  useEffect(() => {
+    if (!voice.enabled || paused) {
       previous.current = remainingSec;
       return;
     }
-    for (const threshold of announcementThresholds(voice, session.plannedMin)) {
-      if (
-        previous.current !== null &&
-        previous.current > threshold &&
-        remainingSec <= threshold &&
-        !announced.current.has(threshold)
-      ) {
-        speakVoice(announcementText(threshold), voice);
-        announced.current.add(threshold);
+    if (remainingSec >= 0) {
+      for (const threshold of announcementThresholds(voice, session.plannedMin)) {
+        if (
+          previous.current !== null &&
+          previous.current > threshold &&
+          remainingSec <= threshold &&
+          !announced.current.has(threshold)
+        ) {
+          speakVoice(announcementText(threshold), voice);
+          announced.current.add(threshold);
+        }
       }
     }
     if (
@@ -3322,6 +3742,18 @@ function TimerDock({
       remainingSec <= 0
     ) {
       speakVoice("予定時間になりました", voice);
+    }
+    if (remainingSec < 0) {
+      const previousOvertime = Math.max(0, -(previous.current ?? 0));
+      const overtime = -remainingSec;
+      const firstThreshold = (Math.floor(previousOvertime / 30) + 1) * 30;
+      for (let threshold = firstThreshold; threshold <= overtime; threshold += 30) {
+        const key = -threshold;
+        if (!announced.current.has(key)) {
+          speakVoice(remainingStatusText(-threshold), voice);
+          announced.current.add(key);
+        }
+      }
     }
     previous.current = remainingSec;
   }, [remainingSec, paused, voice]);
@@ -3432,8 +3864,8 @@ function TimerDock({
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
       <div className="timer-duration-editor">
-        <button type="button" onClick={() => changeDuration(session.plannedMin - 5)}>
-          -5
+        <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>
+          -1
         </button>
         <label>
           <span>タイマー</span>
@@ -3455,8 +3887,8 @@ function TimerDock({
         <button type="button" onClick={() => changeDuration(Number(durationDraft))}>
           変更
         </button>
-        <button type="button" onClick={() => changeDuration(session.plannedMin + 5)}>
-          +5
+        <button type="button" onClick={() => changeDuration(session.plannedMin + 1)}>
+          +1
         </button>
       </div>
       <button
@@ -3531,6 +3963,11 @@ function App() {
     [],
     undefined,
   );
+  const coachCalendar = useLiveQuery(
+    () => db.settings.get("google-calendar") as Promise<GoogleCalendarConfig | undefined>,
+    [],
+    undefined,
+  );
   const undoRedo = useLiveQuery(() => getUndoRedoState(), [], {
     id: "undo-redo" as const,
     undo: [],
@@ -3548,6 +3985,32 @@ function App() {
     : undefined;
   useEffect(() => startAutoSync(), []);
   useEffect(() => subscribeSync(setSyncState), []);
+  useEffect(() => {
+    if (!voice) return;
+    const prompts = buildCoachPlan({
+      now: new Date(),
+      tasks,
+      activeSession,
+      googleEvents: coachCalendar?.enabled ? coachCalendar.events : [],
+      voice,
+    });
+    syncNativeCoach(
+      prompts,
+      voice.enabled && voice.coachEnabled !== false,
+      voice.rate,
+      voice.volume,
+    );
+  }, [tasks, activeSession, coachCalendar, voice]);
+  useEffect(() => {
+    const onCompleted = (event: Event) => {
+      if (!voice?.enabled || voice.coachEnabled === false) return;
+      const taskId = (event as CustomEvent<{ taskId?: string }>).detail?.taskId;
+      if (!taskId) return;
+      speakVoice(completionCoachText(tasks, taskId), voice);
+    };
+    window.addEventListener("sasshy-task-completed", onCompleted);
+    return () => window.removeEventListener("sasshy-task-completed", onCompleted);
+  }, [tasks, voice]);
   useEffect(() => {
     if (!taskLink.hasTask) return;
     clearTaskLinkFromUrl();
@@ -3710,7 +4173,7 @@ function App() {
             <Menu size={21} />
           </IconButton>
           <div className="topbar-title">
-            <span>{PAGE_LABEL[page]}</span>
+            <span>SASSHY</span>
             <strong>
               {page === "today"
                 ? new Intl.DateTimeFormat("ja-JP", {
@@ -3718,7 +4181,7 @@ function App() {
                     day: "numeric",
                     weekday: "long",
                   }).format(new Date())
-                : "SASSHY v2"}
+                : PAGE_LABEL[page]}
             </strong>
           </div>
           <div className="topbar-actions">
@@ -3860,7 +4323,9 @@ function App() {
       )}
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
-        {navItems.slice(0, 5).map((item) => (
+        {navItems
+          .filter((item) => ["today", "calendar", "inbox", "memos"].includes(item.id))
+          .map((item) => (
           <button
             key={item.id}
             type="button"
@@ -3870,7 +4335,7 @@ function App() {
             {item.icon}
             <span>{PAGE_LABEL[item.id]}</span>
           </button>
-        ))}
+          ))}
         <button type="button" onClick={() => setMenuOpen(true)}>
           <MoreHorizontal />
           <span>その他</span>

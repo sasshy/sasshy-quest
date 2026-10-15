@@ -2,6 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { createTaskLink, parseTaskLink, type TaskLinkPayload } from './task-link';
 
 describe('Codex task links', () => {
+  it('defaults to five minutes and accepts three-minute tasks', () => {
+    const defaultResult = parseTaskLink(createTaskLink('https://example.com/v2/', {
+      v: 1,
+      requestId: 'codex-default-five',
+      title: '基本のタスク',
+    }));
+    const shortResult = parseTaskLink(createTaskLink('https://example.com/v2/', {
+      v: 1,
+      requestId: 'codex-three-minutes',
+      title: '短いタスク',
+      durationMin: 3,
+    }));
+
+    expect(defaultResult.task?.durationMin).toBe(5);
+    expect(shortResult.task?.durationMin).toBe(3);
+  });
+
   it('round trips a Japanese task with its schedule', () => {
     const payload: TaskLinkPayload = {
       v: 1,

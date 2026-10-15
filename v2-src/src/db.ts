@@ -81,6 +81,8 @@ export async function ensureDefaults(): Promise<void> {
     await db.settings.put({
       id: 'voice',
       enabled: true,
+      coachEnabled: true,
+      defaultPreparationMin: 20,
       rate: 1,
       volume: 1,
       announcements: [30, 15, 10, 5, 3, 1],
