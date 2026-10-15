@@ -1,7 +1,7 @@
-import { db } from './db';
+import { db, getDeviceId } from './db';
 import { announceChange, applyRemoteRecord, markSynced } from './store';
 import { syncScheduleHistory } from './schedule-sync';
-import type { CloudRecord, SyncConfig } from './types';
+import type { CloudRecord, OutboxItem, SyncConfig } from './types';
 
 export interface SyncState {
   phase: 'idle' | 'syncing' | 'ok' | 'error' | 'offline' | 'disabled';
@@ -143,7 +143,8 @@ function validate(config: SyncConfig): void {
 async function performSync(force = false): Promise<void> {
   const config = await getSyncConfig();
   if (!config.enabled && !force) {
-    setState({ phase: 'disabled', message: '自動同期 OFF・端末保存済み', at: config.lastSyncAt });
+    const pendingCount = await db.outbox.count();
+    setState({ phase: 'disabled', message: `自動同期 OFF・未送信${pendingCount}件（端末保存済み）`, at: config.lastSyncAt });
     return;
   }
   validate(config);
@@ -157,17 +158,29 @@ async function performSync(force = false): Promise<void> {
   try {
     const scheduleHistoryCount = await syncScheduleHistory(config);
     const queued = await db.outbox.orderBy('createdAt').toArray();
+    let failed = 0;
+    let conflicts = 0;
+    let firstFailure = '';
     for (const item of queued) {
-      const response = await rpc<CloudRecord[]>(config, 'sasshy_v2_push', {
-        p_sync_key: config.syncKey,
-        p_record_type: item.entityType,
-        p_id: item.entityId,
-        p_payload: item.payload,
-        p_deleted: item.deleted,
-      });
-      const row = response?.[0];
-      if (row) await markSynced(item.entityType, item.entityId, row.updated_at);
-      if (item.id !== undefined) await db.outbox.delete(item.id);
+      try {
+        const outcome = await pushItem(config, item);
+        if (outcome === 'conflict') conflicts += 1;
+        if (item.id !== undefined) await db.outbox.delete(item.id);
+      } catch (error) {
+        // Auth and connection problems affect every record: stop and keep everything queued.
+        if (isFatalSyncError(error)) throw error;
+        // A problem with one record must not block the others (it stays queued for the next sync).
+        failed += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        if (!firstFailure) firstFailure = message;
+        if (item.id !== undefined) {
+          await db.outbox.update(item.id, {
+            attempts: (item.attempts || 0) + 1,
+            lastError: message.slice(0, 300),
+            lastAttemptAt: new Date().toISOString(),
+          });
+        }
+      }
     }
 
     const remote = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey });
@@ -181,15 +194,105 @@ async function performSync(force = false): Promise<void> {
     }
 
     const at = new Date().toISOString();
-    await saveSyncConfig({ lastSyncAt: at, lastError: '' });
-    setState({ phase: 'ok', message: `クラウド保存済み・${remote?.length || 0}件／予定履歴${scheduleHistoryCount}件確認`, at });
+    const pendingCount = await db.outbox.count();
+    if (failed > 0) {
+      await saveSyncConfig({ lastSyncAt: at, lastError: firstFailure });
+      setState({ phase: 'error', message: `一部未送信・未送信${pendingCount}件（次回再送）: ${firstFailure}`, at });
+    } else {
+      await saveSyncConfig({ lastSyncAt: at, lastError: '' });
+      const conflictText = conflicts > 0 ? `・競合${conflicts}件は履歴に保存` : '';
+      setState({ phase: 'ok', message: `クラウド保存済み・${remote?.length || 0}件／予定履歴${scheduleHistoryCount}件確認・未送信${pendingCount}件${conflictText}`, at });
+    }
     announceChange();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await saveSyncConfig({ lastError: message });
-    setState({ phase: 'error', message: `同期失敗・端末データは保持: ${message}`, at: config.lastSyncAt });
+    const pendingCount = await db.outbox.count().catch(() => 0);
+    setState({ phase: 'error', message: `同期失敗・未送信${pendingCount}件は端末に保持: ${message}`, at: config.lastSyncAt });
     throw error;
   }
+}
+
+/** Errors that will fail for every record too: authentication, missing setup or no connection. */
+export function isFatalSyncError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^(401|403)\b/.test(message)
+    || /28000|invalid credential/i.test(message)
+    || message.startsWith('通信');
+}
+
+function isMissingFunction(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^404\b/.test(message) || /PGRST202|Could not find the function/i.test(message);
+}
+
+type PushIfResult = { status: 'ok' | 'conflict'; row: CloudRecord | null };
+
+// null = not yet known. Older servers without sasshy_v2_push_if fall back to the legacy push.
+let pushIfSupported: boolean | null = null;
+
+async function pushItem(config: SyncConfig, item: OutboxItem): Promise<'ok' | 'conflict'> {
+  const base = (item.payload as { sync?: { serverUpdatedAt?: string | null } }).sync?.serverUpdatedAt ?? null;
+  if (pushIfSupported !== false) {
+    try {
+      let result = await pushIf(config, item, base);
+      pushIfSupported = true;
+      if (result.status === 'conflict' && result.row) {
+        // The newer server version was written by this same device (e.g. an edit queued
+        // while the previous push was in flight): not a real conflict, so overwrite it.
+        const writer = (result.row.payload as { sync?: { deviceId?: string } }).sync?.deviceId;
+        if (writer && writer === await getDeviceId()) result = await pushIf(config, item, result.row.updated_at);
+      }
+      if (result.status === 'ok') {
+        if (result.row) await markSynced(item.entityType, item.entityId, result.row.updated_at);
+        return 'ok';
+      }
+      if (result.row) await keepLocalAsConflict(item, result.row);
+      return 'conflict';
+    } catch (error) {
+      if (!isMissingFunction(error)) throw error;
+      pushIfSupported = false;
+    }
+  }
+  const response = await rpc<CloudRecord[]>(config, 'sasshy_v2_push', {
+    p_sync_key: config.syncKey,
+    p_record_type: item.entityType,
+    p_id: item.entityId,
+    p_payload: item.payload,
+    p_deleted: item.deleted,
+  });
+  const row = response?.[0];
+  if (row) await markSynced(item.entityType, item.entityId, row.updated_at);
+  return 'ok';
+}
+
+function pushIf(config: SyncConfig, item: OutboxItem, base: string | null): Promise<PushIfResult> {
+  return rpc<PushIfResult>(config, 'sasshy_v2_push_if', {
+    p_sync_key: config.syncKey,
+    p_record_type: item.entityType,
+    p_id: item.entityId,
+    p_payload: item.payload,
+    p_deleted: item.deleted,
+    p_base_updated_at: base,
+  });
+}
+
+/** Never lose either side: keep this device's edit in history and show the cloud version. */
+async function keepLocalAsConflict(item: OutboxItem, row: CloudRecord): Promise<void> {
+  const payload = item.payload as { id: string; title?: string; taskTitle?: string };
+  const title = payload.title || payload.taskTitle || 'メモ';
+  await db.history.add({
+    id: `history-conflict-${item.entityId}-${Date.now()}`,
+    entityType: item.entityType === 'memo' ? 'system' : item.entityType,
+    entityId: item.entityId,
+    action: 'sync-conflict',
+    label: `同期の競合：「${title}」のこの端末での変更を履歴に保存し、他の端末の内容を表示`,
+    before: item.payload,
+    after: row.payload,
+    createdAt: new Date().toISOString(),
+    source: 'local',
+  });
+  await applyRemoteRecord(row.record_type, row.payload, row.deleted, row.updated_at);
 }
 
 export function syncNow(force = false): Promise<void> {
@@ -217,6 +320,9 @@ export async function testSyncConnection(configInput?: Partial<SyncConfig>): Pro
   const config = configInput ? await saveSyncConfig(configInput) : await getSyncConfig();
   validate(config);
   const rows = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey });
+  // First-time setup: a verified connection should not silently stay in manual mode
+  // (unsent edits piled up unnoticed before). A user who later turns it off keeps that choice.
+  if (!config.enabled && !config.lastSyncAt) await saveSyncConfig({ enabled: true });
   return rows.length;
 }
 

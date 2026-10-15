@@ -139,6 +139,8 @@ export interface OutboxItem {
   deleted: boolean;
   createdAt: string;
   attempts: number;
+  lastError?: string;
+  lastAttemptAt?: string;
 }
 
 export type ScheduleOperation =

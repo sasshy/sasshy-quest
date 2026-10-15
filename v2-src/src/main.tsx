@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles.css';
 import { ensureDefaults } from './db';
+import { startOpenLog } from './open-log';
 
 async function keepServiceWorkerFresh(): Promise<void> {
   if (!('serviceWorker' in navigator) || location.protocol !== 'https:') return;
@@ -19,6 +20,7 @@ async function keepServiceWorkerFresh(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
+  startOpenLog();
   await ensureDefaults();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
