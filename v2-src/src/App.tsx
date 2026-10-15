@@ -3507,6 +3507,8 @@ function App() {
   const [timerVisible, setTimerVisible] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
+  // Unsent edits must be visible at a glance (they piled up unnoticed before).
+  const pendingCount = useLiveQuery(() => db.outbox.count(), [], 0) || 0;
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
@@ -3735,7 +3737,7 @@ function App() {
               <Redo2 size={17} />
             </IconButton>
             <button
-              className={`top-sync ${syncState.phase}`}
+              className={`top-sync ${syncState.phase}${pendingCount > 0 ? " pending" : ""}`}
               type="button"
               onClick={() => syncNow(true).catch(() => undefined)}
               title={syncState.message}
@@ -3748,12 +3750,15 @@ function App() {
                 <Cloud size={17} />
               )}
               <span>
-                {syncState.phase === "ok"
+                {pendingCount > 0 && syncState.phase !== "syncing"
+                  ? `未送信${pendingCount}件`
+                  : syncState.phase === "ok"
                   ? "保存済み"
                   : syncState.phase === "syncing"
                     ? "同期中"
                     : "端末保存"}
               </span>
+              {pendingCount > 0 && <b className="sync-badge" aria-label={`未送信${pendingCount}件`}>{pendingCount}</b>}
             </button>
           </div>
         </header>

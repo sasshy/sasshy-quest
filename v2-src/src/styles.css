@@ -67,6 +67,9 @@ h1, h2, h3, p { margin: 0; }
 .top-sync.ok { color: var(--green); border-color: #b9dcc9; }
 .top-sync.error { color: var(--coral); border-color: #edc1bb; }
 .top-sync.syncing svg { animation: spin 1s linear infinite; }
+.top-sync { position: relative; }
+.top-sync.pending { color: #9a5a00; border-color: #f0c98a; background: #fff6e8; }
+.top-sync .sync-badge { position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #e8890c; color: #fff; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .view-frame { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .page-content { width: min(1040px, calc(100% - 40px)); margin: 0 auto; padding: 24px 0 120px; }
