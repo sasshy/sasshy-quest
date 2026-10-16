@@ -4,3 +4,15 @@ dist/
 .DS_Store
 dist-ios/
 ios-web/
+
+# Secrets (never commit)
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+supabase/.env
+supabase/functions/.env
+*.pem
+*.p8
+*.key

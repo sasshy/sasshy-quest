@@ -2,3 +2,14 @@ SASSHY_QUEST_HANDOFF_*.md
 index_v*_*.html
 kintone_gas_sample.gs
 .DS_Store
+
+# Secrets (never commit)
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.pem
+*.p8
+*.key
+*secret*.env
