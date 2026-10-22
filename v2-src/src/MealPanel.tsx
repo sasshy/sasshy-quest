@@ -109,6 +109,13 @@ export function MealQuickBar() {
             </>
           )}
         </div>
+        <button
+          className="meal-strip-more"
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "records" }))}
+        >
+          記録を見る
+        </button>
       </section>
       {open && <MealSheet onClose={() => setOpen(false)} />}
     </>

@@ -166,7 +166,7 @@ export function LeaveBanner() {
     <section className={`leave-banner${left < 0 ? " late" : ""}`} aria-label="退社">
       <DoorOpen size={22} />
       <div>
-        <strong>{left > 0 ? `退社 ${hhmm} まであと${left}分` : left === 0 ? `退社 ${hhmm} です` : `退社 ${hhmm} を${-left}分過ぎています`}</strong>
+        <strong>{left > 0 ? `退社 ${hhmm} まであと${left}分` : left === 0 ? `退社 ${hhmm} です` : `退社（${hhmm}）を${-left}分過ぎた`}</strong>
         <small>新しい作業は足さず、出る準備へ</small>
       </div>
       {routine && (

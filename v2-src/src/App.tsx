@@ -13,6 +13,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import listPlugin from "@fullcalendar/list";
 import interactionPlugin, { Draggable } from "@fullcalendar/interaction";
 import type { DateClickArg, EventDragStopArg } from "@fullcalendar/interaction";
 import type {
@@ -188,7 +189,7 @@ type Page =
   | "memos"
   | "history"
   | "settings";
-type CalendarMode = "day" | "week" | "month";
+type CalendarMode = "list" | "day" | "week" | "month";
 
 function formatCalendarTitle(info: DatesSetArg): string {
   const current = info.view.calendar.getDate();
@@ -231,7 +232,7 @@ const PAGE_LABEL: Record<Page, string> = {
   today: "今日",
   calendar: "カレンダー",
   records: "記録",
-  inbox: "受信箱",
+  inbox: "やること",
   later: "あとで",
   memos: "メモ",
   history: "復元",
@@ -1819,10 +1820,10 @@ function CalendarPage({
       ? "mobile"
       : "desktop";
     const saved = localStorage.getItem(`sasshy-calendar-view-${device}`);
-    return saved === "day" || saved === "week" || saved === "month"
+    return saved === "list" || saved === "day" || saved === "week" || saved === "month"
       ? saved
       : device === "mobile"
-        ? "day"
+        ? "list"
         : "week";
   });
   const [title, setTitle] = useState("");
@@ -2073,7 +2074,9 @@ function CalendarPage({
   }, [mobile, unscheduled.length]);
 
   const viewFor = (nextMode: CalendarMode) =>
-    nextMode === "day"
+    nextMode === "list"
+      ? "listWeek"
+      : nextMode === "day"
       ? "timeGridDay"
       : nextMode === "month"
         ? "dayGridMonth"
@@ -2092,10 +2095,10 @@ function CalendarPage({
       `sasshy-calendar-view-${mobile ? "mobile" : "desktop"}`,
     );
     const nextMode =
-      saved === "day" || saved === "week" || saved === "month"
+      saved === "list" || saved === "day" || saved === "week" || saved === "month"
         ? saved
         : mobile
-          ? "day"
+          ? "list"
           : "week";
     if (nextMode === mode) return;
     setMode(nextMode);
@@ -2310,23 +2313,24 @@ function CalendarPage({
               checked={showResults}
               onChange={(event) => setShowResults(event.currentTarget.checked)}
             />
-            結果
+            実績も表示
           </label>
           <div className="segmented" aria-label="カレンダー表示">
-            {(["day", "week", "month"] as CalendarMode[]).map((item) => (
+            {(["list", "day", "week", "month"] as CalendarMode[]).map((item) => (
               <button
                 key={item}
                 type="button"
                 className={mode === item ? "active" : ""}
                 onClick={() => changeMode(item)}
               >
-                {item === "day" ? "日" : item === "week" ? "週" : "月"}
+                {item === "list" ? "一覧" : item === "day" ? "日" : item === "week" ? "週" : "月"}
               </button>
             ))}
           </div>
         </div>
       </div>
       <div className="calendar-layout">
+        {(!mobile || unscheduled.length > 0) && (
         <aside className={`backlog-panel${backlogOpen ? " open" : ""}`}>
           <button
             className="backlog-toggle"
@@ -2374,6 +2378,7 @@ function CalendarPage({
             </div>
           )}
         </aside>
+        )}
         <section
           className={`calendar-surface${mode === "day" ? " has-day-order" : ""}`}
           ref={calendarSurfaceRef}
@@ -2385,7 +2390,7 @@ function CalendarPage({
                 <span>
                   {mode === "day"
                     ? "前の日"
-                    : mode === "week"
+                    : mode === "week" || mode === "list"
                       ? "前の週"
                       : "前の月"}
                 </span>
@@ -2394,7 +2399,7 @@ function CalendarPage({
                 <span>
                   {mode === "day"
                     ? "次の日"
-                    : mode === "week"
+                    : mode === "week" || mode === "list"
                       ? "次の週"
                       : "次の月"}
                 </span>
@@ -2453,7 +2458,10 @@ function CalendarPage({
             )}
           <FullCalendar
             ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
+            noEventsContent="この週の予定はありません"
+            listDayFormat={{ month: "numeric", day: "numeric", weekday: "short" }}
+            listDaySideFormat={false}
             locale={jaLocale}
             initialView={viewFor(mode)}
             headerToolbar={false}
@@ -2689,45 +2697,84 @@ function InboxPage({
   onEdit: (task: Task) => void;
   onStart: (task: Task) => void;
 }) {
+  const open = (task: Task) => !task.deletedAt && task.status !== "done";
   const inbox = tasks
-    .filter(
-      (task) =>
-        !task.deletedAt &&
-        task.status !== "done" &&
-        !task.scheduledDate &&
-        task.horizon === "now",
-    )
+    .filter((task) => open(task) && !task.scheduledDate && task.horizon === "now")
     .sort((a, b) => taskScore(b) - taskScore(a));
+  const groups: { key: TaskHorizon; label: string; hint: string }[] = [
+    { key: "waiting", label: "待ち", hint: "返事や到着を待っている" },
+    { key: "someday", label: "いつか", hint: "今週ではないけれど残しておく" },
+    { key: "wish", label: "やりたい", hint: "義務ではないアイデア" },
+  ];
+  const [openGroup, setOpenGroup] = useState<TaskHorizon | null>(null);
+  const place = async (task: Task, changes: Partial<Task>, label: string) => {
+    await updateTask(task.id, changes, label);
+    syncNow().catch(() => undefined);
+  };
   return (
-    <div className="page-content">
+    <div className="page-content todo-page">
       <QuickAdd />
-      <section className="task-section page-section">
+      <section className="todo-section">
         <header>
-          <div>
-            <span className="section-kicker">CAPTURE FIRST</span>
-            <h2>受信箱</h2>
-            <p>整理はあとで大丈夫。思いつきをここに置きます。</p>
-          </div>
+          <h2>まだ日付のないこと</h2>
           <span>{inbox.length}件</span>
         </header>
+        <p className="todo-hint">思いついたら上に入れておくだけでOK。決まったら「今日」「明日」へ。</p>
         {inbox.length ? (
-          <div className="task-list">
+          <ul className="todo-list">
             {inbox.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onEdit={onEdit}
-                onStart={onStart}
-              />
+              <li key={task.id}>
+                <button type="button" className="todo-title" onClick={() => onEdit(task)}>
+                  <strong>{task.title}</strong>
+                  <small>{task.estimateMin}分{task.doneWhen ? `・ゴール：${task.doneWhen}` : ""}</small>
+                </button>
+                <div className="todo-actions">
+                  <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: "now" }, "今日やる")}>今日</button>
+                  <button type="button" onClick={() => place(task, { scheduledDate: shiftDate(todayKey(), 1), horizon: "now" }, "明日やる")}>明日</button>
+                  <button type="button" onClick={() => place(task, { horizon: "someday" }, "いつかへ")}>いつか</button>
+                  <button type="button" className="todo-play" aria-label={`${task.title}を開始`} onClick={() => onStart(task)}>
+                    <Play size={15} />
+                  </button>
+                </div>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : (
-          <EmptyState
-            title="受信箱は空です"
-            detail="頭の中の気になることを、上からそのまま入力できます"
-          />
+          <EmptyState title="日付のないことはありません" detail="気になることを上からそのまま入力できます" />
         )}
       </section>
+      {groups.map((group) => {
+        const items = tasks.filter((task) => open(task) && task.horizon === group.key);
+        const expanded = openGroup === group.key;
+        return (
+          <section className="todo-section todo-group" key={group.key}>
+            <button type="button" className="todo-group-head" aria-expanded={expanded} onClick={() => setOpenGroup(expanded ? null : group.key)}>
+              <div>
+                <h2>{group.label}</h2>
+                <small>{group.hint}</small>
+              </div>
+              <span>{items.length}件</span>
+              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {expanded && (
+              <ul className="todo-list">
+                {items.map((task) => (
+                  <li key={task.id}>
+                    <button type="button" className="todo-title" onClick={() => onEdit(task)}>
+                      <strong>{task.title}</strong>
+                    </button>
+                    <div className="todo-actions">
+                      <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: "now" }, "今日やる")}>今日</button>
+                      <button type="button" onClick={() => place(task, { horizon: "now", scheduledDate: null }, "日付なしへ戻す")}>戻す</button>
+                    </div>
+                  </li>
+                ))}
+                {!items.length && <li className="todo-empty">まだありません</li>}
+              </ul>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -4160,6 +4207,15 @@ function App() {
     ? tasks.find((task) => task.id === activeSession.taskId)
     : undefined;
   useEffect(() => startAutoSync(), []);
+  // 食事の帯の「記録を見る」など、App の外からページを開く。
+  useEffect(() => {
+    const go = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail;
+      if (target && target in PAGE_LABEL) setPage(target as Page);
+    };
+    window.addEventListener("sasshy-open-page", go);
+    return () => window.removeEventListener("sasshy-open-page", go);
+  }, []);
   // ルーティン開始など、App の外で始めたタイマーも画面に出す。
   useEffect(() => {
     const open = () => setTimerVisible(true);
@@ -4288,8 +4344,7 @@ function App() {
     { id: "today", icon: <Sparkles /> },
     { id: "calendar", icon: <CalendarDays /> },
     { id: "records", icon: <BarChart3 /> },
-    { id: "inbox", icon: <Inbox /> },
-    { id: "later", icon: <Clock3 /> },
+    { id: "inbox", icon: <ListTodo /> },
     { id: "memos", icon: <MessageSquareText /> },
     { id: "history", icon: <History /> },
     { id: "settings", icon: <Settings /> },
