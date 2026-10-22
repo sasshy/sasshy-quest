@@ -166,6 +166,8 @@ import {
 } from "./task-link";
 import { buildCoachPlan, completionCoachText } from "./coach";
 import { MealQuickBar, OpenCountPanel } from "./MealPanel";
+import { RoutineBar } from "./RoutinePanel";
+import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
 import baseSetupSql from "../supabase-setup.sql?raw";
@@ -1434,6 +1436,7 @@ function TodayPage({
   return (
     <div className="page-content today-page">
       <QuickAdd defaultDate={today} />
+      <RoutineBar />
       <MealQuickBar />
       <section className="runway-status" aria-label="今日の見通し">
         <div className="runway-clock">
@@ -3830,6 +3833,13 @@ function TimerDock({
     );
     if (task) await completeTask(task.id, true);
     syncNow().catch(() => undefined);
+    // ルーティンなら、完了したらそのまま次のステップを始める（夜ルーティンで効いた流れ）。
+    const next = await nextRoutineTask(task);
+    if (next) {
+      await startFocusSession(next, next.estimateMin);
+      if (voice.enabled) speakVoice(`次は${next.title}、${next.estimateMin}分`, voice);
+      return;
+    }
     onClose();
   };
   // 「別の作業をしていて、止めるのを忘れた」時の修正。
@@ -3874,7 +3884,7 @@ function TimerDock({
     .map((min) => ({ min, at: new Date(Date.now() - min * 60_000) }))
     .filter(({ at }) => at.getTime() > startedMs);
   const showSetup =
-    !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
+    !task?.routine && !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
   const saveGoal = async () => {
     if (!task || goalDraft.trim() === (task.doneWhen || "")) return;
     await updateTask(task.id, { doneWhen: goalDraft.trim() }, "終わりの目安を設定");
@@ -3910,6 +3920,11 @@ function TimerDock({
                   : "集中しています"}
           </span>
           <strong>{session.taskTitle}</strong>
+          {task?.routine && (
+            <small className="timer-goal">
+              {task.routine.name} {task.routine.index + 1}/{task.routine.count}
+            </small>
+          )}
           {task?.doneWhen && !showSetup && <small className="timer-goal">ゴール：{task.doneWhen}</small>}
         </div>
         <IconButton label="小さくする" onClick={onClose}>
@@ -4139,6 +4154,12 @@ function App() {
     ? tasks.find((task) => task.id === activeSession.taskId)
     : undefined;
   useEffect(() => startAutoSync(), []);
+  // ルーティン開始など、App の外で始めたタイマーも画面に出す。
+  useEffect(() => {
+    const open = () => setTimerVisible(true);
+    window.addEventListener("sasshy-open-timer", open);
+    return () => window.removeEventListener("sasshy-open-timer", open);
+  }, []);
   useEffect(() => subscribeSync(setSyncState), []);
   useEffect(() => {
     if (!voice) return;
@@ -4439,6 +4460,7 @@ function App() {
       )}
       {activeSession && voice && timerVisible && (
         <TimerDock
+          key={activeSession.id}
           session={activeSession}
           task={activeTask}
           voice={voice}

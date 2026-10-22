@@ -64,6 +64,8 @@ export interface Task {
   estimateMin: number;
   /** "ここまでやったら終わり" — decided when starting, shown on the timer. */
   doneWhen?: string;
+  /** Set on tasks created by a routine: completing one starts the next step. */
+  routine?: { runId: string; name: string; index: number; count: number };
   importance: 0 | 1 | 2;
   urgency: 0 | 1 | 2;
   createdAt: string;

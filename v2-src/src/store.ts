@@ -243,6 +243,8 @@ export interface NewTaskInput {
   urgency?: 0 | 1 | 2;
   source?: 'v2' | 'legacy';
   legacyId?: string;
+  flowOrder?: number;
+  routine?: Task['routine'];
 }
 
 export async function createTask(input: NewTaskInput, source: HistoryEntry['source'] = 'local'): Promise<Task> {
@@ -278,6 +280,8 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
     deletedAt: null,
     source: input.source || 'v2',
     legacyId: input.legacyId,
+    ...(input.flowOrder !== undefined ? { flowOrder: input.flowOrder } : {}),
+    ...(input.routine ? { routine: input.routine } : {}),
     sync: { deviceId },
   };
   await db.transaction('rw', [db.tasks, db.history, db.outbox, db.scheduleHistory, db.scheduleOutbox, db.settings], async () => {

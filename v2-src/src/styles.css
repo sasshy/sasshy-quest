@@ -1276,3 +1276,14 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .timer-setup-goal { display: grid; gap: 4px; }
 .timer-setup-goal input { min-height: 38px; padding: 0 8px; border: 1px solid #4b504c; border-radius: 5px; background: #151616; color: white; font-size: 14px; }
 .timer-setup-close { justify-self: end; min-height: 30px; padding: 0 10px; border: 0; background: transparent; color: #bde8d0; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+/* Routines: one tap starts all steps (v2.11.0) */
+.routine-bar { margin: 0 0 12px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.routine-chip { flex: 0 0 auto; min-height: 44px; padding: 0 14px; font-size: 14px; border: 1px solid #cfd0f5; border-radius: 10px; background: #f1f1ff; color: #3d3fb4; display: flex; align-items: center; gap: 6px; font-weight: 700; cursor: pointer; }
+.routine-chip small { color: #7b7dc9; font-size: 11px; font-weight: 600; }
+.routine-chip:disabled { opacity: .5; }
+.routine-edit { flex: 0 0 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.routine-draft { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.routine-draft-head { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.routine-draft-head input { min-height: 38px; font-weight: 700; }
+.routine-draft textarea { width: 100%; font-size: 15px; line-height: 1.6; }
