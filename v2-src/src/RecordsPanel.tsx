@@ -20,7 +20,7 @@ import type { FocusSession, Memo, Task } from "./types";
  * Bars are tappable; the chosen day is listed below (that list is also the
  * table view for the charts).
  */
-type Range = 7 | 30;
+type Range = 1 | 7 | 30;
 
 interface DayRow {
   key: string;
@@ -133,9 +133,11 @@ export function RecordsPanel() {
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const today = localDateKey(Date.now());
-  const [range, setRange] = useState<Range>(7);
+  const [range, setRange] = useState<Range>(1);
   const [selected, setSelected] = useState(today);
   const rows = useMemo(() => buildDayRows(memos, sessions, tasks, range, today), [memos, sessions, tasks, range, today]);
+  // 今日と比べる用（昨日・直近1週間の平均）
+  const week = useMemo(() => buildDayRows(memos, sessions, tasks, 8, today), [memos, sessions, tasks, today]);
 
   const spend = rows.reduce((sum, r) => sum + r.meal + r.other, 0);
   const workMin = rows.reduce((sum, r) => sum + r.workMin, 0);
@@ -165,12 +167,13 @@ export function RecordsPanel() {
   return (
     <div className="page-content records-page">
       <div className="rec-range" role="group" aria-label="期間">
-        {([7, 30] as Range[]).map((value) => (
-          <button key={value} type="button" className={range === value ? "active" : ""} onClick={() => setRange(value)}>
-            {value === 7 ? "直近1週間" : "直近30日"}
+        {([1, 7, 30] as Range[]).map((value) => (
+          <button key={value} type="button" className={range === value ? "active" : ""} onClick={() => { setRange(value); setSelected(today); }}>
+            {value === 1 ? "今日" : value === 7 ? "1週間" : "1ヶ月"}
           </button>
         ))}
       </div>
+      {range === 1 ? <TodaySummary memos={memos} tasks={tasks} week={week} today={today} /> : (<>
 
       <section className="rec-tiles">
         <div>
@@ -286,7 +289,7 @@ export function RecordsPanel() {
       {top.length > 0 && (
         <section className="rec-card">
           <header>
-            <h2>お金を使ったもの（{range === 7 ? "1週間" : "30日"}）</h2>
+            <h2>お金を使ったもの（{range === 7 ? "1週間" : "1ヶ月"}）</h2>
           </header>
           <ul className="rec-top">
             {top.map((item) => (
@@ -300,9 +303,71 @@ export function RecordsPanel() {
           </ul>
         </section>
       )}
+      </>)}
       {mealsOn(memos, today).length === 0 && expensesOn(memos, today).length === 0 && (
         <p className="rec-hint">食事・支出は「今日」の「食事・支出を記録」から追加できます。</p>
       )}
     </div>
+  );
+}
+
+/** 今日：いくら使ったかを一番大きく。昨日・1週間平均と並べる。 */
+function TodaySummary({ memos, tasks, week, today }: { memos: Memo[]; tasks: Task[]; week: DayRow[]; today: string }) {
+  const todayRow = week[week.length - 1];
+  const yesterday = week[week.length - 2];
+  const past7 = week.slice(0, 7);
+  const avg = past7.reduce((sum, r) => sum + r.meal + r.other, 0) / 7;
+  const total = todayRow.meal + todayRow.other;
+  const records = ledgerOn(memos, today);
+  const done = tasks.filter((t) => !t.deletedAt && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === today);
+  const diff = total - avg;
+  return (
+    <>
+      <section className="rec-hero">
+        <span>今日使ったお金</span>
+        <strong>{yen(total)}</strong>
+        <div className="rec-hero-split">
+          <span><i className="seg-meal" />食事 {yen(todayRow.meal)}</span>
+          <span><i className="seg-other" />その他 {yen(todayRow.other)}</span>
+        </div>
+        <div className="rec-hero-compare">
+          <div><small>昨日</small><b>{yen(yesterday.meal + yesterday.other)}</b></div>
+          <div><small>1週間の平均</small><b>{yen(avg)}</b></div>
+          <div><small>平均との差</small><b className={diff > 0 ? "up" : "down"}>{diff > 0 ? "+" : diff < 0 ? "−" : "±"}{yen(Math.abs(diff))}</b></div>
+        </div>
+      </section>
+      <section className="rec-card">
+        <header><h2>今日の内訳</h2><small>{records.length}件</small></header>
+        {records.length ? (
+          <ul className="rec-list">
+            {records.map((m) => {
+              const at = m.meal?.at || m.expense!.at;
+              return (
+                <li key={m.id}>
+                  <span className="rec-time">{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className={`rec-tag ${m.meal ? "meal" : "other"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</span>
+                  <span className="rec-name">{m.meal ? m.meal.item : m.expense!.item}</span>
+                  <span className="rec-amount">{m.meal ? (m.meal.price !== null ? yen(paidAmount(m.meal)) : "—") : yen(Number(m.expense!.amount))}</span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="rec-empty">まだ記録がありません</p>
+        )}
+      </section>
+      <section className="rec-tiles">
+        <div>
+          <span>今日作業した時間</span>
+          <strong>{hoursText(todayRow.workMin)}</strong>
+          <small>完了 {done.length}件</small>
+        </div>
+        <div>
+          <span>カロリー</span>
+          <strong>{todayRow.kcal ? `${todayRow.kcal.toLocaleString("ja-JP")}` : "—"}</strong>
+          <small>kcal（記録がある分）</small>
+        </div>
+      </section>
+    </>
   );
 }

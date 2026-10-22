@@ -170,6 +170,7 @@ import { buildCoachPlan, completionCoachText } from "./coach";
 import { MealQuickBar, OpenCountPanel } from "./MealPanel";
 import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { RecordsPanel } from "./RecordsPanel";
+import { MobilePlanner } from "./MobilePlanner";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -1493,7 +1494,7 @@ function TodayPage({
         ) : (
           <p className="now-empty">今日やることはまだありません。下に入れるか、ルーティンから始められます。</p>
         )}
-        {!activeSession && <RoutineBar />}
+        <RoutineBar />
       </section>
 
       <section className="today-list">
@@ -1767,7 +1768,7 @@ function CalendarPage({
     return saved === "list" || saved === "day" || saved === "week" || saved === "month"
       ? saved
       : device === "mobile"
-        ? "list"
+        ? "day"
         : "week";
   });
   const [title, setTitle] = useState("");
@@ -2042,7 +2043,7 @@ function CalendarPage({
       saved === "list" || saved === "day" || saved === "week" || saved === "month"
         ? saved
         : mobile
-          ? "list"
+          ? "day"
           : "week";
     if (nextMode === mode) return;
     setMode(nextMode);
@@ -2225,42 +2226,61 @@ function CalendarPage({
     }, 0);
   };
 
+  // スマホの日・週は自前の表示なので、前後移動と見出しも日付から作る。
+  const plannerActive = mobile && (mode === "day" || mode === "week" || mode === "list");
+  const step = (direction: -1 | 1) => {
+    if (!plannerActive) {
+      if (direction < 0) calendarRef.current?.getApi().prev();
+      else calendarRef.current?.getApi().next();
+      return;
+    }
+    setActiveDate((current) => shiftDate(current, direction * (mode === "week" ? 7 : 1)));
+  };
+  const plannerTitle = (() => {
+    const d = new Date(`${activeDate}T12:00:00`);
+    if (mode !== "week") return d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return `${monday.getMonth() + 1}/${monday.getDate()} – ${sunday.getMonth() + 1}/${sunday.getDate()}`;
+  })();
   return (
-    <div className={`calendar-page mode-${mode}`}>
+    <div className={`calendar-page mode-${mode}${plannerActive ? " planner" : ""}`}>
       <div className="calendar-toolbar">
         <div className="calendar-nav">
           <IconButton
             label="前へ"
-            onClick={() => calendarRef.current?.getApi().prev()}
+            onClick={() => step(-1)}
           >
             <ChevronLeft size={19} />
           </IconButton>
           <button
             className="button today-button"
             type="button"
-            onClick={() => calendarRef.current?.getApi().today()}
+            onClick={() => (plannerActive ? setActiveDate(todayKey()) : calendarRef.current?.getApi().today())}
           >
             今日
           </button>
           <IconButton
             label="次へ"
-            onClick={() => calendarRef.current?.getApi().next()}
+            onClick={() => step(1)}
           >
             <ChevronRight size={19} />
           </IconButton>
-          <strong>{title}</strong>
+          <strong>{plannerActive ? plannerTitle : title}</strong>
         </div>
         <div className="calendar-toolbar-actions">
-          <label className="calendar-results-toggle">
+          {!plannerActive && <label className="calendar-results-toggle">
             <input
               type="checkbox"
               checked={showResults}
               onChange={(event) => setShowResults(event.currentTarget.checked)}
             />
             実績も表示
-          </label>
+          </label>}
           <div className="segmented" aria-label="カレンダー表示">
-            {(["list", "day", "week", "month"] as CalendarMode[]).map((item) => (
+            {(["day", "week", "month"] as CalendarMode[]).map((item) => (
               <button
                 key={item}
                 type="button"
@@ -2273,6 +2293,24 @@ function CalendarPage({
           </div>
         </div>
       </div>
+      {mobile && (mode === "day" || mode === "week" || mode === "list") ? (
+        <MobilePlanner
+          tasks={tasks}
+          mode={mode === "week" ? "week" : "day"}
+          date={activeDate}
+          onDate={(next) => {
+            setActiveDate(next);
+            calendarRef.current?.getApi().gotoDate(next);
+          }}
+          onShowDay={(next) => {
+            setActiveDate(next);
+            if (mode !== "day") changeMode("day");
+          }}
+          onMove={openScheduleMove}
+          onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
+          onStart={onStart}
+        />
+      ) : (
       <div className="calendar-layout">
         {(!mobile || unscheduled.length > 0) && (
         <aside className={`backlog-panel${backlogOpen ? " open" : ""}`}>
@@ -2611,6 +2649,7 @@ function CalendarPage({
           )}
         </section>
       </div>
+      )}
       {scheduleEditor && (
         <ScheduleEditorSheet
           key={`${scheduleEditor.task?.id || "new"}:${scheduleEditor.seed.scheduledDate}:${scheduleEditor.seed.startMinute ?? "all-day"}`}
