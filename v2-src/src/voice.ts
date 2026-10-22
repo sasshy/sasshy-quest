@@ -15,6 +15,19 @@ export function announcementThresholds(config: VoiceConfig, plannedMin: number):
   return [...new Set([...minutes, ...everyHalfMinute, ...final])].filter((seconds) => seconds > 0 && seconds < plannedMin * 60).sort((a, b) => b - a);
 }
 
+/** After the planned time, remind every 5 minutes (every 30 seconds was too noisy). */
+export const OVERTIME_REMINDER_SECONDS = 5 * 60;
+
+/**
+ * The overtime reminder to speak when overtime moved from `previousOvertime` to
+ * `overtime` seconds, or null. Only the latest crossed step is returned, so
+ * coming back to the app after a long time speaks once, not once per step.
+ */
+export function overtimeReminderStep(previousOvertime: number, overtime: number, step = OVERTIME_REMINDER_SECONDS): number | null {
+  const latest = Math.floor(overtime / step) * step;
+  return latest > 0 && latest > previousOvertime ? latest : null;
+}
+
 export function announcementText(seconds: number): string {
   if (seconds >= 60) {
     const minutes = Math.floor(seconds / 60);

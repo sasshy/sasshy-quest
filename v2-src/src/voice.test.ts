@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VoiceConfig } from './types';
-import { announcementText, announcementThresholds, remainingStatusText } from './voice';
+import { announcementText, announcementThresholds, remainingStatusText, overtimeReminderStep } from './voice';
 
 const config: VoiceConfig = {
   id: 'voice',
@@ -32,5 +32,20 @@ describe('voice countdown', () => {
     expect(remainingStatusText(30)).toBe('残り30秒です');
     expect(remainingStatusText(-8)).toBe('予定を8秒超過しています');
     expect(remainingStatusText(-90)).toBe('予定を1分30秒超過しています');
+  });
+});
+
+describe('overtime reminders', () => {
+  it('reminds every 5 minutes, not every 30 seconds', () => {
+    expect(overtimeReminderStep(0, 30)).toBeNull();
+    expect(overtimeReminderStep(0, 299)).toBeNull();
+    expect(overtimeReminderStep(299, 300)).toBe(300);
+    expect(overtimeReminderStep(300, 330)).toBeNull();
+    expect(overtimeReminderStep(599, 600)).toBe(600);
+  });
+
+  it('speaks once when coming back after a long time', () => {
+    expect(overtimeReminderStep(0, 40 * 60 + 10)).toBe(40 * 60);
+    expect(overtimeReminderStep(40 * 60 + 10, 40 * 60 + 11)).toBeNull();
   });
 });

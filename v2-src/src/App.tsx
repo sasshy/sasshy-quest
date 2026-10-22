@@ -143,6 +143,7 @@ import {
   remainingStatusText,
   speakVoice,
   stopVoice,
+  overtimeReminderStep,
 } from "./voice";
 import { buildDayRunway, type RunwayEntry } from "./day-runway";
 import {
@@ -3756,13 +3757,10 @@ function TimerDock({
     if (remainingSec < 0) {
       const previousOvertime = Math.max(0, -(previous.current ?? 0));
       const overtime = -remainingSec;
-      const firstThreshold = (Math.floor(previousOvertime / 30) + 1) * 30;
-      for (let threshold = firstThreshold; threshold <= overtime; threshold += 30) {
-        const key = -threshold;
-        if (!announced.current.has(key)) {
-          speakVoice(remainingStatusText(-threshold), voice);
-          announced.current.add(key);
-        }
+      const step = overtimeReminderStep(previousOvertime, overtime);
+      if (step !== null && !announced.current.has(-step)) {
+        speakVoice(remainingStatusText(-step), voice);
+        announced.current.add(-step);
       }
     }
     previous.current = remainingSec;
