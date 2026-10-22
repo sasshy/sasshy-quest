@@ -161,6 +161,8 @@ import {
   type ParsedTaskLink,
 } from "./task-link";
 import { buildCoachPlan, completionCoachText } from "./coach";
+import { MealQuickBar, OpenCountPanel } from "./MealPanel";
+import { isMealMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
 import baseSetupSql from "../supabase-setup.sql?raw";
 import calendarHistorySql from "../supabase-calendar-history.sql?raw";
@@ -1428,6 +1430,7 @@ function TodayPage({
   return (
     <div className="page-content today-page">
       <QuickAdd defaultDate={today} />
+      <MealQuickBar />
       <section className="runway-status" aria-label="今日の見通し">
         <div className="runway-clock">
           <span>いま</span>
@@ -3128,6 +3131,7 @@ function SettingsPage({
   };
   return (
     <div className="page-content settings-page">
+      <OpenCountPanel />
       <section className="settings-section">
         <header>
           <Cloud size={20} />
@@ -4252,7 +4256,7 @@ function App() {
           )}
           {page === "memos" && (
             <MemosPage
-              memos={memos}
+              memos={memos.filter((memo) => !isMealMemo(memo))}
               onTaskCreated={(task) => {
                 setPage("inbox");
                 setEditing(task);

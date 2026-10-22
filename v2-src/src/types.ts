@@ -106,7 +106,32 @@ export interface Memo {
   deletedAt: string | null;
   source: 'v2' | 'legacy';
   legacyId?: string;
+  meal?: MealInfo;
   sync: SyncMeta;
+}
+
+export type MealKind = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+/** self = paid in full; treated = someone else paid (0); split / paid_for_others use `paid`. */
+export type MealPayment = 'self' | 'treated' | 'split' | 'paid_for_others';
+
+/** Meal/snack details on a memo with category '食事'. Unknown extra keys from AI imports are kept as-is. */
+export interface MealInfo {
+  kind: MealKind;
+  item: string;
+  /** Price of what was eaten (yen); null for home-made. */
+  price: number | null;
+  priceSource?: 'receipt' | 'estimate';
+  /** What actually left the wallet, when different from price. */
+  paid?: number | null;
+  payment?: MealPayment;
+  place?: string | null;
+  kcal?: number | null;
+  protein?: number | null;
+  fat?: number | null;
+  carbs?: number | null;
+  /** When it was eaten (ISO). */
+  at: string;
 }
 
 export interface HistoryEntry {
