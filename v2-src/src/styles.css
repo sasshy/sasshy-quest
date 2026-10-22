@@ -663,6 +663,19 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .timer-voice-resume { width: 100%; min-height: 34px; margin-bottom: 8px; padding: 0 10px; border: 1px solid #414441; border-radius: 5px; background: #242625; color: #b8bfbb; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; font-weight: 600; cursor: pointer; }
 .timer-voice-resume.needed { border-color: #83c4a2; background: #173b2b; color: #bde8d0; }
 .timer-controls { display: grid; grid-template-columns: 40px 1fr 1fr; gap: 6px; }
+.timer-fix-toggle { width: 100%; min-height: 34px; margin-bottom: 8px; padding: 0 10px; border: 1px dashed #5b605c; border-radius: 5px; background: transparent; color: #d7ddd9; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.timer-fix { margin-bottom: 10px; padding: 10px; border: 1px solid #414441; border-radius: 6px; background: #202221; display: grid; gap: 8px; font-size: 12px; }
+.timer-fix p { margin: 0; color: #b8bfbb; line-height: 1.5; }
+.timer-fix-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 6px; }
+.timer-fix-choices button { min-height: 44px; border: 1px solid #4b504c; border-radius: 5px; background: #2b2e2c; color: white; display: grid; place-items: center; gap: 1px; font-weight: 700; cursor: pointer; }
+.timer-fix-choices small { color: #9fa8a2; font-size: 10px; font-weight: 500; }
+.timer-fix-time { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; }
+.timer-fix-time span { color: #b8bfbb; }
+.timer-fix-time input { min-height: 36px; min-width: 0; padding: 0 6px; border: 1px solid #4b504c; border-radius: 5px; background: #151616; color: white; color-scheme: dark; }
+.timer-fix-time button { min-height: 36px; padding: 0 10px; border: 1px solid #83c4a2; border-radius: 5px; background: #173b2b; color: #bde8d0; font-weight: 700; cursor: pointer; }
+.timer-fix-error { color: #ffb4a8 !important; }
+.timer-fix-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.timer-fix-actions .button { min-width: 0; min-height: 40px; padding: 0 8px; border-color: #4b504c; background: #2b2e2c; color: white; font-size: 12px; }
 .timer-controls .icon-button { width: 40px; height: 38px; color: white; border-color: #414441; }
 .timer-controls .button { min-width: 0; padding: 0 8px; border-color: #414441; background: #282a29; color: white; font-size: 10px; }
 .timer-controls .button.complete { background: var(--green); border-color: var(--green); }
@@ -1130,6 +1143,7 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
     flex-direction: column;
     justify-content: center;
     box-shadow: none;
+    overflow-y: auto;
   }
   .timer-title {
     position: absolute;

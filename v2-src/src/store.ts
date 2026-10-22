@@ -1041,6 +1041,42 @@ export async function resumeFocusSession(id: string): Promise<FocusSession | nul
   }, 'タイマーを再開');
 }
 
+/**
+ * "I actually stopped at HH:MM" — for a timer left running after switching to
+ * something else. The session becomes paused at that time, so the time since
+ * then is not counted and the user can resume, interrupt or complete normally.
+ */
+export async function stopFocusSessionAt(id: string, stoppedAt: string): Promise<FocusSession | null> {
+  const session = await db.sessions.get(id);
+  if (!session || (session.status !== 'running' && session.status !== 'paused')) return session || null;
+  const at = new Date(stoppedAt).getTime();
+  if (!Number.isFinite(at)) throw new Error('時刻が正しくありません');
+  if (at < new Date(session.startedAt).getTime()) throw new Error('開始した時刻より前にはできません');
+  if (at > Date.now()) throw new Error('今より後の時刻にはできません');
+  if (session.status === 'paused' && session.pausedAt && at > new Date(session.pausedAt).getTime()) {
+    throw new Error('すでに一時停止した時刻より後にはできません');
+  }
+  const label = `${new Date(at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}に止まっていたことにする`;
+  return updateSession(id, { status: 'paused', pausedAt: new Date(at).toISOString() }, label);
+}
+
+/** Throw away the current attempt and start the same task again from now. */
+export async function restartFocusSession(id: string): Promise<FocusSession | null> {
+  const session = await db.sessions.get(id);
+  if (!session || (session.status !== 'running' && session.status !== 'paused')) return null;
+  const task = await db.tasks.get(session.taskId);
+  const at = nowIso();
+  await updateSession(id, { status: 'interrupted', endedAt: at, pausedAt: null, deletedAt: at }, '今からやり直すため取り消し');
+  if (!task) return null;
+  return startFocusSession(task, session.plannedMin);
+}
+
+/** The timer was started by mistake / no work was done: drop the record. */
+export async function discardFocusSession(id: string): Promise<FocusSession | null> {
+  const at = nowIso();
+  return updateSession(id, { status: 'interrupted', endedAt: at, pausedAt: null, deletedAt: at }, 'タイマーの記録を取り消し');
+}
+
 export async function setFocusSessionPlannedMinutes(id: string, plannedMin: number): Promise<FocusSession | null> {
   const nextMinutes = Math.max(1, Math.min(480, Math.round(plannedMin)));
   return updateSession(id, { plannedMin: nextMinutes }, `タイマーを${nextMinutes}分に変更`);

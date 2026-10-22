@@ -81,6 +81,9 @@ import {
   setTasksFlowOrder,
   restoreTask,
   resumeFocusSession,
+  restartFocusSession,
+  discardFocusSession,
+  stopFocusSessionAt,
   setFocusSessionPlannedMinutes,
   softDeleteSession,
   softDeleteTask,
@@ -3665,6 +3668,9 @@ function TimerDock({
   const [now, setNow] = useState(Date.now());
   const [voiceNeedsTap, setVoiceNeedsTap] = useState(false);
   const [durationDraft, setDurationDraft] = useState(String(session.plannedMin));
+  const [fixOpen, setFixOpen] = useState(false);
+  const [stopDraft, setStopDraft] = useState("");
+  const [fixError, setFixError] = useState("");
   const announced = useRef(new Set<number>());
   const previous = useRef<number | null>(null);
   const previousPlannedMinutes = useRef(session.plannedMin);
@@ -3825,6 +3831,47 @@ function TimerDock({
     syncNow().catch(() => undefined);
     onClose();
   };
+  // 「別の作業をしていて、止めるのを忘れた」時の修正。
+  const stopAt = async (at: Date) => {
+    setFixError("");
+    try {
+      await stopFocusSessionAt(session.id, at.toISOString());
+      stopVoice();
+      setFixOpen(false);
+      syncNow().catch(() => undefined);
+    } catch (error) {
+      setFixError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const stopAtDraft = () => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(stopDraft);
+    if (!match) {
+      setFixError("時刻を選んでください");
+      return;
+    }
+    const at = new Date();
+    at.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    // 日付をまたいだ作業（例：23:50開始→0:10に修正）は前日の時刻として扱う。
+    if (at.getTime() > Date.now()) at.setDate(at.getDate() - 1);
+    stopAt(at);
+  };
+  const restart = async () => {
+    stopVoice();
+    await restartFocusSession(session.id);
+    setFixOpen(false);
+    syncNow().catch(() => undefined);
+  };
+  const discard = async () => {
+    if (!window.confirm("このタイマーの記録を取り消しますか？（作業していなかった時用）")) return;
+    stopVoice();
+    await discardFocusSession(session.id);
+    syncNow().catch(() => undefined);
+    onClose();
+  };
+  const startedMs = new Date(session.startedAt).getTime();
+  const stopChoices = [5, 15, 30, 60]
+    .map((min) => ({ min, at: new Date(Date.now() - min * 60_000) }))
+    .filter(({ at }) => at.getTime() > startedMs);
   const restoreVoice = () => {
     stopVoice();
     const restored = speakVoice(
@@ -3846,10 +3893,10 @@ function TimerDock({
         <span className="live-dot" />
         <div>
           <span>
-            {remainingSec < 0
-              ? "予定を超過"
-              : paused
-                ? "一時停止"
+            {paused
+              ? remainingSec < 0 ? "一時停止（予定を超過）" : "一時停止"
+              : remainingSec < 0
+                ? "予定を超過"
                 : session.carriedElapsedSec
                   ? `累計${Math.round(session.carriedElapsedSec / 60)}分から再開`
                   : "集中しています"}
@@ -3905,6 +3952,59 @@ function TimerDock({
           ? "Safariから戻りました・音声を再開"
           : "音声が聞こえない時はここを押す"}
       </button>
+      <button
+        className="timer-fix-toggle"
+        type="button"
+        aria-expanded={fixOpen}
+        onClick={() => {
+          setFixOpen(!fixOpen);
+          setFixError("");
+        }}
+      >
+        <RotateCcw size={15} />
+        止め忘れた・やり直したい
+      </button>
+      {fixOpen && (
+        <div className="timer-fix" aria-label="タイマーの修正">
+          <p>
+            別の作業をしていた時刻から止まっていたことにできます。止まっていた間は作業時間に数えません。
+          </p>
+          <div className="timer-fix-choices">
+            {stopChoices.map(({ min, at }) => (
+              <button key={min} type="button" onClick={() => stopAt(at)}>
+                {min}分前
+                <small>{at.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small>
+              </button>
+            ))}
+            <button type="button" onClick={() => stopAt(new Date(startedMs))}>
+              開始時
+              <small>{new Date(startedMs).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small>
+            </button>
+          </div>
+          <label className="timer-fix-time">
+            <span>時刻を指定</span>
+            <input
+              type="time"
+              value={stopDraft}
+              onChange={(event) => setStopDraft(event.currentTarget.value)}
+            />
+            <button type="button" onClick={stopAtDraft}>
+              ここで止まっていた
+            </button>
+          </label>
+          {fixError && <p className="timer-fix-error">{fixError}</p>}
+          <div className="timer-fix-actions">
+            <button className="button secondary" type="button" onClick={restart}>
+              <Play size={15} />
+              今からやり直す
+            </button>
+            <button className="button secondary" type="button" onClick={discard}>
+              <Trash2 size={15} />
+              記録を取り消す
+            </button>
+          </div>
+        </div>
+      )}
       <div className="timer-controls">
         <IconButton label={paused ? "再開" : "一時停止"} onClick={pauseToggle}>
           {paused ? <Play size={21} /> : <Pause size={21} />}
