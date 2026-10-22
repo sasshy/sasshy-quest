@@ -23,3 +23,19 @@ describe('voice intake', () => {
     await expect(extractVoiceTask('依頼', 'fake-test-key', 'test-model', new Date(), fetcher)).rejects.toThrow();
   });
 });
+
+import { fallbackVoiceTask, placeVoiceTask } from './voice';
+describe('voice capture never drops what was said', () => {
+  it('keeps the spoken text as the task when the AI cannot organise it', () => {
+    expect(fallbackVoiceTask('シャンプー買う')).toMatchObject({ title: 'シャンプー買う', dueDate: null, notes: '' });
+    const long = fallbackVoiceTask('明日の集荷の前に台車の部品を確認して、それから鈴木さんに電話。あとは在庫も');
+    expect(long.title).toBe('明日の集荷の前に台車の部品を確認して、それから鈴木さんに電話');
+    expect(long.notes).toContain('在庫');
+  });
+  it('goes to today unless a deadline was given', () => {
+    const now = new Date('2026-10-22T07:51:00Z'); // 16:51 JST
+    expect(placeVoiceTask(fallbackVoiceTask('発注確認'), now).scheduledDate).toBe('2026-10-22');
+    expect(placeVoiceTask({ ...task }, now).scheduledDate).toBe('2026-09-07');
+    expect(placeVoiceTask(fallbackVoiceTask('夜に洗濯'), new Date('2026-10-22T15:30:00Z')).scheduledDate).toBe('2026-10-23'); // 00:30 JST
+  });
+});

@@ -1,5 +1,5 @@
 import { resolveWorkspace } from '../_shared/workspace-auth.ts';
-import { parseVoiceInput, extractVoiceTask } from './voice.ts';
+import { parseVoiceInput, extractVoiceTask, fallbackVoiceTask, placeVoiceTask } from './voice.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { parseTaskRequest, type AddTaskRequest } from './validation.ts';
 import {
@@ -128,16 +128,24 @@ Deno.serve(async (request: Request) => {
       if (existing.error) throw existing.error;
       let result = existing.data;
       if (!result) {
+        // Capture first: if the AI is missing or can't organise it, keep what was said.
         const apiKey = Deno.env.get('OPENAI_API_KEY') || '';
-        if (!apiKey) return respond(request, 503, { error: '音声整理用のAIキーが未設定です。タスクは未登録です' });
-        const task = await extractVoiceTask(input.transcript, apiKey, Deno.env.get('SASSHY_VOICE_MODEL') || 'gpt-4.1-mini-2025-04-14');
+        let task = fallbackVoiceTask(input.transcript);
+        if (apiKey) {
+          try {
+            task = await extractVoiceTask(input.transcript, apiKey, Deno.env.get('SASSHY_VOICE_MODEL') || 'gpt-4.1-mini-2025-04-14');
+          } catch {
+            console.error('voice extraction failed; saved as spoken');
+          }
+        }
+        task = placeVoiceTask(task);
         const saved = await client.rpc('sasshy_v2_ingest_voice_task', { ...args, p_task: task });
         if (saved.error) throw saved.error;
         result = saved.data;
       }
       if (!result?.task?.id) throw new Error('保存を確認できませんでした。同じ受付番号で再試行してください');
       return respond(request, 200, { ok: true, task_id: result.task.id, task: result.task, duplicate: Boolean(result.duplicate),
-        message: `${result.duplicate ? '登録済みです' : 'SASSHYに追加しました'}：${result.task.title}。期限：${result.task.dueDate || '未指定'} ${result.task.dueTime || ''}。相手：${result.task.counterparty || '未指定'}。依頼元：${result.task.requestSource || '未指定'}` });
+        message: `${result.duplicate ? '登録済みです' : result.task.dueDate ? `${result.task.dueDate}の予定に追加しました` : '今日のリストに追加しました'}：${result.task.title}` });
     }
 
     if (action === 'meal') {
