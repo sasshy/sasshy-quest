@@ -1086,7 +1086,7 @@ export async function setFocusSessionPlannedMinutes(id: string, plannedMin: numb
   return updateSession(id, { plannedMin: nextMinutes }, `タイマーを${nextMinutes}分に変更`);
 }
 
-export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<Pick<Memo, 'category' | 'pinned' | 'reminderAt' | 'source' | 'legacyId' | 'meal' | 'expense'>>, source: HistoryEntry['source'] = 'local'): Promise<Memo> {
+export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<Pick<Memo, 'category' | 'pinned' | 'reminderAt' | 'source' | 'legacyId' | 'meal' | 'expense' | 'planned'>>, source: HistoryEntry['source'] = 'local'): Promise<Memo> {
   const at = nowIso();
   const deviceId = await getDeviceId();
   const memo: Memo = {
@@ -1104,6 +1104,7 @@ export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<P
     legacyId: input.legacyId,
     ...(input.meal ? { meal: input.meal } : {}),
     ...(input.expense ? { expense: input.expense } : {}),
+    ...(input.planned ? { planned: input.planned } : {}),
     sync: { deviceId },
   };
   await db.transaction('rw', db.memos, db.history, db.outbox, async () => {

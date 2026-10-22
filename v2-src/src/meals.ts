@@ -27,7 +27,7 @@ export function isExpenseMemo(memo: Memo): boolean {
 
 /** Meal and spend records live in the meal sheet, not in the normal memo list. */
 export function isLedgerMemo(memo: Memo): boolean {
-  return isMealMemo(memo) || isExpenseMemo(memo);
+  return isMealMemo(memo) || isExpenseMemo(memo) || (memo.category === '支出予定' && Boolean(memo.planned));
 }
 
 export function localDateKey(at: string | number | Date): string {

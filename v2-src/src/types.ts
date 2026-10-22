@@ -112,6 +112,8 @@ export interface Memo {
   legacyId?: string;
   meal?: MealInfo;
   expense?: ExpenseInfo;
+  /** 使う予定のお金 (category 支出予定): subtracted from the budget until spent. */
+  planned?: { item: string; amount: number; date?: string | null };
   sync: SyncMeta;
 }
 

@@ -171,6 +171,7 @@ import { MealQuickBar, OpenCountPanel } from "./MealPanel";
 import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { MobilePlanner } from "./MobilePlanner";
+import { BudgetCard } from "./BudgetPanel";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -1497,6 +1498,7 @@ function TodayPage({
         <RoutineBar />
       </section>
 
+      <BudgetCard />
       <section className="today-list">
         <header>
           <h2>今日</h2>
