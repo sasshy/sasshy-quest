@@ -172,6 +172,7 @@ import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { MobilePlanner } from "./MobilePlanner";
 import { BudgetCard } from "./BudgetPanel";
+import { announceCompletion } from "./progress";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -1433,6 +1434,7 @@ function TodayPage({
       pausedAt: null,
     }, complete ? "作業を完了" : "次の作業へ切り替え");
     if (complete && activeTask) await completeTask(activeTask.id, true);
+    if (complete) announceCompletion().catch(() => undefined);
     syncNow().catch(() => undefined);
   };
   // 実行中のタスクは上のカードに出ているので、リストには重ねない。
@@ -3871,6 +3873,7 @@ function TimerDock({
     );
     if (task) await completeTask(task.id, true);
     syncNow().catch(() => undefined);
+    announceCompletion().catch(() => undefined);
     // ルーティンなら、完了したらそのまま次のステップを始める（夜ルーティンで効いた流れ）。
     const next = await nextRoutineTask(task);
     if (next) {
@@ -4192,6 +4195,17 @@ function App() {
     ? tasks.find((task) => task.id === activeSession.taskId)
     : undefined;
   useEffect(() => startAutoSync(), []);
+  // 完了したときの「積み上がり」など、App の外からの短いお知らせ。
+  useEffect(() => {
+    const show = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail;
+      if (!text) return;
+      setActionMessage(text);
+      window.setTimeout(() => setActionMessage(""), 4200);
+    };
+    window.addEventListener("sasshy-toast", show);
+    return () => window.removeEventListener("sasshy-toast", show);
+  }, []);
   // 食事の帯の「記録を見る」など、App の外からページを開く。
   useEffect(() => {
     const go = (event: Event) => {

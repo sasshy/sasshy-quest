@@ -1548,3 +1548,18 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .nudge-setting { grid-template-columns: 1fr; }
 .nudge-setting .nudge-title { font-weight: 700; }
 .nudge-setting label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; font-size: 13px; }
+.rec-stack-up { padding: 14px; border-radius: 14px; background: #f1faf5; border: 1px solid #cfe7da; }
+.rec-stack-up header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.rec-stack-up h2 { margin: 0; font-size: 15px; color: #1f5a3f; }
+.rec-stack-up header small { color: #2d6f50; font-size: 10px; }
+.rec-stack-up > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.rec-stack-up > div span { display: block; color: #2d6f50; font-size: 10px; font-weight: 700; }
+.rec-stack-up > div strong { font-size: 16px; color: #1f5a3f; font-variant-numeric: tabular-nums; }
+.rec-weekdone { padding: 16px; border-radius: 18px; background: linear-gradient(150deg, #1f5a3f, #2d8a62); color: white; display: grid; gap: 10px; }
+.rec-weekdone > span { color: #c9f0dc; font-size: 12px; font-weight: 700; }
+.rec-weekdone-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.rec-weekdone-nums strong { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.rec-weekdone-nums small { color: #c9f0dc; font-size: 11px; }
+.rec-weekdone ul { margin: 0; padding: 10px 0 0; border-top: 1px solid rgba(255,255,255,.18); list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.rec-weekdone li.more { color: #c9f0dc; font-size: 11px; }
+.action-toast { top: auto !important; bottom: calc(96px + env(safe-area-inset-bottom)); width: max-content; max-width: min(420px, calc(100vw - 32px)); padding: 12px 16px !important; border-radius: 14px !important; font-size: 13px !important; line-height: 1.5; text-align: center; }

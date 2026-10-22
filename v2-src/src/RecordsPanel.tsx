@@ -14,6 +14,7 @@ import {
   spendOn,
 } from "./meals";
 import type { FocusSession, Memo, Task } from "./types";
+import { computeProgress, minutesText } from "./progress";
 
 /**
  * 記録: meals, spends and work time over the last 7 / 30 days.
@@ -173,7 +174,8 @@ export function RecordsPanel() {
           </button>
         ))}
       </div>
-      {range === 1 ? <TodaySummary memos={memos} tasks={tasks} week={week} today={today} /> : (<>
+      {range === 1 ? <TodaySummary memos={memos} tasks={tasks} sessions={sessions} week={week} today={today} /> : (<>
+      {range === 7 && <WeekDone tasks={tasks} rows={rows} />}
 
       <section className="rec-tiles">
         <div>
@@ -312,7 +314,8 @@ export function RecordsPanel() {
 }
 
 /** 今日：いくら使ったかを一番大きく。昨日・1週間平均と並べる。 */
-function TodaySummary({ memos, tasks, week, today }: { memos: Memo[]; tasks: Task[]; week: DayRow[]; today: string }) {
+function TodaySummary({ memos, tasks, sessions, week, today }: { memos: Memo[]; tasks: Task[]; sessions: FocusSession[]; week: DayRow[]; today: string }) {
+  const progress = computeProgress(tasks, sessions);
   const todayRow = week[week.length - 1];
   const yesterday = week[week.length - 2];
   const past7 = week.slice(0, 7);
@@ -368,6 +371,40 @@ function TodaySummary({ memos, tasks, week, today }: { memos: Memo[]; tasks: Tas
           <small>kcal（記録がある分）</small>
         </div>
       </section>
+      <section className="rec-stack-up">
+        <header><h2>積み上がり</h2><small>減らない数字です</small></header>
+        <div>
+          <div><span>今月の作業</span><strong>{minutesText(progress.workMonthMin)}</strong></div>
+          <div><span>これまでの作業</span><strong>{minutesText(progress.workTotalMin)}</strong></div>
+          <div><span>完了したこと</span><strong>{progress.doneTotal.toLocaleString("ja-JP")}件</strong></div>
+        </div>
+      </section>
     </>
+  );
+}
+
+/** 1週間：今週できたこと（責めるためではなく、やったことを見える形に）。 */
+function WeekDone({ tasks, rows }: { tasks: Task[]; rows: DayRow[] }) {
+  const start = rows[0].key;
+  const done = tasks
+    .filter((t) => !t.deletedAt && t.status === "done" && t.completedAt && localDateKey(t.completedAt) >= start)
+    .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
+  const work = rows.reduce((sum, r) => sum + r.workMin, 0);
+  const recordDays = rows.filter((r) => r.meal + r.other > 0).length;
+  return (
+    <section className="rec-weekdone">
+      <span>この1週間でできたこと</span>
+      <div className="rec-weekdone-nums">
+        <div><strong>{done.length}</strong><small>件 完了</small></div>
+        <div><strong>{minutesText(work)}</strong><small>作業</small></div>
+        <div><strong>{recordDays}</strong><small>日 記録</small></div>
+      </div>
+      {done.length > 0 && (
+        <ul>
+          {done.slice(0, 5).map((t) => <li key={t.id}>✓ {t.title}</li>)}
+          {done.length > 5 && <li className="more">ほか{done.length - 5}件</li>}
+        </ul>
+      )}
+    </section>
   );
 }
