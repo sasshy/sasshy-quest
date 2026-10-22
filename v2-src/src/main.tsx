@@ -1,7 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import '@fontsource/space-grotesk/500.css';
+import '@fontsource/space-grotesk/700.css';
+import '@fontsource/outfit/500.css';
+import '@fontsource/outfit/700.css';
+import '@fontsource/zen-kaku-gothic-new/400.css';
+import '@fontsource/zen-kaku-gothic-new/700.css';
 import './styles.css';
+import './theme.css';
+import { startAppearance } from './appearance';
 import { ensureDefaults } from './db';
 import { startNativeWork } from './native-work';
 import { startNativeTimerEvents } from './native-timer-events';
@@ -31,6 +39,7 @@ async function boot(): Promise<void> {
   // iPhone app: schedule local notifications through the native bridge (no-op on the web).
   // WKWebView may take time to restore IndexedDB after an app update, so this runs
   // before ensureDefaults and never blocks the task screen.
+  startAppearance();
   startNativeWork();
   startNativeTimerEvents();
   startOpenLog();

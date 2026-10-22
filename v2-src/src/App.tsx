@@ -173,6 +173,7 @@ import { RecordsPanel } from "./RecordsPanel";
 import { MobilePlanner } from "./MobilePlanner";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
+import { AppearancePanel } from "./AppearancePanel";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -3178,6 +3179,7 @@ function SettingsPage({
   };
   return (
     <div className="page-content settings-page">
+      <AppearancePanel />
       <OpenCountPanel />
       <section className="settings-section">
         <header>
@@ -4462,7 +4464,7 @@ function App() {
             </button>
           </div>
         </header>
-        <div className={`view-frame${activeSession && !timerVisible ? " has-timer-reopen" : ""}`}>
+        <div className={`view-frame${activeSession && !timerVisible && page !== "today" ? " has-timer-reopen" : ""}`}>
           {page === "today" && (
             <TodayPage
               tasks={tasks}
@@ -4531,7 +4533,7 @@ function App() {
       )}
       {activeSession && !timerVisible && !menuOpen && (
         <button
-          className="timer-reopen"
+          className={`timer-reopen${page === "today" ? " on-today" : ""}`}
           type="button"
           onClick={reopenTimer}
           title={

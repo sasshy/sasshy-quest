@@ -2,6 +2,14 @@ import { readFileSync, writeFileSync, cpSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Inlined CSS moves from assets/x.css into app.html, so relative url()s
+// (bundled fonts) must point into the stylesheet's folder.
+export function rebaseCssUrls(css, href) {
+  const base = href.includes('/') ? href.slice(0, href.lastIndexOf('/') + 1) : '';
+  if (!base) return css;
+  return css.replace(/url\((['"]?)(?!data:|https?:|\/|#)(?:\.\/)?([^'")]+)\1\)/g, (_, q, path) => `url(${q}${base}${path}${q})`);
+}
+
 // Inline classic scripts run immediately: defer has no effect without src.
 // Keep the entry script after the root, even when Vite moves it into head.
 export function inlineIOSDocument(html, readAsset) {
@@ -14,7 +22,7 @@ export function inlineIOSDocument(html, readAsset) {
     throw new Error('Expected one bundled entry and a root inside body');
   }
   html = html.replace(/<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g,
-    (_, href) => `<style>${readAsset(href)}</style>`);
+    (_, href) => `<style>${rebaseCssUrls(readAsset(href), href)}</style>`);
   return html.replace('</body>', () => `<script>${scripts[0]}</script>\n  </body>`);
 }
 

@@ -41,3 +41,12 @@ export async function announceCompletion(): Promise<void> {
     detail: `✓ 今日${p.doneToday}件目　今日の作業 ${minutesText(p.workTodayMin)}・今月 ${minutesText(p.workMonthMin)}`,
   }));
 }
+
+/** XP = 10 per completed task + 1 per minute worked. Derived from records, so it only grows. */
+export const XP_PER_LEVEL = 100;
+export function xpFrom(p: Pick<Progress, 'doneTotal' | 'workTotalMin'>): number {
+  return p.doneTotal * 10 + p.workTotalMin;
+}
+export function levelFrom(xp: number): { level: number; into: number; need: number } {
+  return { level: Math.floor(xp / XP_PER_LEVEL) + 1, into: xp % XP_PER_LEVEL, need: XP_PER_LEVEL };
+}

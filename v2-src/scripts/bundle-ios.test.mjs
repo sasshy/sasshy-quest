@@ -40,3 +40,12 @@ test('the actual generated iPhone document starts with isolated storage and no n
     assert.deepEqual(errors, []);
   } finally { dom.window.close(); }
 });
+
+test('bundled font urls still resolve after the stylesheet is inlined', async () => {
+  const { rebaseCssUrls } = await import('./bundle-ios.mjs');
+  const css = '@font-face{src:url(./zen-700.woff2) format("woff2"),url("a.woff")}.x{background:url(data:image/png;base64,AA)}';
+  const out = rebaseCssUrls(css, './assets/index-1.css');
+  assert.ok(out.includes('url(./assets/zen-700.woff2)'));
+  assert.ok(out.includes('url("./assets/a.woff")'));
+  assert.ok(out.includes('url(data:image/png;base64,AA)'));
+});

@@ -8,6 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/outfit':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/space-grotesk':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/zen-kaku-gothic-new':
+        specifier: ^5.3.1
+        version: 5.3.1
       '@fullcalendar/core':
         specifier: ^6.1.19
         version: 6.1.21
@@ -476,6 +485,15 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource/outfit@5.3.0':
+    resolution: {integrity: sha512-0AVHzTTVJSxWDOxPKSfMeHhZeBFDU3cmgrcOb76ZEyhGo0+xgyG3GsLF3h9+X8w0IX7G4jzjJgFQEBiWdX6VgA==}
+
+  '@fontsource/space-grotesk@5.3.0':
+    resolution: {integrity: sha512-ksnGizDPXIDuvqcTYTSrmZ+evx9sDlS8rp7+42BQ7wU+spt3twEoXfbJz672C+5CLg6VeUQwRy5RXshWb67LcQ==}
+
+  '@fontsource/zen-kaku-gothic-new@5.3.1':
+    resolution: {integrity: sha512-L69mE6bkzeVK3UdTenxOmCIWvTwMxohJRNm1dAj+W+UiCULQ91b7M77ENVw+pjGmFL6zKPFYFeH3g8x2ugAJNw==}
 
   '@fullcalendar/core@6.1.21':
     resolution: {integrity: sha512-t3u/+sqh3Iq7TWtUnVLcGDUE6OWZh0UD3c04bI/l7lSLAgAKr3kngBmhHiQD1QXpwC8ZN5iNqG7a7gOVixhSKQ==}
@@ -1573,6 +1591,12 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.12':
     optional: true
+
+  '@fontsource/outfit@5.3.0': {}
+
+  '@fontsource/space-grotesk@5.3.0': {}
+
+  '@fontsource/zen-kaku-gothic-new@5.3.1': {}
 
   '@fullcalendar/core@6.1.21':
     dependencies:
