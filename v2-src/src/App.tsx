@@ -27,6 +27,7 @@ import {
   Bell,
   CalendarDays,
   Check,
+  BarChart3,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -167,6 +168,7 @@ import {
 import { buildCoachPlan, completionCoachText } from "./coach";
 import { MealQuickBar, OpenCountPanel } from "./MealPanel";
 import { LeaveBanner, RoutineBar } from "./RoutinePanel";
+import { RecordsPanel } from "./RecordsPanel";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -180,6 +182,7 @@ const setupSql = `${baseSetupSql}\n\n${calendarHistorySql}\n\n${credentialSetupS
 type Page =
   | "today"
   | "calendar"
+  | "records"
   | "inbox"
   | "later"
   | "memos"
@@ -227,6 +230,7 @@ function formatCalendarTitle(info: DatesSetArg): string {
 const PAGE_LABEL: Record<Page, string> = {
   today: "今日",
   calendar: "カレンダー",
+  records: "記録",
   inbox: "受信箱",
   later: "あとで",
   memos: "メモ",
@@ -4283,6 +4287,7 @@ function App() {
   const navItems: { id: Page; icon: ReactNode }[] = [
     { id: "today", icon: <Sparkles /> },
     { id: "calendar", icon: <CalendarDays /> },
+    { id: "records", icon: <BarChart3 /> },
     { id: "inbox", icon: <Inbox /> },
     { id: "later", icon: <Clock3 /> },
     { id: "memos", icon: <MessageSquareText /> },
@@ -4351,16 +4356,16 @@ function App() {
             <Menu size={21} />
           </IconButton>
           <div className="topbar-title">
-            <span>SASSHY</span>
-            <strong>
-              {page === "today"
-                ? new Intl.DateTimeFormat("ja-JP", {
-                    month: "long",
-                    day: "numeric",
-                    weekday: "long",
-                  }).format(new Date())
-                : PAGE_LABEL[page]}
-            </strong>
+            <strong>{PAGE_LABEL[page]}</strong>
+            {page === "today" && (
+              <span className="topbar-date">
+                {new Intl.DateTimeFormat("ja-JP", {
+                  month: "numeric",
+                  day: "numeric",
+                  weekday: "short",
+                }).format(new Date())}
+              </span>
+            )}
           </div>
           <div className="topbar-actions">
             <IconButton
@@ -4422,6 +4427,7 @@ function App() {
               onStart={startTimer}
             />
           )}
+          {page === "records" && <RecordsPanel />}
           {page === "inbox" && (
             <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />
           )}
@@ -4503,7 +4509,7 @@ function App() {
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
         {navItems
-          .filter((item) => ["today", "calendar", "inbox", "memos"].includes(item.id))
+          .filter((item) => ["today", "calendar", "records", "memos"].includes(item.id))
           .map((item) => (
           <button
             key={item.id}
