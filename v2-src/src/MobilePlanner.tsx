@@ -4,6 +4,7 @@ import { buildDayRunway, type RunwayEntry } from "./day-runway";
 import { shiftDateKey } from "./meals";
 import { setTasksFlowOrder } from "./store";
 import { syncNow } from "./sync";
+import { haptic } from "./feedback";
 import type { Task } from "./types";
 import { localDateKey } from "./work-start";
 
@@ -207,6 +208,7 @@ function DayList({
     if (next.join() === orderRef.current.join()) return;
     orderRef.current = next;
     setOrder(next);
+    haptic("tick");
   };
   const finish = async () => {
     if (!dragging.current) return;

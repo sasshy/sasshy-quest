@@ -174,6 +174,9 @@ import { MobilePlanner } from "./MobilePlanner";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
+import { Celebrate } from "./Celebrate";
+import { TodayProgress } from "./TodayProgress";
+import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -383,6 +386,7 @@ function QuickAdd({
         title,
         scheduledDate: defaultDate || null,
       });
+      haptic("tap");
       setTitle("");
       onAdded?.(task);
       syncNow().catch(() => undefined);
@@ -610,9 +614,10 @@ function TaskRow({
         type="button"
         aria-label={done ? "完了を取り消す" : "完了"}
         onClick={() =>
-          completeTask(task.id, !done).then(() =>
-            syncNow().catch(() => undefined),
-          )
+          completeTask(task.id, !done).then(() => {
+            if (!done) announceCompletion().catch(() => undefined);
+            syncNow().catch(() => undefined);
+          })
         }
       >
         {done && <Check size={16} />}
@@ -1501,6 +1506,7 @@ function TodayPage({
         <RoutineBar />
       </section>
 
+      <TodayProgress />
       <BudgetCard />
       <section className="today-list">
         <header>
@@ -1661,6 +1667,7 @@ function DraggableTaskQueue({
       const next = currentIds.filter((item) => item !== id);
       const targetIndex = targetId ? next.indexOf(targetId) : -1;
       next.splice(targetIndex < 0 ? next.length : targetIndex, 0, id);
+      if (next.join() !== currentIds.join()) haptic("tick");
       orderedIdsRef.current = next;
       return next;
     });
@@ -3782,6 +3789,26 @@ function TimerDock({
       previous.current = remainingSec;
       return;
     }
+    // 励まし：始めて30秒（最初の壁を越えた）と、半分。1回ずつ。
+    const totalSec = session.plannedMin * 60 - (session.carriedElapsedSec || 0);
+    const ENCOURAGE_START = -100_000;
+    const ENCOURAGE_HALF = -100_001;
+    if (
+      previous.current !== null && totalSec >= 120 &&
+      previous.current > totalSec - 30 && remainingSec <= totalSec - 30 &&
+      !announced.current.has(ENCOURAGE_START)
+    ) {
+      speakVoice("もう始まってる、いい感じ", voice);
+      announced.current.add(ENCOURAGE_START);
+    }
+    if (
+      previous.current !== null && totalSec >= 240 &&
+      previous.current > totalSec / 2 && remainingSec <= totalSec / 2 &&
+      !announced.current.has(ENCOURAGE_HALF)
+    ) {
+      speakVoice("半分きた", voice);
+      announced.current.add(ENCOURAGE_HALF);
+    }
     if (remainingSec >= 0) {
       for (const threshold of announcementThresholds(voice, session.plannedMin)) {
         if (
@@ -3974,7 +4001,22 @@ function TimerDock({
           <X size={19} />
         </IconButton>
       </div>
-      <button className="timer-display" type="button" onClick={pauseToggle}>
+      <button className="timer-display timer-ring" type="button" onClick={pauseToggle}>
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <circle cx="100" cy="100" r="90" className="ring-bg" />
+          <circle
+            cx="100"
+            cy="100"
+            r="90"
+            className={`ring-fg${remainingSec < 0 ? " over" : ""}${paused ? " paused" : ""}`}
+            style={{
+              strokeDasharray: 565.5,
+              strokeDashoffset: remainingSec < 0
+                ? 0
+                : 565.5 * (1 - Math.max(0, remainingSec) / Math.max(1, session.plannedMin * 60 - (session.carriedElapsedSec || 0))),
+            }}
+          />
+        </svg>
         <span>
           {remainingSec < 0 ? "+" : ""}
           {time}
@@ -4197,6 +4239,26 @@ function App() {
     ? tasks.find((task) => task.id === activeSession.taskId)
     : undefined;
   useEffect(() => startAutoSync(), []);
+  // その日最初に開いたとき：「おはよう。今日の1つ目は〇〇」
+  useEffect(() => {
+    const timer = window.setTimeout(async () => {
+      try {
+        const key = todayKey();
+        if (localStorage.getItem("sasshy-greeted") === key) return;
+        localStorage.setItem("sasshy-greeted", key);
+        const hour = new Date().getHours();
+        const hello = hour < 11 ? "おはよう" : hour < 18 ? "こんにちは" : "おつかれさま";
+        const first = (await db.tasks.toArray())
+          .filter((t) => !t.deletedAt && t.status !== "done" && t.scheduledDate === key)
+          .sort(compareDayFlowTasks)[0];
+        window.dispatchEvent(new CustomEvent("sasshy-toast", {
+          detail: first ? `${hello}。今日の1つ目は「${first.title}」` : `${hello}。今日やることを1つ入れてみよう`,
+        }));
+      } catch { /* storage unavailable */ }
+    }, 900);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 完了したときの「積み上がり」など、App の外からの短いお知らせ。
   useEffect(() => {
     const show = (event: Event) => {
@@ -4282,6 +4344,8 @@ function App() {
       });
   }, [memos]);
   const startTimer = async (task: Task) => {
+    haptic("start");
+    playStart();
     if (activeSession?.taskId === task.id) {
       if (activeSession.status === "paused")
         await resumeFocusSession(activeSession.id);
@@ -4464,7 +4528,7 @@ function App() {
             </button>
           </div>
         </header>
-        <div className={`view-frame${activeSession && !timerVisible && page !== "today" ? " has-timer-reopen" : ""}`}>
+        <div key={page} className={`view-frame page-enter${activeSession && !timerVisible && page !== "today" ? " has-timer-reopen" : ""}`}>
           {page === "today" && (
             <TodayPage
               tasks={tasks}
@@ -4562,6 +4626,7 @@ function App() {
           }}
         />
       )}
+      <Celebrate />
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
         {navItems

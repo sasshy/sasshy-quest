@@ -231,3 +231,73 @@ input, select, textarea { background: var(--paper); border-color: var(--line-str
 .ap-accent[data-swatch="orange"] i { background: #e0731c; }
 .ap-accent[data-swatch="green"] i { background: #24865b; }
 .ap-accent[data-swatch="gold"] i { background: #b8892a; }
+
+/* ---- Rewards: celebration ---- */
+.celebrate { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; pointer-events: none; }
+.celebrate .confetti { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; border-radius: 50%; animation: confetti .9s cubic-bezier(.2,.8,.2,1) forwards; }
+.celebrate.level-up .confetti { animation-duration: 1.4s; }
+@keyframes confetti { from { transform: translate(-50%, -50%); opacity: 1; } to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); opacity: 0; } }
+.check-pop { width: 104px; height: 104px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 54px; animation: checkpop 1.1s cubic-bezier(.2,1.6,.4,1) forwards; }
+@keyframes checkpop { 0% { transform: scale(0); opacity: 1; } 35% { transform: scale(1.15); } 60% { transform: scale(1); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+.xp-fly { position: absolute; top: calc(50% + 70px); color: var(--accent); font: 700 24px var(--font-num); animation: xpfly 1.2s ease-out forwards; }
+.level-up .xp-fly { top: calc(50% + 110px); }
+@keyframes xpfly { 0% { opacity: 0; transform: translateY(16px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-70px); } }
+.level-card { padding: 22px 28px; border-radius: 24px; background: var(--hero); color: var(--hero-ink); display: grid; justify-items: center; gap: 4px; text-align: center; max-width: 280px; animation: levelcard 2.6s cubic-bezier(.2,1.4,.4,1) forwards; }
+.level-card small { color: var(--accent); font: 700 12px var(--font-num); letter-spacing: .2em; }
+.level-card strong { font: 700 46px var(--font-num); }
+.level-card span { color: var(--hero-sub); font-size: 13px; }
+@keyframes levelcard { 0% { transform: scale(.4); opacity: 0; } 15% { transform: scale(1.05); opacity: 1; } 25% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .celebrate .confetti { display: none; } .check-pop, .level-card, .xp-fly { animation-duration: .01s; } }
+
+/* ---- Timer ring + entrance ---- */
+.timer-dock { animation: dockin .38s cubic-bezier(.2,.8,.2,1); }
+@keyframes dockin { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.timer-ring { position: relative; width: min(74vw, 290px) !important; aspect-ratio: 1; margin: 0 auto 8px !important; display: grid !important; place-items: center; align-content: center; background: transparent !important; border: 0 !important; }
+.timer-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.timer-ring .ring-bg { fill: none; stroke: #262626; stroke-width: 9; }
+.timer-ring .ring-fg { fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round; transition: stroke-dashoffset .5s linear, stroke .3s; }
+.timer-ring .ring-fg.over { stroke: var(--warn); animation: overpulse 1.6s ease-in-out infinite; }
+.timer-ring .ring-fg.paused { stroke: #555; }
+@keyframes overpulse { 50% { opacity: .45; } }
+.timer-ring > span { position: relative; font-size: clamp(44px, 14vw, 62px) !important; font-weight: 700; letter-spacing: -.02em; }
+.timer-ring > small { position: relative; color: #9a9a96 !important; }
+
+/* ---- Today ring + level ---- */
+.today-progress { display: grid; grid-template-columns: 60px 1fr; align-items: center; gap: 12px; padding: 2px 4px; }
+.today-progress svg { transform: rotate(-90deg); }
+.tp-bg { fill: none; stroke: var(--soft); stroke-width: 7; }
+.tp-fg { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1); }
+.today-progress.full svg { animation: ringglow 2.4s ease-in-out infinite; }
+@keyframes ringglow { 50% { filter: drop-shadow(0 0 6px var(--accent)); } }
+.tp-main { display: grid; gap: 2px; min-width: 0; }
+.tp-main > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.today-progress.full .tp-main > span { color: var(--accent-text); }
+.tp-main strong { font-size: 20px; font-weight: 700; }
+.tp-main strong small { color: var(--faint); font-size: 12px; font-weight: 500; font-family: var(--font-ui); }
+.tp-level { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.tp-level b { color: var(--accent-text); font-size: 12px; }
+.tp-level i { height: 5px; border-radius: 3px; background: var(--soft); overflow: hidden; }
+.tp-level em { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .9s cubic-bezier(.2,.8,.2,1); }
+.tp-level small { color: var(--faint); font-size: 10px; }
+.timer-dock .button.secondary { background: #222 !important; border-color: #333 !important; color: #fff !important; }
+.timer-voice-resume.needed { background: #1f1f1f !important; border-color: #3a3a3a !important; color: #d8d8d4 !important; }
+.timer-duration-editor > *, .timer-controls .icon-button { background: #1d1d1d !important; border-color: #2e2e2e !important; color: #eee !important; }
+.timer-duration-editor input { background: transparent !important; color: #fff !important; }
+
+/* Task rows (fixed times, folds, やること): same quiet line style as the queue */
+.today-v3 .task-row, .today-fold .task-row { border: 0 !important; border-bottom: 1px solid var(--line) !important; border-radius: 0 !important; background: transparent !important; }
+.today-v3 .task-row > .icon-button:last-child, .today-fold .task-row > .icon-button:last-child { background: transparent !important; border: 1px solid var(--line-strong) !important; color: var(--ink) !important; box-shadow: none !important; }
+.task-check { border-color: var(--line-strong) !important; background: transparent !important; color: var(--accent) !important; }
+.task-main strong { color: var(--ink); }
+
+/* Motion: new rows slide in, pages fade up, presses shrink */
+.runway-queue-item, .task-row, .mp-task, .todo-list li, .rec-list li { animation: rowin .32s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes rowin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.page-enter { animation: pagein .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes pagein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.routine-chip, .mp-play, .todo-actions button, .budget-card, .today-fold-link, .mobile-nav button, .icon-button, .button { transition: transform .12s ease; }
+.routine-chip:active, .mp-play:active, .todo-actions button:active, .budget-card:active, .today-fold-link:active, .mobile-nav button:active, .icon-button:active, .button:active { transform: scale(.94); }
+@media (prefers-reduced-motion: reduce) { .runway-queue-item, .task-row, .mp-task, .todo-list li, .rec-list li, .page-enter, .timer-dock { animation: none !important; } }
+.task-row .icon-button[aria-label="音声タイマーを開始"] { background: transparent !important; border: 1px solid var(--line-strong) !important; color: var(--ink) !important; box-shadow: none !important; }
+.today-v3 .task-swipe-shell, .today-fold .task-swipe-shell { background: transparent !important; border-radius: 0 !important; }
+.today-v3 .task-row { padding-left: 4px !important; }

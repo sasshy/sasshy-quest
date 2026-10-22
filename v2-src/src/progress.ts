@@ -34,12 +34,41 @@ export function computeProgress(tasks: Task[], sessions: FocusSession[], now = n
 export const minutesText = (min: number) =>
   min >= 60 ? `${Math.floor(min / 60)}時間${min % 60 ? `${min % 60}分` : ''}` : `${min}分`;
 
-/** Called after a task is completed: a short "it adds up" message. */
-export async function announceCompletion(): Promise<void> {
+export interface Celebration { gainedXp: number; level: number; levelUp: boolean; doneToday: number; workTodayMin: number; workMonthMin: number }
+
+const LEVEL_KEY = 'sasshy-last-level';
+const XP_KEY = 'sasshy-last-xp';
+const readNumber = (key: string): number | null => {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? null : Number(v);
+  } catch {
+    return null;
+  }
+};
+const writeNumber = (key: string, value: number) => {
+  try { localStorage.setItem(key, String(value)); } catch { /* private mode */ }
+};
+
+/** Called after a task is completed: celebration (check, XP, maybe level up) and a short summary. */
+export async function announceCompletion(): Promise<Celebration> {
   const p = computeProgress(await db.tasks.toArray(), await db.sessions.toArray());
+  const xp = xpFrom(p);
+  const { level } = levelFrom(xp);
+  const lastXp = readNumber(XP_KEY);
+  const lastLevel = readNumber(LEVEL_KEY) ?? level;
+  const gainedXp = lastXp === null ? 10 : Math.max(10, xp - lastXp);
+  writeNumber(XP_KEY, xp);
+  writeNumber(LEVEL_KEY, level);
+  const celebration: Celebration = {
+    gainedXp, level, levelUp: level > lastLevel,
+    doneToday: p.doneToday, workTodayMin: p.workTodayMin, workMonthMin: p.workMonthMin,
+  };
+  window.dispatchEvent(new CustomEvent('sasshy-celebrate', { detail: celebration }));
   window.dispatchEvent(new CustomEvent('sasshy-toast', {
     detail: `✓ 今日${p.doneToday}件目　今日の作業 ${minutesText(p.workTodayMin)}・今月 ${minutesText(p.workMonthMin)}`,
   }));
+  return celebration;
 }
 
 /** XP = 10 per completed task + 1 per minute worked. Derived from records, so it only grows. */

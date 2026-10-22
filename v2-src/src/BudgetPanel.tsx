@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Check, Trash2, Wallet, X } from "lucide-react";
 import { db } from "./db";
@@ -31,19 +31,42 @@ function useBudget() {
   return { memos, setting, status: budgetStatus(memos, setting, today) };
 }
 
+/** Counts to the new value (e.g. after recording a spend), so the change is felt. */
+function useCountTo(target: number): number {
+  const [value, setValue] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    const start = from.current;
+    if (start === target) return;
+    const began = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - began) / 700);
+      const eased = 1 - (1 - t) ** 3;
+      setValue(Math.round(start + (target - start) * eased));
+      if (t < 1) frame = requestAnimationFrame(step);
+      else from.current = target;
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  return value;
+}
+
 /** Today: how much is left to spend today (the reason to open before buying). */
 export function BudgetCard() {
   const { setting, status } = useBudget();
   const [open, setOpen] = useState(false);
   if (!setting.enabled) return null;
   const over = status.todayLeft < 0;
+  const shown = useCountTo(status.todayLeft);
   return (
     <>
       <button type="button" className={`budget-card${over ? " over" : ""}`} onClick={() => setOpen(true)}>
         <Wallet size={20} />
         <div>
           <span>{over ? "今日の目安を超えています" : "今日あと使える"}</span>
-          <strong>{yen(Math.abs(status.todayLeft))}{over ? " オーバー" : ""}</strong>
+          <strong>{yen(Math.abs(shown))}{over ? " オーバー" : ""}</strong>
         </div>
         <small>
           給料日まで{status.daysLeft}日
