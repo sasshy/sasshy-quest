@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DoorOpen, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import { DEFAULT_LEAVE, getLeaveSetting, leaveCountdown, setLeaveSetting } from "./leave";
+import { DEFAULT_NUDGES, getNudges, setNudges } from "./nudges";
 import { db } from "./db";
 import {
   DEFAULT_ROUTINES,
@@ -118,6 +119,7 @@ function RoutineEditor({ routines, onClose }: { routines: Routine[]; onClose: ()
             </div>
           ))}
           <LeaveSettingRow />
+          <NudgeSettingRow />
           <button
             type="button"
             className="button secondary"
@@ -199,6 +201,35 @@ function LeaveSettingRow() {
       />
       <button type="button" className="button secondary" onClick={() => setLeaveSetting({ enabled: !setting.enabled })}>
         30分前のお知らせ：{setting.enabled ? "ON" : "OFF"}
+      </button>
+    </div>
+  );
+}
+
+const toHHMM = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+const fromHHMM = (value: string) => {
+  const [h, m] = value.split(":").map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
+
+function NudgeSettingRow() {
+  const setting = useLiveQuery(async () => {
+    await db.settings.get("nudges");
+    return getNudges();
+  }, [], DEFAULT_NUDGES) || DEFAULT_NUDGES;
+  return (
+    <div className="leave-setting nudge-setting">
+      <span className="nudge-title">声かけ（1日2回＋お昼）</span>
+      <label>
+        <span>朝（平日）「今日の1つ目」</span>
+        <input type="time" value={toHHMM(setting.morning)} onChange={(e) => { const v = fromHHMM(e.currentTarget.value); if (v !== null) setNudges({ morning: v }); }} />
+      </label>
+      <label>
+        <span>夜「夜ルーティン始める？」</span>
+        <input type="time" value={toHHMM(setting.night)} onChange={(e) => { const v = fromHHMM(e.currentTarget.value); if (v !== null) setNudges({ night: v }); }} />
+      </label>
+      <button type="button" className="button secondary" onClick={() => setNudges({ enabled: !setting.enabled })}>
+        朝と夜の声かけ：{setting.enabled ? "ON" : "OFF"}
       </button>
     </div>
   );

@@ -1545,3 +1545,6 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .budget-add .button { grid-column: 2; grid-row: 2; }
 .budget-setting { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .budget-setting input, .budget-setting select { min-height: 40px; font-size: 15px; color: var(--ink); }
+.nudge-setting { grid-template-columns: 1fr; }
+.nudge-setting .nudge-title { font-weight: 700; }
+.nudge-setting label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; font-size: 13px; }

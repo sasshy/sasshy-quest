@@ -334,7 +334,7 @@ export async function setMealReminder(changes: Partial<Omit<MealReminderSetting,
 }
 
 /** Weekday lunch prompts for the next 7 days, skipping days with lunch already recorded. */
-export function lunchPrompts(memos: Memo[], setting: MealReminderSetting, now = Date.now()) {
+export function lunchPrompts(memos: Memo[], setting: MealReminderSetting, now = Date.now(), todayLeft?: number) {
   if (!setting.enabled) return [];
   const prompts: { id: string; fireAt: string; title: string; body: string }[] = [];
   for (let i = 0; i < 7; i += 1) {
@@ -345,7 +345,8 @@ export function lunchPrompts(memos: Memo[], setting: MealReminderSetting, now = 
     if (at <= now + 2000) continue;
     const key = localDateKey(at);
     if (hasKindOn(memos, key, 'lunch')) continue;
-    prompts.push({ id: `lunch-${key}`, fireAt: new Date(at).toISOString(), title: 'お昼、なに食べた？', body: 'SASSHYで2タップ記録' });
+    const money = i === 0 && todayLeft !== undefined ? `今日あと¥${Math.max(0, Math.round(todayLeft)).toLocaleString('ja-JP')}使える・` : '';
+    prompts.push({ id: `lunch-${key}`, fireAt: new Date(at).toISOString(), title: 'お昼、なに食べた？', body: `${money}SASSHYで2タップ記録` });
   }
   return prompts;
 }

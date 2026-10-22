@@ -6,6 +6,9 @@ import { announceChange, applyRemoteRecord } from './store';
 import type { Memo, Task } from './types';
 import { buildStandardPrompts, mergePrompts } from './native-standard';
 import { DEFAULT_LEAVE, getLeaveSetting, leavePrompts, type LeaveSetting } from './leave';
+import { DEFAULT_NUDGES, getNudges, nudgePrompts, type NudgeSetting } from './nudges';
+import { budgetStatus, DEFAULT_BUDGET, getBudget, type BudgetSetting } from './budget';
+import { localDateKey as dateKey } from './work-start';
 import { DEFAULT_MEAL_REMINDER, getMealReminder, lunchPrompts, type MealReminderSetting } from './meals';
 
 export function buildWorkPrompts(tasks: Task[], now = Date.now()) {
@@ -34,15 +37,19 @@ export function startNativeWork() {
   let currentMemos: Memo[] = [];
   let currentMealReminder: MealReminderSetting = DEFAULT_MEAL_REMINDER;
   let currentLeave: LeaveSetting = DEFAULT_LEAVE;
+  let currentNudges: NudgeSetting = DEFAULT_NUDGES;
+  let currentBudget: BudgetSetting = DEFAULT_BUDGET;
   // Task-start and memo reminders share the work-reminder bridge (soonest first, max 48).
-  const refresh = () => { if (currentTasks) bridge.postMessage({ action: 'syncWork', prompts: mergePrompts([buildStandardPrompts(currentTasks, currentMemos), lunchPrompts(currentMemos, currentMealReminder), leavePrompts(currentLeave), buildWorkPrompts(currentTasks)]) }); };
-  liveQuery(async () => ({ tasks: await db.tasks.toArray(), sessions: await db.sessions.toArray(), memos: await db.memos.toArray(), mealReminder: await getMealReminder(), leave: await getLeaveSetting(), sync: await db.settings.get('sync') })).subscribe(async ({ tasks, sessions, memos, mealReminder, leave, sync }) => {
+  const refresh = () => { if (currentTasks) bridge.postMessage({ action: 'syncWork', prompts: mergePrompts([buildStandardPrompts(currentTasks, currentMemos), lunchPrompts(currentMemos, currentMealReminder, Date.now(), currentBudget.enabled ? budgetStatus(currentMemos, currentBudget, dateKey()).todayLeft : undefined), leavePrompts(currentLeave), nudgePrompts(currentTasks, currentNudges), buildWorkPrompts(currentTasks)]) }); };
+  liveQuery(async () => ({ tasks: await db.tasks.toArray(), sessions: await db.sessions.toArray(), memos: await db.memos.toArray(), mealReminder: await getMealReminder(), leave: await getLeaveSetting(), nudges: await getNudges(), budget: await getBudget(), sync: await db.settings.get('sync') })).subscribe(async ({ tasks, sessions, memos, mealReminder, leave, nudges, budget, sync }) => {
     const currentRevision = ++revision;
     const active = new Set(sessions.filter(s => !s.deletedAt && ['running', 'paused'].includes(s.status)).map(s => s.taskId));
     currentTasks = tasks.map(t => active.has(t.id) ? { ...t, status: 'active' as const } : t);
     currentMemos = memos;
     currentMealReminder = mealReminder;
     currentLeave = leave;
+    currentNudges = nudges;
+    currentBudget = budget;
     refresh();
     const key = typeof sync?.syncKey === 'string' ? sync.syncKey : '';
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
