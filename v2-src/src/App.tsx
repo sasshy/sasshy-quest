@@ -1435,33 +1435,6 @@ function TodayPage({
   };
   return (
     <div className="page-content today-page">
-      <QuickAdd defaultDate={today} />
-      <RoutineBar />
-      <MealQuickBar />
-      <section className="runway-status" aria-label="今日の見通し">
-        <div className="runway-clock">
-          <span>いま</span>
-          <strong>{formatMinute(nowMinute)}</strong>
-        </div>
-        <div className="runway-next-anchor">
-          <span>{nextAnchor ? "次の固定予定" : "このあとの固定予定"}</span>
-          <strong>{nextAnchor ? nextAnchor.title : "なし"}</strong>
-          <small>
-            {nextAnchor
-              ? `${flowTimeLabel(nextAnchor.startMinute)}まで${formatRelativeMinutes(untilAnchor || 0)}・使えるのは約${runway.usableBeforeNext}分`
-              : `22:00まで約${runway.usableBeforeNext}分`}
-          </small>
-        </div>
-        <div className={`runway-capacity${runway.overflowMin ? " overloaded" : ""}`}>
-          <span>今日の見込み</span>
-          <strong>{runway.bufferedFlexibleMin}分</strong>
-          <small>
-            {runway.overflowMin
-              ? `約${runway.overflowMin}分入りきりません`
-              : `${flowTimeLabel(runway.finishMinute)}ごろ終了`}
-          </small>
-        </div>
-      </section>
       <section className="runway-now-card">
         <header>
           <span className="eyebrow">NOW</span>
@@ -1471,6 +1444,7 @@ function TodayPage({
           <div className="runway-now-task">
             <div>
               <strong>{focus.title}</strong>
+              {focus.doneWhen && <small className="runway-now-goal">ゴール：{focus.doneWhen}</small>}
               <span>
                 {activeSession && activeRemaining !== null
                   ? activeRemaining < 0
@@ -1493,7 +1467,7 @@ function TodayPage({
             <Sparkles size={28} />
             <div>
               <strong>まず、やることを1つ追加</strong>
-              <span>上の入力欄に書くだけで始められます</span>
+              <span>下の入力欄に書くか、ルーティンを押すだけで始められます</span>
             </div>
           </div>
         )}
@@ -1526,6 +1500,33 @@ function TodayPage({
           </div>
         )}
       </section>
+      <QuickAdd defaultDate={today} />
+      <RoutineBar />
+      <section className="runway-status compact" aria-label="今日の見通し">
+        <div className="runway-clock">
+          <span>いま</span>
+          <strong>{formatMinute(nowMinute)}</strong>
+        </div>
+        <div className="runway-next-anchor">
+          <span>{nextAnchor ? "次の固定予定" : "このあとの固定予定"}</span>
+          <strong>{nextAnchor ? nextAnchor.title : "なし"}</strong>
+          <small>
+            {nextAnchor
+              ? `${flowTimeLabel(nextAnchor.startMinute)}まで${formatRelativeMinutes(untilAnchor || 0)}・使えるのは約${runway.usableBeforeNext}分`
+              : `22:00まで約${runway.usableBeforeNext}分`}
+          </small>
+        </div>
+        <div className={`runway-capacity${runway.overflowMin ? " overloaded" : ""}`}>
+          <span>今日の見込み</span>
+          <strong>{runway.bufferedFlexibleMin}分</strong>
+          <small>
+            {runway.overflowMin
+              ? `約${runway.overflowMin}分入りきりません`
+              : `${flowTimeLabel(runway.finishMinute)}ごろ終了`}
+          </small>
+        </div>
+      </section>
+      <MealQuickBar />
       {due.length > 0 && (
         <section className="runway-board">
           <header>
