@@ -4327,7 +4327,7 @@ function App() {
             </button>
           </div>
         </header>
-        <div className="view-frame">
+        <div className={`view-frame${activeSession && !timerVisible ? " has-timer-reopen" : ""}`}>
           {page === "today" && (
             <TodayPage
               tasks={tasks}
@@ -4392,7 +4392,7 @@ function App() {
           onClose={() => setTimerVisible(false)}
         />
       )}
-      {activeSession && !timerVisible && (
+      {activeSession && !timerVisible && !menuOpen && (
         <button
           className="timer-reopen"
           type="button"

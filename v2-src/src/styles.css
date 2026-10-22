@@ -1245,3 +1245,13 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .meal-paid{display:grid;gap:4px;font-size:11px;color:var(--muted);grid-column:1 / -1}
 .meal-paid input{min-height:36px;padding:0 8px;border:1px solid var(--line);border-radius:7px;font:inherit}
 .meal-value{margin-left:4px;font-weight:400;color:var(--muted);font-size:11px}
+
+/* Mobile: unsent edits must be readable at a glance, not only as an icon. */
+@media (max-width: 760px) {
+  .top-sync.pending { width: auto; padding: 0 10px; color: #9a5a00; background: #fff6e8; border: 1px solid #f0c98a; }
+  .top-sync.pending span { display: inline; font-size: 11px; font-weight: 700; }
+  .top-sync.pending .sync-badge { display: none; }
+}
+
+/* Keep the floating "paused/running timer" button from covering the last items. */
+.view-frame.has-timer-reopen { padding-bottom: 72px; }
