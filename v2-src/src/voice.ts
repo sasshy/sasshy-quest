@@ -43,10 +43,10 @@ export function remainingStatusText(seconds: number): string {
     const overtime = Math.abs(seconds);
     const minutes = Math.floor(overtime / 60);
     const rest = overtime % 60;
-    if (minutes === 0) return `予定を${rest}秒超過しています`;
+    if (minutes === 0) return `${rest}秒オーバーしています`;
     return rest
-      ? `予定を${minutes}分${rest}秒超過しています`
-      : `予定を${minutes}分超過しています`;
+      ? `${minutes}分${rest}秒オーバーしています`
+      : `${minutes}分オーバーしています。続けるか、止めるか決めよう`;
   }
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;

@@ -14,6 +14,10 @@ import {
 import { computeProgress, levelFrom, xpFrom } from "./progress";
 import { playDone } from "./feedback";
 
+const nativeBridge = () =>
+  (window as unknown as { webkit?: { messageHandlers?: { sasshyAlarm?: { postMessage: (m: unknown) => void } } } })
+    .webkit?.messageHandlers?.sasshyAlarm;
+
 /** Settings: font, sound, accent color (unlocked by level), daily goal. */
 export function AppearancePanel() {
   const a = useLiveQuery(async () => {
@@ -59,6 +63,14 @@ export function AppearancePanel() {
           })}
         </div>
       </div>
+      {nativeBridge() && (
+        <div className="ap-group ap-row">
+          <span className="ap-label">Siri・声で仕事を追加（設定と履歴）</span>
+          <button type="button" className="button secondary" onClick={() => nativeBridge()?.postMessage({ action: "openVoicePanel" })}>
+            開く
+          </button>
+        </div>
+      )}
       <div className="ap-group ap-row">
         <span className="ap-label">完了したときの効果音</span>
         <button type="button" className="button secondary" onClick={() => { setAppearance({ sound: !a.sound }); if (!a.sound) playDone(true); }}>

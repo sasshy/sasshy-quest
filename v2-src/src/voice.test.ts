@@ -30,8 +30,8 @@ describe('voice countdown', () => {
   it('reports the current time when returning to a timer', () => {
     expect(remainingStatusText(125)).toBe('残り2分5秒です');
     expect(remainingStatusText(30)).toBe('残り30秒です');
-    expect(remainingStatusText(-8)).toBe('予定を8秒超過しています');
-    expect(remainingStatusText(-90)).toBe('予定を1分30秒超過しています');
+    expect(remainingStatusText(-8)).toBe('8秒オーバーしています');
+    expect(remainingStatusText(-90)).toBe('1分30秒オーバーしています');
   });
 });
 

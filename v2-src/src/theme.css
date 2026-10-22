@@ -301,3 +301,12 @@ input, select, textarea { background: var(--paper); border-color: var(--line-str
 .task-row .icon-button[aria-label="音声タイマーを開始"] { background: transparent !important; border: 1px solid var(--line-strong) !important; color: var(--ink) !important; box-shadow: none !important; }
 .today-v3 .task-swipe-shell, .today-fold .task-swipe-shell { background: transparent !important; border-radius: 0 !important; }
 .today-v3 .task-row { padding-left: 4px !important; }
+
+/* Timer layout on phones: flow from the top so the ring never covers the title */
+@media (max-width: 760px) {
+  .timer-dock { justify-content: flex-start !important; padding-top: max(96px, calc(env(safe-area-inset-top) + 80px)) !important; gap: 0; }
+  .timer-ring { width: min(66vw, 260px) !important; }
+  .timer-dock:has(.timer-setup) .timer-ring { width: min(50vw, 200px) !important; }
+  .timer-dock:has(.timer-setup) .timer-ring > span { font-size: clamp(36px, 11vw, 46px) !important; }
+  .timer-dock:has(.timer-fix) .timer-ring { width: min(46vw, 180px) !important; }
+}
