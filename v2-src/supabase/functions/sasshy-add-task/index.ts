@@ -3,6 +3,14 @@ import { parseVoiceInput, extractVoiceTask } from './voice.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { parseTaskRequest, type AddTaskRequest } from './validation.ts';
 import {
+  applyNutrition,
+  parseMealRequest,
+  parseMealSearchRequest,
+  parseNutritionRequest,
+  type MealActionRequest,
+  type MealSearchRequest,
+} from './meal.ts';
+import {
   parseTaskMutationRequest,
   parseTaskSearchRequest,
   type TaskMutationOperation,
@@ -130,6 +138,79 @@ Deno.serve(async (request: Request) => {
       if (!result?.task?.id) throw new Error('保存を確認できませんでした。同じ受付番号で再試行してください');
       return respond(request, 200, { ok: true, task_id: result.task.id, task: result.task, duplicate: Boolean(result.duplicate),
         message: `${result.duplicate ? '登録済みです' : 'SASSHYに追加しました'}：${result.task.title}。期限：${result.task.dueDate || '未指定'} ${result.task.dueTime || ''}。相手：${result.task.counterparty || '未指定'}。依頼元：${result.task.requestSource || '未指定'}` });
+    }
+
+    if (action === 'meal') {
+      const input = parseMealRequest(body as MealActionRequest);
+      const { data, error } = await client.rpc('sasshy_v2_ingest_meals', {
+        p_sync_key: syncKey,
+        p_idempotency_key: input.idempotency_key,
+        p_memos: input.memos,
+      });
+      if (error) throw error;
+      const memos = Array.isArray(data?.memos) ? data.memos : [];
+      const meals = memos.map((memo: { id?: string; title?: string; meal?: Record<string, unknown> }) => ({
+        memo_id: memo.id,
+        title: memo.title,
+        kind: memo.meal?.kind,
+        item: memo.meal?.item,
+        price: memo.meal?.price ?? null,
+        kcal: memo.meal?.kcal ?? null,
+      }));
+      const spend = meals.reduce((sum: number, m: { price: unknown }) => sum + (typeof m.price === 'number' ? m.price : 0), 0);
+      const kcal = meals.reduce((sum: number, m: { kcal: unknown }) => sum + (typeof m.kcal === 'number' ? m.kcal : 0), 0);
+      return respond(request, 200, {
+        ok: true,
+        duplicate: Boolean(data?.duplicate),
+        count: meals.length,
+        meals,
+        message: `${data?.duplicate ? '記録済みです' : 'SASSHYに食事を記録しました'}：${meals.length}品${spend ? ` ¥${spend.toLocaleString('ja-JP')}` : ''}${kcal ? ` ${kcal.toLocaleString('ja-JP')}kcal` : ''}`,
+      });
+    }
+
+    if (action === 'meals/search') {
+      const input = parseMealSearchRequest(body as MealSearchRequest);
+      const { data, error } = await client.rpc('sasshy_v2_action_search_meals', { p_sync_key: syncKey, ...input });
+      if (error) throw error;
+      return respond(request, 200, data);
+    }
+
+    if (action === 'meals/nutrition') {
+      const updates = parseNutritionRequest(body as { updates?: unknown });
+      const found = await client.rpc('sasshy_v2_action_search_meals', {
+        p_sync_key: syncKey,
+        p_from_date: null,
+        p_to_date: null,
+        p_missing_nutrition: false,
+        p_limit: 100,
+        p_ids: updates.map((u) => u.memo_id),
+      });
+      if (found.error) throw found.error;
+      const current = new Map<string, { revision: string; meal: Record<string, unknown> }>();
+      for (const row of (found.data?.meals || []) as { memo_id: string; revision: string; meal: Record<string, unknown> }[]) current.set(row.memo_id, row);
+      const missing: string[] = [];
+      const changes = [];
+      for (const update of updates) {
+        const row = current.get(update.memo_id);
+        if (!row) { missing.push(update.memo_id); continue; }
+        // deno-lint-ignore no-explicit-any
+        const next = applyNutrition(row.meal as any, update);
+        changes.push({ memo_id: update.memo_id, revision: update.revision, ...next });
+      }
+      let result = { updated: [] as unknown[], conflicts: [] as string[] };
+      if (changes.length) {
+        const saved = await client.rpc('sasshy_v2_action_set_meal_nutrition', { p_sync_key: syncKey, p_changes: changes });
+        if (saved.error) throw saved.error;
+        result = { updated: saved.data?.updated || [], conflicts: saved.data?.conflicts || [] };
+      }
+      const n = result.updated.length;
+      return respond(request, 200, {
+        ok: true,
+        updated: result.updated,
+        conflicts: result.conflicts,
+        not_found: missing,
+        message: `${n}件のカロリー・栄養を記録しました${result.conflicts.length ? `。${result.conflicts.length}件は別の端末で更新されていたため未反映（再検索してください）` : ''}${missing.length ? `。${missing.length}件は見つかりませんでした` : ''}`,
+      });
     }
 
     if (action === 'search') {
