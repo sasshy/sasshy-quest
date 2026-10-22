@@ -62,6 +62,8 @@ export interface Task {
   flowOrder?: number;
   durationMin: number;
   estimateMin: number;
+  /** "ここまでやったら終わり" — decided when starting, shown on the timer. */
+  doneWhen?: string;
   importance: 0 | 1 | 2;
   urgency: 0 | 1 | 2;
   createdAt: string;

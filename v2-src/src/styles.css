@@ -1265,3 +1265,14 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .meal-expense { border-top: 1px dashed var(--line); padding-top: 10px; }
 .meal-expense label span { display: inline-flex; align-items: center; gap: 4px; }
 .meal-expense-tag { padding: 1px 5px; border-radius: 4px; background: #fff1dc; color: #9a5a00; font-size: 10px; font-weight: 700; }
+
+/* First 2 minutes of a timer: how long / where to stop (v2.11.0) */
+.timer-goal { display: block; margin-top: 2px; color: #bde8d0; font-size: 12px; font-weight: 600; }
+.timer-setup { margin-bottom: 10px; padding: 10px; border: 1px solid #83c4a2; border-radius: 6px; background: rgba(23, 59, 43, .55); display: grid; gap: 8px; font-size: 12px; }
+.timer-setup-row { display: grid; grid-template-columns: auto repeat(3, 1fr); align-items: center; gap: 6px; }
+.timer-setup-row span, .timer-setup-goal span { color: #d7f0e2; font-weight: 700; }
+.timer-setup-row button { min-height: 38px; border: 1px solid #4b504c; border-radius: 5px; background: #2b2e2c; color: white; font-weight: 700; cursor: pointer; }
+.timer-setup-row button.active { border-color: #83c4a2; background: #173b2b; color: #bde8d0; }
+.timer-setup-goal { display: grid; gap: 4px; }
+.timer-setup-goal input { min-height: 38px; padding: 0 8px; border: 1px solid #4b504c; border-radius: 5px; background: #151616; color: white; font-size: 14px; }
+.timer-setup-close { justify-self: end; min-height: 30px; padding: 0 10px; border: 0; background: transparent; color: #bde8d0; font-size: 12px; font-weight: 700; cursor: pointer; }

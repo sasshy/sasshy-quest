@@ -3672,6 +3672,9 @@ function TimerDock({
   const [fixOpen, setFixOpen] = useState(false);
   const [stopDraft, setStopDraft] = useState("");
   const [fixError, setFixError] = useState("");
+  // 始めて最初の2分だけ「何分で・どこまで」を決める欄を出す（開始前には何も聞かない）。
+  const [goalDraft, setGoalDraft] = useState(task?.doneWhen || "");
+  const [setupClosed, setSetupClosed] = useState(false);
   const announced = useRef(new Set<number>());
   const previous = useRef<number | null>(null);
   const previousPlannedMinutes = useRef(session.plannedMin);
@@ -3870,6 +3873,13 @@ function TimerDock({
   const stopChoices = [5, 15, 30, 60]
     .map((min) => ({ min, at: new Date(Date.now() - min * 60_000) }))
     .filter(({ at }) => at.getTime() > startedMs);
+  const showSetup =
+    !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
+  const saveGoal = async () => {
+    if (!task || goalDraft.trim() === (task.doneWhen || "")) return;
+    await updateTask(task.id, { doneWhen: goalDraft.trim() }, "終わりの目安を設定");
+    syncNow().catch(() => undefined);
+  };
   const restoreVoice = () => {
     stopVoice();
     const restored = speakVoice(
@@ -3900,6 +3910,7 @@ function TimerDock({
                   : "集中しています"}
           </span>
           <strong>{session.taskTitle}</strong>
+          {task?.doneWhen && !showSetup && <small className="timer-goal">ゴール：{task.doneWhen}</small>}
         </div>
         <IconButton label="小さくする" onClick={onClose}>
           <X size={19} />
@@ -3912,6 +3923,48 @@ function TimerDock({
         </span>
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
+      {showSetup && (
+        <div className="timer-setup" aria-label="何分で・どこまでやるか">
+          <div className="timer-setup-row">
+            <span>何分でやる？</span>
+            {[10, 15, 25].map((min) => (
+              <button
+                key={min}
+                type="button"
+                className={session.plannedMin === min ? "active" : ""}
+                onClick={() => changeDuration(min)}
+              >
+                {min}分
+              </button>
+            ))}
+          </div>
+          <label className="timer-setup-goal">
+            <span>ここまでやったら終わり</span>
+            <input
+              value={goalDraft}
+              placeholder="例：机①の上の書類だけ"
+              onChange={(event) => setGoalDraft(event.currentTarget.value)}
+              onBlur={saveGoal}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  saveGoal();
+                  setSetupClosed(true);
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="timer-setup-close"
+            onClick={() => {
+              saveGoal();
+              setSetupClosed(true);
+            }}
+          >
+            このまま進める
+          </button>
+        </div>
+      )}
       <div className="timer-duration-editor">
         <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>
           -1

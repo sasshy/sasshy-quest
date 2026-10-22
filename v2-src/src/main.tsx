@@ -4,6 +4,7 @@ import App from './App';
 import './styles.css';
 import { ensureDefaults } from './db';
 import { startNativeWork } from './native-work';
+import { startNativeTimerEvents } from './native-timer-events';
 import { startOpenLog } from './open-log';
 
 async function keepServiceWorkerFresh(): Promise<void> {
@@ -31,6 +32,7 @@ async function boot(): Promise<void> {
   // WKWebView may take time to restore IndexedDB after an app update, so this runs
   // before ensureDefaults and never blocks the task screen.
   startNativeWork();
+  startNativeTimerEvents();
   startOpenLog();
   await ensureDefaults();
 
