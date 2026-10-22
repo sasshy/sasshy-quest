@@ -166,7 +166,7 @@ import {
 } from "./task-link";
 import { buildCoachPlan, completionCoachText } from "./coach";
 import { MealQuickBar, OpenCountPanel } from "./MealPanel";
-import { RoutineBar } from "./RoutinePanel";
+import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
@@ -1435,6 +1435,7 @@ function TodayPage({
   };
   return (
     <div className="page-content today-page">
+      <LeaveBanner />
       <section className="runway-now-card">
         <header>
           <span className="eyebrow">NOW</span>

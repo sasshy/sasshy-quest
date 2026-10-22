@@ -1289,7 +1289,7 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .routine-draft textarea { width: 100%; font-size: 15px; line-height: 1.6; }
 
 /* Today: "next one thing" first; the outlook is a slim line (v2.11.0) */
-.today-page > .runway-now-card:first-child { margin-top: 0; margin-bottom: 12px; }
+.today-page > .runway-now-card { margin-top: 0; margin-bottom: 12px; }
 .runway-status.compact { margin: 0 0 12px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
 .runway-status.compact > div { min-height: 0; padding: 8px 10px; border-radius: 10px; box-shadow: none; }
 .runway-status.compact .runway-clock strong { font-size: 16px; }
@@ -1297,3 +1297,14 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 .runway-status.compact .runway-capacity { grid-column: auto; min-height: 0 !important; grid-template-columns: 1fr; gap: 2px !important; }
 .runway-status.compact .runway-capacity small { text-align: left; }
 .runway-now-goal { display: block; margin: 2px 0; color: #d9dbff; font-size: 12px; font-weight: 600; }
+
+/* Leaving work countdown (v2.11.0) */
+.leave-banner { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: #fff4e0; border: 1px solid #f0c98a; color: #7a4600; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+.leave-banner.late { background: #ffe9e5; border-color: #edb3a9; color: #8a2c1d; }
+.leave-banner strong { display: block; font-size: 15px; }
+.leave-banner small { font-size: 11px; opacity: .85; }
+.leave-banner button { min-height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: #7a4600; color: white; display: flex; align-items: center; gap: 4px; font-weight: 700; cursor: pointer; }
+.leave-banner.late button { background: #8a2c1d; }
+.leave-setting { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.leave-setting input { min-height: 36px; }
+.leave-setting .button { grid-column: 1 / -1; }

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Pencil, Play, Plus, Trash2, X } from "lucide-react";
+import { DoorOpen, Pencil, Play, Plus, Trash2, X } from "lucide-react";
+import { DEFAULT_LEAVE, getLeaveSetting, leaveCountdown, setLeaveSetting } from "./leave";
 import { db } from "./db";
 import {
   DEFAULT_ROUTINES,
@@ -42,6 +43,9 @@ export function RoutineBar() {
   return (
     <>
       <section className="routine-bar" aria-label="ルーティン">
+        <button type="button" className="routine-edit" aria-label="ルーティンを編集" onClick={() => setEditing(true)}>
+          <Pencil size={15} />
+        </button>
         {routines.map((routine) => (
           <button key={routine.id} type="button" className="routine-chip" disabled={busy} onClick={() => start(routine)}>
             <Play size={14} />
@@ -49,9 +53,6 @@ export function RoutineBar() {
             <small>{routine.steps.length}つ・{routine.steps.reduce((sum, step) => sum + step.minutes, 0)}分</small>
           </button>
         ))}
-        <button type="button" className="routine-edit" aria-label="ルーティンを編集" onClick={() => setEditing(true)}>
-          <Pencil size={15} />
-        </button>
       </section>
       {editing && <RoutineEditor routines={routines} onClose={() => setEditing(false)} />}
     </>
@@ -116,6 +117,7 @@ function RoutineEditor({ routines, onClose }: { routines: Routine[]; onClose: ()
               />
             </div>
           ))}
+          <LeaveSettingRow />
           <button
             type="button"
             className="button secondary"
@@ -134,6 +136,70 @@ function RoutineEditor({ routines, onClose }: { routines: Routine[]; onClose: ()
           </button>
         </footer>
       </section>
+    </div>
+  );
+}
+
+/** Today, from 30 minutes before leaving: countdown + the 退社前 routine. */
+export function LeaveBanner() {
+  const setting = useLiveQuery(async () => {
+    await db.settings.get("leaveTime");
+    return getLeaveSetting();
+  }, [], DEFAULT_LEAVE) || DEFAULT_LEAVE;
+  const routines = useLiveQuery(() => getRoutines(), [], DEFAULT_ROUTINES) || DEFAULT_ROUTINES;
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const left = leaveCountdown(setting, now);
+  if (left === null) return null;
+  const routine = routines.find((r) => r.id === "leave-work") || routines.find((r) => r.name.includes("退社"));
+  const hhmm = `${Math.floor(setting.minute / 60)}:${String(setting.minute % 60).padStart(2, "0")}`;
+  const start = async () => {
+    if (!routine) return;
+    await startRoutine(routine);
+    window.dispatchEvent(new Event("sasshy-open-timer"));
+    syncNow().catch(() => undefined);
+  };
+  return (
+    <section className={`leave-banner${left < 0 ? " late" : ""}`} aria-label="退社">
+      <DoorOpen size={22} />
+      <div>
+        <strong>{left > 0 ? `退社 ${hhmm} まであと${left}分` : left === 0 ? `退社 ${hhmm} です` : `退社 ${hhmm} を${-left}分過ぎています`}</strong>
+        <small>新しい作業は足さず、出る準備へ</small>
+      </div>
+      {routine && (
+        <button type="button" onClick={start}>
+          <Play size={15} />
+          {routine.name}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function LeaveSettingRow() {
+  const setting = useLiveQuery(async () => {
+    await db.settings.get("leaveTime");
+    return getLeaveSetting();
+  }, [], DEFAULT_LEAVE) || DEFAULT_LEAVE;
+  const value = `${String(Math.floor(setting.minute / 60)).padStart(2, "0")}:${String(setting.minute % 60).padStart(2, "0")}`;
+  return (
+    <div className="leave-setting">
+      <DoorOpen size={16} />
+      <span>平日の退社時刻</span>
+      <input
+        type="time"
+        value={value}
+        onChange={(event) => {
+          const [h, m] = event.currentTarget.value.split(":").map(Number);
+          if (Number.isFinite(h) && Number.isFinite(m)) setLeaveSetting({ minute: h * 60 + m });
+        }}
+      />
+      <button type="button" className="button secondary" onClick={() => setLeaveSetting({ enabled: !setting.enabled })}>
+        30分前のお知らせ：{setting.enabled ? "ON" : "OFF"}
+      </button>
     </div>
   );
 }
