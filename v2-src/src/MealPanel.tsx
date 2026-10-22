@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Bell, BellOff, ClipboardCopy, ClipboardPaste, Sparkles, Trash2, Utensils, X } from "lucide-react";
+import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Sparkles, Trash2, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import {
   DEFAULT_MEAL_REMINDER,
@@ -17,6 +17,11 @@ import {
   recentPlaces,
   mealFavorites,
   mealsOn,
+  expensesOn,
+  ledgerOn,
+  recordExpense,
+  shiftDateKey,
+  walletOn,
   recordMeal,
   recordMeals,
   removeMeal,
@@ -71,7 +76,8 @@ export function MealQuickBar() {
   const [open, setOpen] = useState(false);
   const today = localDateKey(Date.now());
   const meals = mealsOn(memos, today);
-  const spend = spendOn(memos, today);
+  const expenses = expensesOn(memos, today);
+  const spend = walletOn(memos, today);
   const kcal = kcalOn(memos, today);
   const value = valueOn(memos, today);
   return (
@@ -79,16 +85,16 @@ export function MealQuickBar() {
       <section className="meal-strip" aria-label="今日の食事・間食">
         <button className="meal-strip-button" type="button" onClick={() => setOpen(true)}>
           <Utensils size={18} />
-          <span>食事・間食を記録</span>
+          <span>食事・支出を記録</span>
         </button>
         <div className="meal-strip-summary">
-          {meals.length === 0 ? (
+          {meals.length === 0 && expenses.length === 0 ? (
             <small>今日はまだ記録なし</small>
           ) : (
             <>
               <strong>
                 {yen(spend)}
-                {value !== spend && <small className="meal-value">（値段{yen(value)}）</small>}
+                {value !== spendOn(memos, today) && <small className="meal-value">（食事の値段{yen(value)}）</small>}
                 {kcal > 0 && ` ・ ${kcalText(kcal)}`}
               </strong>
               <small>
@@ -96,6 +102,7 @@ export function MealQuickBar() {
                   const items = meals.filter((m) => m.meal!.kind === k).map((m) => m.meal!.item);
                   return items.length ? `${MEAL_LABEL[k]} ${items.join("・")}` : "";
                 })
+                  .concat(expenses.length ? [`支出 ${expenses.map((m) => m.expense!.item).join("・")}`] : [])
                   .filter(Boolean)
                   .join(" ／ ")}
               </small>
@@ -124,7 +131,31 @@ function MealSheet({ onClose }: { onClose: () => void }) {
   const [message, setMessage] = useState("");
   const favorites = mealFavorites(memos);
   const today = localDateKey(Date.now());
-  const todays = mealsOn(memos, today);
+  // 過去の日も見返せるように、表示する日を切り替えられる。
+  const [viewDate, setViewDate] = useState(today);
+  const dayRecords = ledgerOn(memos, viewDate);
+  const [expenseItem, setExpenseItem] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const viewLabel = viewDate === today
+    ? "今日"
+    : viewDate === shiftDateKey(today, -1)
+      ? "昨日"
+      : new Date(`${viewDate}T12:00:00`).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+  const saveExpense = async () => {
+    setBusy(true);
+    try {
+      const amount = expenseAmount.trim() === "" ? null : Number(expenseAmount.replace(/[^0-9]/g, ""));
+      await recordExpense({ item: expenseItem, amount, at: atIso() });
+      syncNow().catch(() => undefined);
+      setMessage(`支出「${expenseItem.trim()}」を記録しました`);
+      setExpenseItem("");
+      setExpenseAmount("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "記録できませんでした");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!message) return;
@@ -201,7 +232,7 @@ function MealSheet({ onClose }: { onClose: () => void }) {
         <header>
           <div>
             <span className="eyebrow">MEAL</span>
-            <h2 id="meal-title">食事・間食を記録</h2>
+            <h2 id="meal-title">食事・支出を記録</h2>
           </div>
           <button className="icon-button" type="button" aria-label="閉じる" onClick={onClose}>
             <X size={20} />
@@ -401,39 +432,73 @@ function MealSheet({ onClose }: { onClose: () => void }) {
             </button>
           </form>
 
+          <form
+            className="meal-manual meal-expense"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveExpense();
+            }}
+          >
+            <label>
+              <span><Wallet size={13} /> 食事以外の支出</span>
+              <input value={expenseItem} onChange={(event) => setExpenseItem(event.target.value)} placeholder="例：タクシー、ドラッグストア" />
+            </label>
+            <label>
+              <span>金額</span>
+              <input value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} inputMode="numeric" placeholder="円" />
+            </label>
+            <button className="button secondary" type="submit" disabled={busy || !expenseItem.trim() || !expenseAmount.trim()}>
+              記録
+            </button>
+          </form>
+
           {message && <p className="meal-message" role="status">{message}</p>}
 
-          {todays.length > 0 && (
-            <div className="meal-today">
+          <div className="meal-today">
+            <div className="meal-day-nav">
+              <button type="button" aria-label="前の日" onClick={() => setViewDate(shiftDateKey(viewDate, -1))}>
+                <ChevronLeft size={18} />
+              </button>
               <span className="meal-label">
-                今日の記録（{yen(spendOn(memos, today))}
-                {kcalOn(memos, today) > 0 && ` ・ ${kcalText(kcalOn(memos, today))}`}）
+                {viewLabel}の記録（支払 {yen(walletOn(memos, viewDate))}
+                {kcalOn(memos, viewDate) > 0 && ` ・ ${kcalText(kcalOn(memos, viewDate))}`}）
               </span>
-              <ul>
-                {todays.map((m) => (
-                  <li key={m.id}>
-                    <span>
-                      {new Date(m.meal!.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}{" "}
-                      {MEAL_LABEL[m.meal!.kind]} {m.meal!.item}
-                      {m.meal!.place ? <small className="meal-kcal"> @{m.meal!.place}</small> : null}
-                    </span>
-                    <span>
-                      {m.meal!.kcal ? <small className="meal-kcal">{kcalText(m.meal!.kcal)}</small> : null}
-                      {m.meal!.price !== null && yen(m.meal!.price)}
-                      {paidAmount(m.meal!) !== (m.meal!.price || 0) && <small className="meal-kcal">（支払{yen(paidAmount(m.meal!))}）</small>}
-                      <button
-                        type="button"
-                        aria-label={`${m.meal!.item}の記録を削除`}
-                        onClick={() => removeMeal(m.id).then(() => syncNow().catch(() => undefined))}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <button type="button" aria-label="次の日" disabled={viewDate >= today} onClick={() => setViewDate(shiftDateKey(viewDate, 1))}>
+                <ChevronRight size={18} />
+              </button>
             </div>
-          )}
+            {dayRecords.length === 0 ? (
+              <p className="meal-empty">記録はありません</p>
+            ) : (
+              <ul>
+                {dayRecords.map((m) => {
+                  const at = m.meal?.at || m.expense!.at;
+                  const name = m.meal ? m.meal.item : m.expense!.item;
+                  return (
+                    <li key={m.id}>
+                      <span>
+                        {new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}{" "}
+                        {m.meal ? MEAL_LABEL[m.meal.kind] : <b className="meal-expense-tag">支出</b>} {name}
+                        {m.meal?.place ? <small className="meal-kcal"> @{m.meal.place}</small> : null}
+                      </span>
+                      <span>
+                        {m.meal?.kcal ? <small className="meal-kcal">{kcalText(m.meal.kcal)}</small> : null}
+                        {m.meal ? m.meal.price !== null && yen(m.meal.price) : yen(Number(m.expense!.amount))}
+                        {m.meal && paidAmount(m.meal) !== (m.meal.price || 0) && <small className="meal-kcal">（支払{yen(paidAmount(m.meal))}）</small>}
+                        <button
+                          type="button"
+                          aria-label={`${name}の記録を削除`}
+                          onClick={() => removeMeal(m.id).then(() => syncNow().catch(() => undefined))}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
         <footer className="modal-actions meal-footer">
           <button

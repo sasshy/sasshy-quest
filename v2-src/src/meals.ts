@@ -1,6 +1,6 @@
 import { db } from './db';
 import { createMemo, updateMemo } from './store';
-import type { MealInfo, MealKind, MealPayment, Memo } from './types';
+import type { ExpenseInfo, MealInfo, MealKind, MealPayment, Memo } from './types';
 
 /**
  * Quick meal/snack records. Stored as memos (category '食事' + `meal`) so they
@@ -17,6 +17,17 @@ export const MEAL_LABEL: Record<MealKind, string> = {
 
 export function isMealMemo(memo: Memo): boolean {
   return memo.category === MEAL_CATEGORY && Boolean(memo.meal);
+}
+
+export const EXPENSE_CATEGORY = '支出';
+
+export function isExpenseMemo(memo: Memo): boolean {
+  return memo.category === EXPENSE_CATEGORY && Boolean(memo.expense) && Number.isFinite(Number(memo.expense!.amount));
+}
+
+/** Meal and spend records live in the meal sheet, not in the normal memo list. */
+export function isLedgerMemo(memo: Memo): boolean {
+  return isMealMemo(memo) || isExpenseMemo(memo);
 }
 
 export function localDateKey(at: string | number | Date): string {
@@ -65,6 +76,48 @@ export function spendOn(memos: Memo[], dateKey: string): number {
 /** Sum of meal prices (value eaten), regardless of who paid. */
 export function valueOn(memos: Memo[], dateKey: string): number {
   return mealsOn(memos, dateKey).reduce((sum, m) => sum + (m.meal!.price || 0), 0);
+}
+
+export function expensesOn(memos: Memo[], dateKey: string): Memo[] {
+  return memos
+    .filter((m) => !m.deletedAt && !m.archived && isExpenseMemo(m) && localDateKey(m.expense!.at) === dateKey)
+    .sort((a, b) => Date.parse(a.expense!.at) - Date.parse(b.expense!.at));
+}
+
+export function expenseTotalOn(memos: Memo[], dateKey: string): number {
+  return expensesOn(memos, dateKey).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
+}
+
+/** Everything that left the wallet that day: meals (paid amount) + other spends. Each record counted once. */
+export function walletOn(memos: Memo[], dateKey: string): number {
+  return spendOn(memos, dateKey) + expenseTotalOn(memos, dateKey);
+}
+
+/** Meals and spends of a day in time order, for the day view. */
+export function ledgerOn(memos: Memo[], dateKey: string): Memo[] {
+  const at = (m: Memo) => Date.parse(m.meal?.at || m.expense?.at || m.createdAt);
+  return [...mealsOn(memos, dateKey), ...expensesOn(memos, dateKey)].sort((a, b) => at(a) - at(b));
+}
+
+export function shiftDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return localDateKey(new Date(y, m - 1, d + days, 12));
+}
+
+export interface ExpenseInput { item: string; amount: number | null; at?: string }
+
+export async function recordExpense(input: ExpenseInput): Promise<Memo> {
+  const item = input.item.trim();
+  if (!item) throw new Error('何に使ったかを入力してください');
+  const amount = cleanNumber(input.amount);
+  if (amount === null) throw new Error('金額を入力してください');
+  const expense: ExpenseInfo = { item, amount, at: input.at || new Date().toISOString(), source: 'app' };
+  return createMemo({
+    title: `支出：${item} ¥${amount.toLocaleString('ja-JP')}`,
+    body: '',
+    category: EXPENSE_CATEGORY,
+    expense,
+  });
 }
 
 export function hasKindOn(memos: Memo[], dateKey: string, kind: MealKind): boolean {
@@ -263,7 +316,7 @@ export function parseMealPaste(text: string, fallbackKind: MealKind): MealInput[
 }
 
 export async function removeMeal(id: string): Promise<void> {
-  await updateMemo(id, { deletedAt: new Date().toISOString(), archived: true }, '食事の記録を削除');
+  await updateMemo(id, { deletedAt: new Date().toISOString(), archived: true }, '食事・支出の記録を削除');
 }
 
 // ---- lunch reminder setting (device-local, synced like other settings? no: stays on this device) ----

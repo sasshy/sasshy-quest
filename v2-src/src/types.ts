@@ -107,6 +107,7 @@ export interface Memo {
   source: 'v2' | 'legacy';
   legacyId?: string;
   meal?: MealInfo;
+  expense?: ExpenseInfo;
   sync: SyncMeta;
 }
 
@@ -132,6 +133,20 @@ export interface MealInfo {
   carbs?: number | null;
   /** When it was eaten (ISO). */
   at: string;
+}
+
+/**
+ * A small non-meal spend (taxi, drugstore…) on a memo with category '支出'.
+ * ChatGPT may add extra keys (paymentMethod, reimbursementStatus…); they are kept as-is.
+ */
+export interface ExpenseInfo {
+  item: string;
+  /** What left the wallet (yen). */
+  amount: number;
+  /** When it was paid (ISO). */
+  at: string;
+  category?: string | null;
+  [key: string]: unknown;
 }
 
 export interface HistoryEntry {

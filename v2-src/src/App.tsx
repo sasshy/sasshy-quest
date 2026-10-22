@@ -166,7 +166,7 @@ import {
 } from "./task-link";
 import { buildCoachPlan, completionCoachText } from "./coach";
 import { MealQuickBar, OpenCountPanel } from "./MealPanel";
-import { isMealMemo } from "./meals";
+import { isLedgerMemo } from "./meals";
 import { syncNativeCoach } from "./native-alarm";
 import baseSetupSql from "../supabase-setup.sql?raw";
 import calendarHistorySql from "../supabase-calendar-history.sql?raw";
@@ -4354,7 +4354,7 @@ function App() {
           )}
           {page === "memos" && (
             <MemosPage
-              memos={memos.filter((memo) => !isMealMemo(memo))}
+              memos={memos.filter((memo) => !isLedgerMemo(memo))}
               onTaskCreated={(task) => {
                 setPage("inbox");
                 setEditing(task);
