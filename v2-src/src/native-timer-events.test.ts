@@ -44,3 +44,19 @@ describe('lock-screen alarm actions reach the app timer', () => {
     expect((await db.sessions.get(session.id))?.status).toBe('completed');
   });
 });
+
+describe('routine link from a widget / Siri', () => {
+  it('starts the routine by id, but not on top of a running timer', async () => {
+    await applyNativeTimerEvent({ id: 'r1', type: 'routine', taskId: 'night', at: new Date().toISOString() });
+    const sessions = await db.sessions.toArray();
+    expect(sessions).toHaveLength(1);
+    expect((await db.tasks.get(sessions[0].taskId))?.title).toBe('シャワー');
+    await applyNativeTimerEvent({ id: 'r2', type: 'routine', taskId: 'night', at: new Date().toISOString() });
+    expect(await db.sessions.count()).toBe(1);
+  });
+
+  it('ignores an old queued tap', async () => {
+    await applyNativeTimerEvent({ id: 'r3', type: 'routine', taskId: 'night', at: ago(30) });
+    expect(await db.sessions.count()).toBe(0);
+  });
+});

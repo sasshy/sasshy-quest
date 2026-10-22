@@ -1,4 +1,5 @@
 import { db } from './db';
+import { getRoutines, startRoutine } from './routines';
 import { setFocusSessionPlannedMinutes, stopFocusSessionAt } from './store';
 import type { FocusSession } from './types';
 
@@ -7,10 +8,12 @@ import type { FocusSession } from './types';
  * - stopped:  "ここで止める" (or the alarm was removed) → the timer is paused at that time.
  *             It is never turned into "completed" automatically.
  * - extended: "10分延長" → the timer ends `seconds` after `at`.
+ * - routine:  a widget / Siri shortcut opened sasshy-timer://routine?id=… → start it
+ *             (taskId carries the routine id).
  */
 export interface NativeTimerEvent {
   id: string;
-  type: 'stopped' | 'extended';
+  type: 'stopped' | 'extended' | 'routine';
   taskId: string; // the session id sent with notifyNativeAlarm
   at: string;
   seconds?: number;
@@ -28,6 +31,22 @@ function activeSecondsAt(session: FocusSession, at: number): number {
 
 export async function applyNativeTimerEvent(event: NativeTimerEvent, now = Date.now()): Promise<void> {
   if (applied.has(event.id)) return;
+  if (event.type === 'routine') {
+    applied.add(event.id);
+    // Ignore a stale tap (e.g. queued long ago) and don't stack on a running timer.
+    if (now - (Date.parse(event.at) || 0) > 10 * 60_000) return;
+    const running = await db.sessions.where('status').anyOf('running', 'paused').filter((s) => !s.deletedAt).count();
+    if (running) {
+      window.dispatchEvent(new Event('sasshy-open-timer'));
+      return;
+    }
+    const routine = (await getRoutines()).find((r) => r.id === event.taskId);
+    if (routine) {
+      await startRoutine(routine);
+      window.dispatchEvent(new Event('sasshy-open-timer'));
+    }
+    return;
+  }
   const session = await db.sessions.get(event.taskId);
   applied.add(event.id);
   if (!session || session.deletedAt || (session.status !== 'running' && session.status !== 'paused')) return;
