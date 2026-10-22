@@ -1433,165 +1433,118 @@ function TodayPage({
     if (complete && activeTask) await completeTask(activeTask.id, true);
     syncNow().catch(() => undefined);
   };
+  // 実行中のタスクは上のカードに出ているので、リストには重ねない。
+  const queueTasks = flexibleTasks.filter((task) => task.id !== focus?.id);
   const startNext = async () => {
     const next = flexibleTasks.find((task) => task.id !== activeTask?.id) || fixedTasks[0];
     await finishActive(false);
     if (next) onStart(next);
   };
   return (
-    <div className="page-content today-page">
+    <div className="page-content today-page today-v3">
       <LeaveBanner />
-      <section className="runway-now-card">
-        <header>
-          <span className="eyebrow">NOW</span>
-          <h2>{activeSession ? "いま進めていること" : "次はこれだけ"}</h2>
-        </header>
+      <section className={`now-card${activeSession ? " running" : ""}`}>
+        <span className="now-label">{activeSession ? "いま" : "次はこれ"}</span>
         {focus ? (
-          <div className="runway-now-task">
-            <div>
-              <strong>{focus.title}</strong>
-              {focus.doneWhen && <small className="runway-now-goal">ゴール：{focus.doneWhen}</small>}
-              <span>
-                {activeSession && activeRemaining !== null
-                  ? activeRemaining < 0
-                    ? `${Math.ceil(Math.abs(activeRemaining) / 60)}分オーバーしています`
-                    : `あと約${Math.max(1, Math.ceil(activeRemaining / 60))}分`
-                  : `${focus.estimateMin}分だけ、ここから始める`}
-              </span>
+          <>
+            <div className="now-main">
+              <div className="now-text">
+                <strong>{focus.title}</strong>
+                {focus.doneWhen && <small className="now-goal">ゴール：{focus.doneWhen}</small>}
+                <span className={activeRemaining !== null && activeRemaining < 0 ? "over" : ""}>
+                  {activeSession && activeRemaining !== null
+                    ? activeRemaining < 0
+                      ? `${Math.ceil(Math.abs(activeRemaining) / 60)}分オーバー`
+                      : `あと約${Math.max(1, Math.ceil(activeRemaining / 60))}分`
+                    : `${focus.estimateMin}分`}
+                </span>
+              </div>
+              <button className="now-start" type="button" onClick={() => onStart(focus)}>
+                <Play size={20} fill="currentColor" />
+                {activeSession ? "開く" : "開始"}
+              </button>
             </div>
-            <button
-              className="start-button"
-              type="button"
-              onClick={() => onStart(focus)}
-            >
-              <Play size={22} fill="currentColor" />
-              {activeSession ? "タイマー" : "開始"}
-            </button>
-          </div>
+            {activeSession && activeRemaining !== null && activeRemaining < 0 && (
+              <details className="now-recover">
+                <summary>長引いている → 決め直す</summary>
+                <div>
+                  <button type="button" onClick={() => {
+                    setFocusSessionPlannedMinutes(activeSession.id, activeSession.plannedMin + 5)
+                      .then(() => syncNow().catch(() => undefined));
+                  }}>あと5分</button>
+                  <button type="button" onClick={() => finishActive(true)}>ここで完了</button>
+                  <button type="button" onClick={startNext}>次へ</button>
+                  {activeTask && (
+                    <button type="button" onClick={async () => {
+                      await finishActive(false);
+                      await updateTask(activeTask.id, {
+                        scheduledDate: null,
+                        startMinute: null,
+                        isFixed: false,
+                        status: "inbox",
+                      }, "今日から外す");
+                      syncNow().catch(() => undefined);
+                    }}>今日から外す</button>
+                  )}
+                </div>
+              </details>
+            )}
+          </>
         ) : (
-          <div className="focus-empty">
-            <Sparkles size={28} />
-            <div>
-              <strong>まず、やることを1つ追加</strong>
-              <span>下の入力欄に書くか、ルーティンを押すだけで始められます</span>
-            </div>
-          </div>
+          <p className="now-empty">今日やることはまだありません。下に入れるか、ルーティンから始められます。</p>
         )}
-        {activeSession && activeRemaining !== null && activeRemaining < 0 && (
-          <div className="runway-recovery">
-            <div>
-              <strong>予定より長引いています</strong>
-              <span>全部を後ろへ押さず、ここで決め直せます。</span>
-            </div>
-            <div>
-              <button type="button" onClick={() => {
-                setFocusSessionPlannedMinutes(activeSession.id, activeSession.plannedMin + 5)
-                  .then(() => syncNow().catch(() => undefined));
-              }}>あと5分</button>
-              <button type="button" onClick={() => finishActive(true)}>ここで完了</button>
-              <button type="button" onClick={startNext}>次へ</button>
-              {activeTask && (
-                <button type="button" onClick={async () => {
-                  await finishActive(false);
-                  await updateTask(activeTask.id, {
-                    scheduledDate: null,
-                    startMinute: null,
-                    isFixed: false,
-                    status: "inbox",
-                  }, "今日から外す");
-                  syncNow().catch(() => undefined);
-                }}>今日から外す</button>
-              )}
-            </div>
-          </div>
+        {!activeSession && <RoutineBar />}
+      </section>
+
+      <section className="today-list">
+        <header>
+          <h2>今日</h2>
+          <span>
+            {due.length ? `${due.length}件・約${runway.bufferedFlexibleMin}分 → ${runway.overflowMin ? `${runway.overflowMin}分入りきらない` : `${flowTimeLabel(runway.finishMinute)}ごろ終わる`}` : "すべて完了"}
+          </span>
+        </header>
+        {nextAnchor && (
+          <p className="today-anchor">
+            次の固定予定：{nextAnchor.title}（{flowTimeLabel(nextAnchor.startMinute)}・{formatRelativeMinutes(untilAnchor || 0)}）
+          </p>
         )}
-      </section>
-      <QuickAdd defaultDate={today} />
-      <RoutineBar />
-      <section className="runway-status compact" aria-label="今日の見通し">
-        <div className="runway-clock">
-          <span>いま</span>
-          <strong>{formatMinute(nowMinute)}</strong>
-        </div>
-        <div className="runway-next-anchor">
-          <span>{nextAnchor ? "次の固定予定" : "このあとの固定予定"}</span>
-          <strong>{nextAnchor ? nextAnchor.title : "なし"}</strong>
-          <small>
-            {nextAnchor
-              ? `${flowTimeLabel(nextAnchor.startMinute)}まで${formatRelativeMinutes(untilAnchor || 0)}・使えるのは約${runway.usableBeforeNext}分`
-              : `22:00まで約${runway.usableBeforeNext}分`}
-          </small>
-        </div>
-        <div className={`runway-capacity${runway.overflowMin ? " overloaded" : ""}`}>
-          <span>今日の見込み</span>
-          <strong>{runway.bufferedFlexibleMin}分</strong>
-          <small>
-            {runway.overflowMin
-              ? `約${runway.overflowMin}分入りきりません`
-              : `${flowTimeLabel(runway.finishMinute)}ごろ終了`}
-          </small>
-        </div>
-      </section>
-      <MealQuickBar />
-      {due.length > 0 && (
-        <section className="runway-board">
-          <header>
-            <div>
-              <span className="section-kicker">DAY RUNWAY</span>
-              <h2>このあとの流れ</h2>
-              <p>固定予定は動かさず、その間に作業を入れます。</p>
-            </div>
-            <button className="runway-expand" type="button" onClick={() => setRunwayOpen(true)}>
-              <Maximize2 size={17} />
-              1日を広く見る
-            </button>
-          </header>
-          <div className="runway-columns">
-            <div>
-              <h3>やる順番</h3>
-              <p className="runway-help">つまみで並べ替え・左へスワイプで削除</p>
-              <DraggableTaskQueue
-                tasks={flexibleTasks}
-                onEdit={onEdit}
-                onStart={onStart}
-                onReorder={reorderFlexibleTasks}
-              />
-            </div>
-            <RunwayTimeline entries={runway.entries} tasks={tasks} onEdit={onEdit} onStart={onStart} />
-          </div>
-        </section>
-      )}
-      {overdue.length > 0 && (
-        <section className="task-section overdue-section">
-          <header>
-            <div>
-              <span className="section-kicker">持ち越し</span>
-              <h2>過ぎた予定</h2>
-            </div>
-            <span>{overdue.length}件</span>
-          </header>
-          <div className="task-list">
-            {overdue.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onEdit={onEdit}
-                onStart={onStart}
-              />
+        <QuickAdd defaultDate={today} />
+        {queueTasks.length > 0 && (
+          <DraggableTaskQueue
+            tasks={queueTasks}
+            onEdit={onEdit}
+            onStart={onStart}
+            onReorder={reorderFlexibleTasks}
+          />
+        )}
+        {fixedTasks.length > 0 && (
+          <div className="task-list today-fixed">
+            {fixedTasks.map((task) => (
+              <TaskRow key={task.id} task={task} onEdit={onEdit} onStart={onStart} compact />
             ))}
           </div>
-        </section>
+        )}
+        {due.length > 0 && (
+          <button className="today-wide" type="button" onClick={() => setRunwayOpen(true)}>
+            <Maximize2 size={14} />
+            時間の流れで見る
+          </button>
+        )}
+      </section>
+
+      {overdue.length > 0 && (
+        <details className="today-fold warn">
+          <summary><span>過ぎた予定</span><b>{overdue.length}件</b></summary>
+          <div className="task-list">
+            {overdue.map((task) => (
+              <TaskRow key={task.id} task={task} onEdit={onEdit} onStart={onStart} compact />
+            ))}
+          </div>
+        </details>
       )}
       {completedToday.length > 0 && (
-        <section className="task-section completed-section">
-          <header>
-            <div>
-              <span className="section-kicker">DONE TODAY</span>
-              <h2>今日完了</h2>
-              <p>完了取消と、予測・実績の差をここで確認できます。</p>
-            </div>
-            <span>{completedToday.length}件</span>
-          </header>
+        <details className="today-fold">
+          <summary><span>今日完了</span><b>{completedToday.length}件</b></summary>
           <div className="task-list">
             {completedToday.map((task) => {
               const actual = taskActualDuration(task.id, sessions);
@@ -1603,34 +1556,25 @@ function TodayPage({
                   onStart={onStart}
                   actualMin={actual?.activeMin}
                   actualReliable={actual?.reliable}
+                  compact
                 />
               );
             })}
           </div>
-        </section>
+        </details>
       )}
       {inbox.length > 0 && (
-        <section className="task-section inbox-preview">
-          <header>
-            <div>
-              <span className="section-kicker">INBOX</span>
-              <h2>あとで整理</h2>
-            </div>
-            <span>{inbox.length}件</span>
-          </header>
-          <div className="task-list">
-            {inbox.slice(0, 8).map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onEdit={onEdit}
-                onStart={onStart}
-                compact
-              />
-            ))}
-          </div>
-        </section>
+        <button
+          className="today-fold-link"
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "inbox" }))}
+        >
+          <span>日付のないこと</span>
+          <b>{inbox.length}件</b>
+          <ChevronRight size={16} />
+        </button>
       )}
+      <MealQuickBar />
       {runwayOpen && (
         <div className="runway-fullscreen" role="dialog" aria-modal="true" aria-label="今日の流れを広く見る">
           <header>
@@ -4564,7 +4508,7 @@ function App() {
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
         {navItems
-          .filter((item) => ["today", "calendar", "records", "memos"].includes(item.id))
+          .filter((item) => ["today", "calendar", "records", "inbox"].includes(item.id))
           .map((item) => (
           <button
             key={item.id}

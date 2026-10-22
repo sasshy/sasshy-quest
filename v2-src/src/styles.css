@@ -1414,3 +1414,50 @@ body.calendar-resizing .task-resize-grip[data-duration]::before { position: abso
 
 .meal-strip { flex-wrap: wrap; }
 .meal-strip-more { margin-left: auto; padding: 4px 2px; border: 0; background: transparent; color: #3d3fb4; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+/* ===== Today v3: one focus, one list (v2.13.0) ===== */
+.today-v3 { display: grid; gap: 12px; padding-bottom: 24px; }
+.today-v3 > * { margin: 0 !important; }
+.now-card { padding: 16px; border-radius: 20px; background: linear-gradient(150deg, #23254a, #4b4dc4); color: white; display: grid; gap: 12px; box-shadow: 0 10px 28px rgba(45, 47, 120, .22); }
+.now-label { color: #c9caff; font-size: 12px; font-weight: 800; letter-spacing: .04em; }
+.now-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.now-text { min-width: 0; display: grid; gap: 4px; }
+.now-text strong { font-size: 22px; line-height: 1.25; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.now-text span { color: #d9dbff; font-size: 13px; font-weight: 600; }
+.now-text span.over { color: #ffd3a3; }
+.now-goal { color: #b9f0d3; font-size: 12px; font-weight: 600; }
+.now-start { min-width: 92px; min-height: 52px; padding: 0 16px; border: 0; border-radius: 16px; background: white; color: #2e3090; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 16px; font-weight: 800; cursor: pointer; }
+.now-empty { margin: 0; color: #d9dbff; font-size: 14px; line-height: 1.6; }
+.now-recover { border-top: 1px solid rgba(255,255,255,.15); padding-top: 8px; }
+.now-recover summary { color: #ffd3a3; font-size: 13px; font-weight: 700; cursor: pointer; list-style: none; }
+.now-recover summary::-webkit-details-marker { display: none; }
+.now-recover div { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.now-recover button { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.25); border-radius: 10px; background: rgba(255,255,255,.1); color: white; font-weight: 700; cursor: pointer; }
+.now-card .routine-bar { margin: 0; }
+.now-card .routine-chip { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); color: white; }
+.now-card .routine-chip small { color: #c9caff; }
+.now-card .routine-edit { background: transparent; border-color: rgba(255,255,255,.22); color: #c9caff; }
+
+.today-list { padding: 14px; border-radius: 18px; background: var(--paper); border: 1px solid var(--line); display: grid; gap: 10px; }
+.today-list > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.today-list h2 { margin: 0; font-size: 17px; }
+.today-list > header span { color: var(--muted); font-size: 12px; font-weight: 600; text-align: right; }
+.today-anchor { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--soft); color: var(--muted); font-size: 12px; }
+.today-list .quick-add { margin: 0; box-shadow: none; border: 1px solid var(--line); background: var(--canvas); }
+.today-wide { justify-self: start; padding: 4px 0; border: 0; background: transparent; color: #3d3fb4; display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.today-fold, .today-fold-link { border-radius: 14px; background: var(--paper); border: 1px solid var(--line); }
+.today-fold summary, .today-fold-link { min-height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-size: 14px; font-weight: 700; color: var(--ink); }
+.today-fold summary::-webkit-details-marker { display: none; }
+.today-fold summary b, .today-fold-link b { margin-left: auto; color: var(--muted); font-size: 12px; }
+.today-fold.warn summary span { color: var(--coral); }
+.today-fold .task-list { padding: 0 10px 10px; }
+.today-fold-link { width: 100%; text-align: left; }
+.today-fold-link svg { color: var(--faint); }
+.today-v3 .meal-strip { padding: 10px 14px; border-radius: 14px; }
+.today-v3 .meal-strip-button { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.today-v3 .leave-banner { border-radius: 14px; }
+
+.today-list .runway-queue-item > .icon-button { background: #f1f1ff !important; color: #3d3fb4 !important; border: 1px solid #d9daf7 !important; box-shadow: none !important; }
+.today-list .runway-queue-item { background: var(--canvas); }
+/* The red delete layer only shows while swiping (it peeked out at rounded corners). */
+.task-swipe-shell:not(.open) > .task-swipe-delete { visibility: hidden; }
