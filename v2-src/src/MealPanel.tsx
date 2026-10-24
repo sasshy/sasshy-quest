@@ -124,7 +124,7 @@ export function MealQuickBar() {
   );
 }
 
-function MealSheet({ onClose }: { onClose: () => void }) {
+export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => void; initialTab?: "meal" | "expense" }) {
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const reminder = useLiveQuery(() => getMealReminder(), [], DEFAULT_MEAL_REMINDER) || DEFAULT_MEAL_REMINDER;
   const [kind, setKind] = useState<MealKind>(() => suggestKind());
@@ -138,7 +138,7 @@ function MealSheet({ onClose }: { onClose: () => void }) {
   const [price, setPrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [tab, setTab] = useState<"meal" | "expense">("meal");
+  const [tab, setTab] = useState<"meal" | "expense">(initialTab);
   const [editing, setEditing] = useState<Memo | null>(null);
   const favorites = mealFavorites(memos, Date.now(), 10, { kind, minCount: 2, maxLength: 24 });
   const hidden = (useLiveQuery(() => db.settings.get("mealFavHidden"), [], undefined) as unknown as { items?: string[] } | undefined)?.items || [];

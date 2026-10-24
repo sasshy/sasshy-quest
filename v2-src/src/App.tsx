@@ -169,18 +169,19 @@ import {
   type ParsedTaskLink,
 } from "./task-link";
 import { buildCoachPlan, completionCoachText } from "./coach";
-import { MealQuickBar, OpenCountPanel } from "./MealPanel";
+import { OpenCountPanel } from "./MealPanel";
 import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { MobilePlanner } from "./MobilePlanner";
 import { DayCompare } from "./DayCompare";
 import { TimeGrid, threeDays } from "./TimeGrid";
+import { MonthGrid } from "./MonthGrid";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
-import { TimeLeftStrip } from "./TimeLeftPanel";
+import { AgeLabel, TimeLeftStrip } from "./TimeLeftPanel";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
 import { checkRoutineHabit, isHabitMemo } from "./habits";
@@ -193,7 +194,7 @@ import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { isDiaryMemo } from "./diary";
-import { DiaryCard } from "./DiaryPanel";
+import { QuickRecord } from "./QuickRecord";
 import { syncNativeCoach } from "./native-alarm";
 import baseSetupSql from "../supabase-setup.sql?raw";
 import calendarHistorySql from "../supabase-calendar-history.sql?raw";
@@ -1620,8 +1621,7 @@ function TodayPage({
           <ChevronRight size={16} />
         </button>
       )}
-      <MealQuickBar />
-      <DiaryCard />
+      <QuickRecord />
       {runwayOpen && (
         <div className="runway-fullscreen" role="dialog" aria-modal="true" aria-label="今日の流れを広く見る">
           <header>
@@ -2276,17 +2276,25 @@ function CalendarPage({
   };
 
   // スマホの日・週は自前の表示なので、前後移動と見出しも日付から作る。
-  const plannerActive = mobile && (mode === "day" || mode === "three" || mode === "week" || mode === "list");
+  const plannerActive = mobile && (mode === "day" || mode === "three" || mode === "week" || mode === "month" || mode === "list");
   const step = (direction: -1 | 1) => {
     if (!plannerActive) {
       if (direction < 0) calendarRef.current?.getApi().prev();
       else calendarRef.current?.getApi().next();
       return;
     }
-    setActiveDate((current) => shiftDate(current, direction * (mode === "week" ? 7 : mode === "three" ? 3 : 1)));
+    setActiveDate((current) => {
+      if (mode === "month") {
+        const d = new Date(`${current}T12:00:00`);
+        const n = new Date(d.getFullYear(), d.getMonth() + direction, 1, 12);
+        return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`;
+      }
+      return shiftDate(current, direction * (mode === "week" ? 7 : mode === "three" ? 3 : 1));
+    });
   };
   const plannerTitle = (() => {
     const d = new Date(`${activeDate}T12:00:00`);
+    if (mode === "month") return `${d.getFullYear()}年${d.getMonth() + 1}月`;
     if (mode === "three") {
       const last = new Date(d);
       last.setDate(d.getDate() + 2);
@@ -2359,6 +2367,15 @@ function CalendarPage({
       </div>
       {mobile && mode === "day" && compare ? (
         <DayCompare date={activeDate} />
+      ) : mobile && mode === "month" ? (
+        <MonthGrid
+          tasks={tasks}
+          date={activeDate}
+          onSelect={() => undefined}
+          onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
+          onOpen={openScheduleMove}
+          onStart={onStart}
+        />
       ) : mobile && (mode === "three" || (mode === "day" && !dayList)) ? (
         <TimeGrid
           tasks={tasks}
@@ -4675,6 +4692,7 @@ function App() {
                   day: "numeric",
                   weekday: "short",
                 }).format(new Date())}
+                <AgeLabel />
               </span>
             )}
           </div>

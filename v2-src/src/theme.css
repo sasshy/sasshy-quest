@@ -810,3 +810,48 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .pv-key.tried { background: #f0a33a; }
 .pv-grid span { background: color-mix(in srgb, var(--accent) 45%, var(--hero-line)); color: var(--hero-ink); }
 .pv-grid span.used { background: color-mix(in srgb, var(--hero-sub) 45%, var(--hero)); color: var(--hero-sub); }
+
+/* ==== 記録する（食事・支出・習慣・日記） ==== */
+.qr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
+.qr-btn { display: grid; justify-items: center; gap: 3px; padding: 12px 4px 10px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; transition: transform .12s ease; }
+.qr-btn:active { transform: scale(.95); }
+.qr-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--soft); display: grid; place-items: center; color: var(--ink); }
+.qr-btn strong { font-size: 13px; }
+.qr-btn small { font-size: 11px; color: var(--muted); font-family: var(--font-num); white-space: nowrap; }
+.qr-btn.done .qr-icon { background: var(--accent); color: var(--accent-ink); }
+.qr-btn.done small { color: var(--accent-text); font-weight: 700; }
+.qr-title { margin: 0; font-size: 17px; }
+.topbar-age { margin-left: 2px; }
+
+/* ==== 月表示（スマホ） ==== */
+.mg { display: grid; gap: 8px; padding: 6px 10px 120px; overflow-y: auto; }
+.mg-head, .mg-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.mg-head span { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); }
+.mg-head .sat, .mg-day.sat strong { color: #3a6ab0; }
+.mg-head .sun, .mg-day.sun strong { color: var(--danger); }
+.mg-day { position: relative; min-height: 58px; padding: 6px 4px 4px; border: 0; border-radius: 12px; background: var(--paper); display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 3px; font: inherit; color: var(--ink); cursor: pointer; }
+.mg-day strong { font-family: var(--font-num); font-size: 14px; }
+.mg-day.past { opacity: .55; }
+.mg-day.today strong { width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--paper) !important; display: grid; place-items: center; font-size: 12px; }
+.mg-day.selected { outline: 2px solid var(--accent); }
+.mg-bars { display: grid; gap: 2px; width: 70%; align-content: start; }
+.mg-bars i { display: block; height: 3px; border-radius: 2px; background: var(--accent); }
+.mg-bars i.fixed { background: #3a6ab0; }
+.mg-day small { font-family: var(--font-num); font-size: 10px; color: var(--muted); }
+.mg-due { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.mg-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted); padding: 0 2px; }
+.mg-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--accent); vertical-align: middle; margin-right: 4px; }
+.mg-legend .mg-due { position: static; display: inline-block; margin-right: 4px; vertical-align: middle; }
+.mg-list { padding: 14px; border-radius: 18px; background: var(--paper); border: 1px solid var(--line); display: grid; gap: 4px; }
+.mg-list header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.mg-list header strong { font-size: 16px; }
+.mg-list header button { min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.mg-list p { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.mg-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.mg-row.done { opacity: .5; }
+.mg-row.due .mg-time { color: var(--warn-text); font-weight: 700; }
+.mg-time { font-family: var(--font-num); font-size: 12px; color: var(--muted); }
+.mg-title { display: grid; gap: 1px; border: 0; background: transparent; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; min-width: 0; }
+.mg-title strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-title small { font-size: 11px; color: var(--muted); }
+.mg-play { width: 32px; height: 32px; border: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; cursor: pointer; }

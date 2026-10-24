@@ -142,8 +142,10 @@ export function RecordsPanel() {
   useEffect(() => {
     takeDiaryRequest();
     const open = () => { takeDiaryRequest(); setView("diary"); };
+    const openHabits = () => setView("habits");
     window.addEventListener("sasshy-open-diary", open);
-    return () => window.removeEventListener("sasshy-open-diary", open);
+    window.addEventListener("sasshy-open-habits", openHabits);
+    return () => { window.removeEventListener("sasshy-open-diary", open); window.removeEventListener("sasshy-open-habits", openHabits); };
   }, []);
   const [selected, setSelected] = useState(today);
   const rows = useMemo(() => buildDayRows(memos, sessions, tasks, range, today), [memos, sessions, tasks, range, today]);

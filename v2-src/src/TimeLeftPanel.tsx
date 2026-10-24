@@ -43,7 +43,7 @@ export function TimeLeftStrip() {
         <header>
           <h2>残り時間</h2>
           {age !== null && lived !== null && (
-            <span className="tl-age">{age}歳・生まれて{lived.toLocaleString("ja-JP")}日目</span>
+            <span className="tl-age">生まれて{lived.toLocaleString("ja-JP")}日目</span>
           )}
           <button type="button" className="tl-edit" aria-label="残り時間の表示を変える" onClick={() => setEditing(true)}>
             <SlidersHorizontal size={15} />
@@ -161,4 +161,11 @@ function TimeLeftEditor({ setting, onClose }: { setting: TimeLeftSetting; onClos
       </section>
     </div>
   );
+}
+
+/** Top bar: 「10/25(土)・36歳」 */
+export function AgeLabel() {
+  const setting = useLiveQuery(async () => { await db.settings.get("timeLeft"); return getTimeLeft(); }, [], DEFAULT_TIME_LEFT) || DEFAULT_TIME_LEFT;
+  const age = ageOn(setting.birthday, new Date());
+  return age === null ? null : <span className="topbar-age">・{age}歳</span>;
 }
