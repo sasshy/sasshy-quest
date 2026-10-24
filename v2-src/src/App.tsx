@@ -181,6 +181,7 @@ import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
+import { companionStart } from "./Companion";
 import { AgeLabel, TimeLeftStrip } from "./TimeLeftPanel";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -4535,6 +4536,7 @@ function App() {
   }, [memos]);
   const startTimer = async (task: Task, opts: StartOptions = {}) => {
     haptic("start");
+    companionStart();
     playStart();
     // 直前に終えたラウンドなど、画面の情報が古いことがあるので保存先を読み直す。
     const live = activeSession ? await db.sessions.get(activeSession.id) : undefined;

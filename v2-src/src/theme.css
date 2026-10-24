@@ -918,3 +918,17 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .ml-top li b { font-family: var(--font-num); color: var(--accent-text); }
 .ml-export { margin-top: 12px; width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
 .ml-note { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; }
+
+/* ==== 相棒のねこ ==== */
+.today-progress { grid-template-columns: 60px 1fr 92px !important; }
+.companion { position: relative; width: 92px; height: 92px; margin: -14px -4px -10px 0; padding: 0; border: 0; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.companion img { width: 100%; height: 100%; object-fit: contain; transform-origin: 50% 90%; animation: catbreathe 3.6s ease-in-out infinite; filter: drop-shadow(0 4px 6px rgba(0,0,0,.12)); user-select: none; -webkit-user-select: none; }
+.companion.pose-sleep img { animation-duration: 5.5s; }
+.companion.moment img { animation: cathop .6s cubic-bezier(.3,1.6,.5,1), catbreathe 3.6s ease-in-out .6s infinite; }
+.companion.pose-walk img { animation: catwalk 1.2s ease-in-out 2, catbreathe 3.6s ease-in-out 2.4s infinite; }
+@keyframes catbreathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, 1.03); } }
+@keyframes cathop { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-14px) scale(1.04, .97); } 70% { transform: translateY(0) scale(1.03, .97); } 100% { transform: none; } }
+@keyframes catwalk { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-6px); } }
+.companion-say { position: absolute; right: 70%; top: 2px; white-space: nowrap; padding: 4px 9px; border-radius: 12px 12px 2px 12px; background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 700; animation: catsay .3s ease both; z-index: 1; }
+@keyframes catsay { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .companion img { animation: none !important; } }

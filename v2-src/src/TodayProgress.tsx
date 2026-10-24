@@ -2,6 +2,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { DEFAULT_APPEARANCE, getAppearance } from "./appearance";
 import { db } from "./db";
 import { computeProgress, levelFrom, minutesText, xpFrom } from "./progress";
+import { Companion } from "./Companion";
 
 /** Today: a ring that fills with work time (goal from settings) + level/XP that only goes up. */
 export function TodayProgress() {
@@ -35,6 +36,7 @@ export function TodayProgress() {
           <small className="xp-num">{into}/{need} XP</small>
         </div>
       </div>
+      {appearance.companion !== false && <Companion />}
     </section>
   );
 }

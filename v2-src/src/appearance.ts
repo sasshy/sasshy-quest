@@ -10,7 +10,7 @@ import type { AppSetting } from './types';
  */
 export type FontChoice = 1 | 2 | 3;
 export type Accent = 'purple' | 'blue' | 'orange' | 'green' | 'gold';
-export interface Appearance { id: 'appearance'; font: FontChoice; sound: boolean; accent: Accent; dailyGoalMin: number }
+export interface Appearance { id: 'appearance'; font: FontChoice; sound: boolean; accent: Accent; dailyGoalMin: number; companion?: boolean }
 export const DEFAULT_APPEARANCE: Appearance = { id: 'appearance', font: 3, sound: true, accent: 'purple', dailyGoalMin: 60 };
 
 /** Level needed to use each accent. */

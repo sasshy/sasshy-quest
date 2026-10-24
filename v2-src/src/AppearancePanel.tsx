@@ -78,6 +78,12 @@ export function AppearancePanel() {
         </button>
       </div>
       <div className="ap-group ap-row">
+        <span className="ap-label">相棒のねこ（今日の画面）</span>
+        <button type="button" className="button secondary" onClick={() => setAppearance({ companion: a.companion === false })}>
+          {a.companion === false ? "OFF" : "ON"}
+        </button>
+      </div>
+      <div className="ap-group ap-row">
         <span className="ap-label">今日の円の目標（作業時間）</span>
         <select value={a.dailyGoalMin} onChange={(e) => setAppearance({ dailyGoalMin: Number(e.currentTarget.value) })}>
           {[30, 45, 60, 90, 120, 180].map((m) => <option key={m} value={m}>{m >= 60 ? `${m / 60}時間${m % 60 ? "半" : ""}` : `${m}分`}</option>)}
