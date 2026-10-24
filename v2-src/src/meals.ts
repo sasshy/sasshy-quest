@@ -128,8 +128,24 @@ export interface MealFavorite extends MealNutrition { item: string; kind: MealKi
 export interface MealNutrition { kcal?: number | null; protein?: number | null; fat?: number | null; carbs?: number | null }
 const nutritionOf = (meal: MealInfo): MealNutrition & { place: string | null } => ({ kcal: meal.kcal ?? null, protein: meal.protein ?? null, fat: meal.fat ?? null, carbs: meal.carbs ?? null, place: meal.place ?? null });
 
+export interface FavoriteOptions {
+  /** Prefer items eaten as this meal. Falls back to all meals when there are too few. */
+  kind?: MealKind;
+  /** Items eaten only once (e.g. a whole home-dinner menu) are not favorites. */
+  minCount?: number;
+  /** Long names (combined menus) make messy buttons. */
+  maxLength?: number;
+}
+
 /** Most frequent items of the last 60 days, with the price paid last time. */
-export function mealFavorites(memos: Memo[], now = Date.now(), limit = 6): MealFavorite[] {
+export function mealFavorites(memos: Memo[], now = Date.now(), limit = 6, options: FavoriteOptions = {}): MealFavorite[] {
+  const { kind, minCount = 1, maxLength = Infinity } = options;
+  if (kind) {
+    const own = mealFavorites(memos.filter((m) => m.meal?.kind === kind), now, limit, { minCount, maxLength });
+    if (own.length >= Math.min(3, limit)) return own;
+    const rest = mealFavorites(memos, now, limit, { minCount, maxLength }).filter((f) => !own.some((o) => o.item === f.item));
+    return [...own, ...rest].slice(0, limit);
+  }
   const since = now - 60 * 86_400_000;
   const byItem = new Map<string, MealFavorite & { last: number }>();
   for (const m of memos) {
@@ -137,7 +153,7 @@ export function mealFavorites(memos: Memo[], now = Date.now(), limit = 6): MealF
     const at = Date.parse(m.meal!.at);
     if (!Number.isFinite(at) || at < since) continue;
     const key = m.meal!.item.trim();
-    if (!key) continue;
+    if (!key || key.length > maxLength) continue;
     const current = byItem.get(key);
     if (!current) byItem.set(key, { item: key, kind: m.meal!.kind, price: m.meal!.price, ...nutritionOf(m.meal!), count: 1, last: at });
     else {
@@ -146,6 +162,7 @@ export function mealFavorites(memos: Memo[], now = Date.now(), limit = 6): MealF
     }
   }
   return [...byItem.values()]
+    .filter((f) => f.count >= minCount)
     .sort((a, b) => b.count - a.count || b.last - a.last)
     .slice(0, limit)
     .map(({ last: _last, ...rest }) => rest);

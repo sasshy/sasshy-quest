@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
+import { DiaryList } from "./DiaryPanel";
 import { sessionActiveSeconds } from "./insights";
 import {
   MEAL_LABEL,
@@ -306,6 +307,7 @@ export function RecordsPanel() {
         </section>
       )}
       </>)}
+      <DiaryList memos={memos} days={range === 1 ? 7 : range} />
       {mealsOn(memos, today).length === 0 && expensesOn(memos, today).length === 0 && (
         <p className="rec-hint">食事・支出は「今日」の「食事・支出を記録」から追加できます。</p>
       )}

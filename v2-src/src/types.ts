@@ -114,6 +114,8 @@ export interface Memo {
   expense?: ExpenseInfo;
   /** 使う予定のお金 (category 支出予定): subtracted from the budget until spent. */
   planned?: { item: string; amount: number; date?: string | null };
+  /** ひとこと日記 (category 日記): one per day. mood 1 (bad) .. 5 (great). */
+  diary?: { date: string; mood: number | null };
   sync: SyncMeta;
 }
 

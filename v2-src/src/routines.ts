@@ -11,9 +11,29 @@ import { localDateKey } from './work-start';
  */
 export interface RoutineStep { title: string; minutes: number }
 export interface Routine { id: string; name: string; steps: RoutineStep[] }
-interface RoutineSetting { id: 'routines'; list: Routine[] }
+interface RoutineSetting { id: 'routines'; list: Routine[]; offered?: string[] }
 
 export const DEFAULT_ROUTINES: Routine[] = [
+  {
+    id: 'morning',
+    name: '朝ルーティン',
+    steps: [
+      { title: '水を1杯飲む', minutes: 1 },
+      { title: '顔を洗う・歯磨き', minutes: 5 },
+      { title: '着替える', minutes: 5 },
+      { title: '朝ごはん', minutes: 10 },
+      { title: '鍵・財布・スマホを確認して出る', minutes: 3 },
+    ],
+  },
+  {
+    id: 'noon',
+    name: '昼リセット',
+    steps: [
+      { title: '昼ごはん（記録もする）', minutes: 30 },
+      { title: '外の空気を吸う・少し歩く', minutes: 5 },
+      { title: '午後の1つ目を決める', minutes: 2 },
+    ],
+  },
   {
     id: 'night',
     name: '夜ルーティン',
@@ -36,13 +56,31 @@ export const DEFAULT_ROUTINES: Routine[] = [
   },
 ];
 
+/** Routines that existed before 朝/昼 were added; a saved list already "knows" these. */
+const FIRST_DEFAULTS = ['night', 'leave-work'];
+
+/**
+ * Saved list + defaults the user has never been offered (so new templates like
+ * 朝ルーティン show up once, and stay gone if the user deletes them).
+ */
+export function mergeRoutines(saved: RoutineSetting | undefined): Routine[] {
+  if (!saved?.list?.length) return DEFAULT_ROUTINES;
+  const offered = new Set(saved.offered || FIRST_DEFAULTS);
+  const fresh = DEFAULT_ROUTINES.filter((r) => !offered.has(r.id) && !saved.list.some((x) => x.id === r.id));
+  const order = (r: Routine) => DEFAULT_ROUTINES.findIndex((d) => d.id === r.id);
+  return [...saved.list, ...fresh].sort((a, b) => {
+    const [x, y] = [order(a), order(b)];
+    return x === -1 || y === -1 ? 0 : x - y;
+  });
+}
+
 export async function getRoutines(): Promise<Routine[]> {
-  const saved = (await db.settings.get('routines')) as unknown as RoutineSetting | undefined;
-  return saved?.list?.length ? saved.list : DEFAULT_ROUTINES;
+  return mergeRoutines((await db.settings.get('routines')) as unknown as RoutineSetting | undefined);
 }
 
 export async function saveRoutines(list: Routine[]): Promise<void> {
-  await db.settings.put({ id: 'routines', list } as unknown as import('./types').AppSetting);
+  const offered = DEFAULT_ROUTINES.map((r) => r.id);
+  await db.settings.put({ id: 'routines', list, offered } as unknown as import('./types').AppSetting);
 }
 
 /** "シャワー 15" per line (minutes optional, default 5). */

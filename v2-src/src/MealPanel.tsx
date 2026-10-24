@@ -1,6 +1,7 @@
+import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Sparkles, Trash2, Utensils, Wallet, X } from "lucide-react";
+import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Home, Sparkles, Trash2, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import {
   DEFAULT_MEAL_REMINDER,
@@ -30,7 +31,7 @@ import {
   suggestKind,
 } from "./meals";
 import { syncNow } from "./sync";
-import type { MealKind, MealPayment } from "./types";
+import type { AppSetting, MealKind, MealPayment } from "./types";
 
 const KINDS: MealKind[] = ["breakfast", "lunch", "dinner", "snack"];
 const PAYMENTS: MealPayment[] = ["self", "treated", "split", "paid_for_others"];
@@ -117,7 +118,7 @@ export function MealQuickBar() {
           記録を見る
         </button>
       </section>
-      {open && <MealSheet onClose={() => setOpen(false)} />}
+      {open && createPortal(<MealSheet onClose={() => setOpen(false)} />, document.body)}
     </>
   );
 }
@@ -136,7 +137,16 @@ function MealSheet({ onClose }: { onClose: () => void }) {
   const [price, setPrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const favorites = mealFavorites(memos);
+  const [tab, setTab] = useState<"meal" | "expense">("meal");
+  const favorites = mealFavorites(memos, Date.now(), 10, { kind, minCount: 2, maxLength: 24 });
+  const hidden = (useLiveQuery(() => db.settings.get("mealFavHidden"), [], undefined) as unknown as { items?: string[] } | undefined)?.items || [];
+  const setHidden = (items: string[]) => db.settings.put({ id: "mealFavHidden", items } as unknown as AppSetting);
+  const hideFavorite = (name: string) => setHidden([...hidden, name]);
+  const [editingFavs, setEditingFavs] = useState(false);
+  const recentExpenseItems = [...new Set(memos
+    .filter((m) => !m.deletedAt && m.expense && Date.parse(m.expense.at) > Date.now() - 60 * 86_400_000)
+    .sort((a, b) => Date.parse(b.expense!.at) - Date.parse(a.expense!.at))
+    .map((m) => m.expense!.item.trim()))].slice(0, 6);
   const today = localDateKey(Date.now());
   // 過去の日も見返せるように、表示する日を切り替えられる。
   const [viewDate, setViewDate] = useState(today);
@@ -227,6 +237,14 @@ function MealSheet({ onClose }: { onClose: () => void }) {
 
   const priceValue = price.trim() === "" ? null : Number(price.replace(/[^0-9]/g, ""));
 
+  const detailSummary = [
+    when ? new Date(when).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "今",
+    place.trim() || "場所なし",
+    PAYMENT_LABEL[payment],
+  ].join("・");
+  const showHome = kind === "breakfast" || kind === "dinner";
+  const visibleFavorites = favorites.filter((fav) => !hidden.includes(fav.item) && !(showHome && fav.item === "家ごはん"));
+
   return (
     <div
       className="modal-backdrop"
@@ -235,250 +253,277 @@ function MealSheet({ onClose }: { onClose: () => void }) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="modal-sheet meal-sheet" role="dialog" aria-modal="true" aria-labelledby="meal-title">
+      <section className="modal-sheet meal-sheet ms2" role="dialog" aria-modal="true" aria-labelledby="meal-title">
         <header>
-          <div>
-            <span className="eyebrow">MEAL</span>
-            <h2 id="meal-title">食事・支出を記録</h2>
+          <div className="ms-tabs" role="tablist" aria-label="記録する種類">
+            <h2 id="meal-title" className="sr-only">食事・支出を記録</h2>
+            <button type="button" role="tab" aria-selected={tab === "meal"} className={tab === "meal" ? "active" : ""} onClick={() => setTab("meal")}>
+              <Utensils size={15} /> 食事
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "expense"} className={tab === "expense" ? "active" : ""} onClick={() => setTab("expense")}>
+              <Wallet size={15} /> 支出
+            </button>
           </div>
           <button className="icon-button" type="button" aria-label="閉じる" onClick={onClose}>
             <X size={20} />
           </button>
         </header>
         <div className="form-stack">
-          <div className="meal-kinds" role="group" aria-label="種類">
-            {KINDS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={kind === value ? "active" : ""}
-                onClick={() => setKind(value)}
-              >
-                {MEAL_LABEL[value]}
-              </button>
-            ))}
-          </div>
-
-          <div className="meal-when-where">
-            <label>
-              <span>いつ</span>
-              <input
-                type="datetime-local"
-                value={when}
-                max={toLocalInput(new Date())}
-                onChange={(event) => {
-                  setWhen(event.target.value);
-                  if (event.target.value) setKind(suggestKind(new Date(event.target.value)));
-                }}
-              />
-              {when ? (
-                <button type="button" className="meal-chip" onClick={() => { setWhen(""); setKind(suggestKind()); }}>今に戻す</button>
-              ) : (
-                <button type="button" className="meal-chip" onClick={() => { const d = new Date(Date.now() - 86_400_000); d.setHours(12, 0, 0, 0); setWhen(toLocalInput(d)); setKind(suggestKind(d)); }}>昨日</button>
-              )}
-            </label>
-            <label>
-              <span>どこで</span>
-              <input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="家・会社・店名（任意）" maxLength={60} />
-            </label>
-            <div className="meal-places">
-              {places.map((p) => (
-                <button key={p} type="button" className={`meal-chip${place === p ? " active" : ""}`} onClick={() => setPlace(place === p ? "" : p)}>
-                  {p}
-                </button>
-              ))}
-            </div>
-            <label className="meal-payment">
-              <span>支払い</span>
-              <select value={payment} onChange={(event) => setPayment(event.target.value as MealPayment)}>
-                {PAYMENTS.map((p) => (
-                  <option key={p} value={p}>{PAYMENT_LABEL[p]}</option>
-                ))}
-              </select>
-            </label>
-            {when && <small className="meal-when-note">{new Date(when).toLocaleString("ja-JP", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" })} の分として記録します</small>}
-          </div>
-
-          {favorites.length > 0 && (
-            <div className="meal-favorites">
-              <span className="meal-label">よく食べるもの（タップするたびに1品記録）</span>
-              <div>
-                {favorites.map((fav) => (
-                  <button
-                    key={fav.item}
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      save(
-                        { kind, item: fav.item, price: fav.price, kcal: fav.kcal, protein: fav.protein, fat: fav.fat, carbs: fav.carbs, place: place.trim() || fav.place || null },
-                        false,
-                      )
-                    }
-                  >
-                    <strong>{fav.item}</strong>
-                    <small>
-                      {[fav.price !== null ? yen(fav.price) : "", fav.kcal ? kcalText(fav.kcal) : ""].filter(Boolean).join(" ・ ")}
-                    </small>
+          {tab === "meal" ? (
+            <>
+              <div className="ms-kinds" role="group" aria-label="いつの食事">
+                {KINDS.map((value) => (
+                  <button key={value} type="button" className={kind === value ? "active" : ""} onClick={() => setKind(value)}>
+                    {MEAL_LABEL[value]}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
 
-          <div className="meal-ai">
-            <button type="button" className="meal-ai-toggle" onClick={() => setAiOpen((v) => !v)} aria-expanded={aiOpen}>
-              <Sparkles size={16} />
-              <span>
-                <strong>写真・レシートからAIで記録</strong>
-                <small>ChatGPT・Claudeの返事を貼るだけ。何品でもまとめて</small>
-              </span>
-            </button>
-            {aiOpen && (
-              <div className="meal-ai-body">
-                <ol className="meal-ai-steps">
-                  <li>
-                    <button type="button" className="button secondary" onClick={copyPrompt}>
-                      <ClipboardCopy size={16} />
-                      質問文をコピー
-                    </button>
-                  </li>
-                  <li>ChatGPTかClaudeに、料理かレシートの写真（または「コンビニで鮭おにぎりと唐揚げ」などのメモ）と一緒に貼って送る</li>
-                  <li>返ってきた答えをコピーして、下に貼る</li>
-                </ol>
-                <details className="meal-ai-prompt">
-                  <summary>質問文を見る</summary>
-                  <pre>{MEAL_AI_PROMPT}</pre>
-                </details>
-                <textarea
-                  value={pasted}
-                  onChange={(event) => setPasted(event.target.value)}
-                  placeholder={"ここにAIの返事を貼り付け\n例：昼食|鮭おにぎり|160|180|5|2|38|レシート"}
-                  rows={4}
+              <form
+                className="ms-entry"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  // iPhoneの日本語入力は、変換中の文字がまだstateに入っていないことがある。
+                  // 押した瞬間の入力欄の中身を直接読む。
+                  const form = new FormData(event.currentTarget);
+                  const typedItem = String(form.get("item") || "");
+                  const typedPrice = String(form.get("price") || "");
+                  const typedPaid = String(form.get("paid") || "");
+                  const toYen = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^0-9]/g, "")));
+                  save({ kind, item: typedItem, price: toYen(typedPrice), paid: toYen(typedPaid) }, false);
+                }}
+              >
+                <input
+                  name="item"
+                  className="ms-item"
+                  value={item}
+                  onChange={(event) => setItem(event.target.value)}
+                  placeholder={kind === "dinner" ? "何を食べた？（例：カレー）" : "何を食べた？（例：鮭おにぎり）"}
+                  aria-label="食べたもの"
+                  enterKeyHint="done"
                 />
-                <button type="button" className="button secondary" onClick={readPasted} disabled={!pasted.trim()}>
-                  <ClipboardPaste size={16} />
-                  読み取る
-                </button>
-                {drafts.length > 0 && (
-                  <div className="meal-drafts">
-                    <span className="meal-label">内容を確認（金額・品名は直せます）</span>
-                    <ul>
-                      {drafts.map((d, index) => (
-                        <li key={index} className={d.use ? "" : "off"}>
-                          <input
-                            type="checkbox"
-                            checked={d.use}
-                            aria-label={`${d.item}を記録する`}
-                            onChange={(event) => updateDraft(index, { use: event.target.checked })}
-                          />
-                          <select value={d.kind} onChange={(event) => updateDraft(index, { kind: event.target.value as MealKind })}>
-                            {KINDS.map((value) => (
-                              <option key={value} value={value}>
-                                {MEAL_LABEL[value]}
-                              </option>
-                            ))}
-                          </select>
-                          <input value={d.item} onChange={(event) => updateDraft(index, { item: event.target.value })} aria-label="品名" />
-                          <input
-                            value={d.price ?? ""}
-                            inputMode="numeric"
-                            aria-label="金額"
-                            placeholder="円"
-                            onChange={(event) => {
-                              const digits = event.target.value.replace(/[^0-9]/g, "");
-                              updateDraft(index, { price: digits ? Number(digits) : null, priceSource: digits ? d.priceSource || "estimate" : null });
-                            }}
-                          />
-                          <small>
-                            {d.price !== null && (d.priceSource === "receipt" ? "レシート" : "推定")}
-                            {d.kcal ? ` ${kcalText(d.kcal)}` : ""}
-                            {d.protein !== null && d.protein !== undefined ? ` P${d.protein}` : ""}
-                            {d.fat !== null && d.fat !== undefined ? ` F${d.fat}` : ""}
-                            {d.carbs !== null && d.carbs !== undefined ? ` C${d.carbs}` : ""}
-                          </small>
-                        </li>
-                      ))}
-                    </ul>
-                    <button type="button" className="button primary" onClick={saveDrafts} disabled={busy || !drafts.some((d) => d.use)}>
-                      {drafts.filter((d) => d.use).length}品をまとめて記録
+                <div className="ms-entry-row">
+                  <label className="ms-yen">
+                    <span>¥</span>
+                    <input name="price" value={price} onChange={(event) => setPrice(event.target.value)} inputMode="numeric" placeholder="金額（家なら空欄）" aria-label="金額" />
+                  </label>
+                  <button className="button primary" type="submit" disabled={busy}>記録</button>
+                </div>
+                {(payment === "split" || payment === "paid_for_others") && (
+                  <label className="ms-yen">
+                    <span>払った</span>
+                    <input name="paid" value={paidText} onChange={(event) => setPaidText(event.target.value)} inputMode="numeric" placeholder="実際に払った額" aria-label="実際に払った額" />
+                  </label>
+                )}
+              </form>
+
+              <div className="ms-favs">
+                <div className="ms-favs-head">
+                  <span>ワンタップで記録</span>
+                  {visibleFavorites.length > 0 && (
+                    <button type="button" onClick={() => setEditingFavs((v) => !v)}>{editingFavs ? "完了" : "整理"}</button>
+                  )}
+                </div>
+                <div className="ms-chips">
+                  {showHome && !editingFavs && (
+                    <button type="button" className="ms-chip home" disabled={busy} onClick={() => save({ kind, item: "家ごはん", price: null, place: place.trim() || "家" }, false)}>
+                      <Home size={14} />
+                      <span>家ごはん</span>
                     </button>
+                  )}
+                  {visibleFavorites.map((fav) => (
+                    <button
+                      key={fav.item}
+                      type="button"
+                      className={`ms-chip${editingFavs ? " editing" : ""}`}
+                      disabled={busy}
+                      title={fav.item}
+                      onClick={() =>
+                        editingFavs
+                          ? hideFavorite(fav.item)
+                          : save({ kind, item: fav.item, price: fav.price, kcal: fav.kcal, protein: fav.protein, fat: fav.fat, carbs: fav.carbs, place: place.trim() || fav.place || null }, false)
+                      }
+                    >
+                      <span>{fav.item}</span>
+                      {editingFavs ? <X size={13} /> : fav.price !== null && <small>¥{fav.price.toLocaleString("ja-JP")}</small>}
+                    </button>
+                  ))}
+                  {!showHome && visibleFavorites.length === 0 && <small className="ms-hint">2回以上食べたものがここに並びます</small>}
+                </div>
+                {editingFavs && hidden.length > 0 && (
+                  <button type="button" className="ms-link" onClick={() => setHidden([])}>隠したもの（{hidden.length}）を戻す</button>
+                )}
+              </div>
+
+              <details className="ms-more">
+                <summary>
+                  <span>いつ・どこ・支払い</span>
+                  <small>{detailSummary}</small>
+                </summary>
+                <div className="meal-when-where">
+                  <label>
+                    <span>いつ</span>
+                    <input
+                      type="datetime-local"
+                      value={when}
+                      max={toLocalInput(new Date())}
+                      onChange={(event) => {
+                        setWhen(event.target.value);
+                        if (event.target.value) setKind(suggestKind(new Date(event.target.value)));
+                      }}
+                    />
+                    {when ? (
+                      <button type="button" className="meal-chip" onClick={() => { setWhen(""); setKind(suggestKind()); }}>今に戻す</button>
+                    ) : (
+                      <button type="button" className="meal-chip" onClick={() => { const d = new Date(Date.now() - 86_400_000); d.setHours(12, 0, 0, 0); setWhen(toLocalInput(d)); setKind(suggestKind(d)); }}>昨日</button>
+                    )}
+                  </label>
+                  <label>
+                    <span>どこで</span>
+                    <input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="家・会社・店名" maxLength={60} />
+                  </label>
+                  <div className="meal-places">
+                    {places.map((p) => (
+                      <button key={p} type="button" className={`meal-chip${place === p ? " active" : ""}`} onClick={() => setPlace(place === p ? "" : p)}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="meal-payment">
+                    <span>支払い</span>
+                    <select value={payment} onChange={(event) => setPayment(event.target.value as MealPayment)}>
+                      {PAYMENTS.map((p) => (
+                        <option key={p} value={p}>{PAYMENT_LABEL[p]}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+
+              <div className="meal-ai ms-more">
+                <button type="button" className="meal-ai-toggle" onClick={() => setAiOpen((v) => !v)} aria-expanded={aiOpen}>
+                  <Sparkles size={16} />
+                  <span>
+                    <strong>写真・レシートからAIで記録</strong>
+                    <small>ChatGPT・Claudeの返事を貼るだけ。何品でもまとめて</small>
+                  </span>
+                </button>
+                {aiOpen && (
+                  <div className="meal-ai-body">
+                    <ol className="meal-ai-steps">
+                      <li>
+                        <button type="button" className="button secondary" onClick={copyPrompt}>
+                          <ClipboardCopy size={16} />
+                          質問文をコピー
+                        </button>
+                      </li>
+                      <li>ChatGPTかClaudeに、料理かレシートの写真（または「コンビニで鮭おにぎりと唐揚げ」などのメモ）と一緒に貼って送る</li>
+                      <li>返ってきた答えをコピーして、下に貼る</li>
+                    </ol>
+                    <details className="meal-ai-prompt">
+                      <summary>質問文を見る</summary>
+                      <pre>{MEAL_AI_PROMPT}</pre>
+                    </details>
+                    <textarea
+                      value={pasted}
+                      onChange={(event) => setPasted(event.target.value)}
+                      placeholder={"ここにAIの返事を貼り付け\n例：昼食|鮭おにぎり|160|180|5|2|38|レシート"}
+                      rows={4}
+                    />
+                    <button type="button" className="button secondary" onClick={readPasted} disabled={!pasted.trim()}>
+                      <ClipboardPaste size={16} />
+                      読み取る
+                    </button>
+                    {drafts.length > 0 && (
+                      <div className="meal-drafts">
+                        <span className="meal-label">内容を確認（金額・品名は直せます）</span>
+                        <ul>
+                          {drafts.map((d, index) => (
+                            <li key={index} className={d.use ? "" : "off"}>
+                              <input
+                                type="checkbox"
+                                checked={d.use}
+                                aria-label={`${d.item}を記録する`}
+                                onChange={(event) => updateDraft(index, { use: event.target.checked })}
+                              />
+                              <select value={d.kind} onChange={(event) => updateDraft(index, { kind: event.target.value as MealKind })}>
+                                {KINDS.map((value) => (
+                                  <option key={value} value={value}>
+                                    {MEAL_LABEL[value]}
+                                  </option>
+                                ))}
+                              </select>
+                              <input value={d.item} onChange={(event) => updateDraft(index, { item: event.target.value })} aria-label="品名" />
+                              <input
+                                value={d.price ?? ""}
+                                inputMode="numeric"
+                                aria-label="金額"
+                                placeholder="円"
+                                onChange={(event) => {
+                                  const digits = event.target.value.replace(/[^0-9]/g, "");
+                                  updateDraft(index, { price: digits ? Number(digits) : null, priceSource: digits ? d.priceSource || "estimate" : null });
+                                }}
+                              />
+                              <small>
+                                {d.price !== null && (d.priceSource === "receipt" ? "レシート" : "推定")}
+                                {d.kcal ? ` ${kcalText(d.kcal)}` : ""}
+                                {d.protein !== null && d.protein !== undefined ? ` P${d.protein}` : ""}
+                                {d.fat !== null && d.fat !== undefined ? ` F${d.fat}` : ""}
+                                {d.carbs !== null && d.carbs !== undefined ? ` C${d.carbs}` : ""}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                        <button type="button" className="button primary" onClick={saveDrafts} disabled={busy || !drafts.some((d) => d.use)}>
+                          {drafts.filter((d) => d.use).length}品をまとめて記録
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <form
+              className="ms-entry"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                saveExpense(String(form.get("expenseItem") || ""), String(form.get("expenseAmount") || ""));
+              }}
+            >
+              <input name="expenseItem" className="ms-item" value={expenseItem} onChange={(event) => setExpenseItem(event.target.value)} placeholder="何に使った？（例：ドラッグストア）" aria-label="何に使ったか" />
+              <div className="ms-entry-row">
+                <label className="ms-yen">
+                  <span>¥</span>
+                  <input name="expenseAmount" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} inputMode="numeric" placeholder="金額" aria-label="金額" />
+                </label>
+                <button className="button primary" type="submit" disabled={busy}>記録</button>
+              </div>
+              <div className="ms-chips">
+                {recentExpenseItems.map((name) => (
+                  <button key={name} type="button" className="ms-chip" onClick={() => setExpenseItem(name)}>
+                    <span>{name}</span>
+                  </button>
+                ))}
+              </div>
+            </form>
+          )}
 
-          <form
-            className="meal-manual"
-            onSubmit={(event) => {
-              event.preventDefault();
-              // iPhoneの日本語入力は、変換中の文字がまだstateに入っていないことがある。
-              // 押した瞬間の入力欄の中身を直接読む。
-              const form = new FormData(event.currentTarget);
-              const typedItem = String(form.get("item") || "");
-              const typedPrice = String(form.get("price") || "");
-              const typedPaid = String(form.get("paid") || "");
-              const toYen = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^0-9]/g, "")));
-              save({ kind, item: typedItem, price: toYen(typedPrice), paid: toYen(typedPaid) }, false);
-            }}
-          >
-            <label>
-              <span>食べたもの</span>
-              <input name="item" value={item} onChange={(event) => setItem(event.target.value)} placeholder="例：ローソン 唐揚げ弁当" />
-            </label>
-            <label>
-              <span>金額</span>
-              <input
-                name="price"
-                value={price}
-                onChange={(event) => setPrice(event.target.value)}
-                inputMode="numeric"
-                placeholder="円"
-              />
-            </label>
-            {(payment === "split" || payment === "paid_for_others") && (
-              <label className="meal-paid">
-                <span>実際に払った額</span>
-                <input name="paid" value={paidText} onChange={(event) => setPaidText(event.target.value)} inputMode="numeric" placeholder="円" />
-              </label>
-            )}
-            <button className="button primary" type="submit" disabled={busy}>
-              記録
-            </button>
-          </form>
+          {message && <p className="meal-message ms-toast" role="status">{message}</p>}
 
-          <form
-            className="meal-manual meal-expense"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const form = new FormData(event.currentTarget);
-              saveExpense(String(form.get("expenseItem") || ""), String(form.get("expenseAmount") || ""));
-            }}
-          >
-            <label>
-              <span><Wallet size={13} /> 食事以外の支出</span>
-              <input name="expenseItem" value={expenseItem} onChange={(event) => setExpenseItem(event.target.value)} placeholder="例：タクシー、ドラッグストア" />
-            </label>
-            <label>
-              <span>金額</span>
-              <input name="expenseAmount" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} inputMode="numeric" placeholder="円" />
-            </label>
-            <button className="button secondary" type="submit" disabled={busy}>
-              記録
-            </button>
-          </form>
-
-          {message && <p className="meal-message" role="status">{message}</p>}
-
-          <div className="meal-today">
-            <div className="meal-day-nav">
+          <div className="ms-day">
+            <div className="ms-day-head">
               <button type="button" aria-label="前の日" onClick={() => setViewDate(shiftDateKey(viewDate, -1))}>
                 <ChevronLeft size={18} />
               </button>
-              <span className="meal-label">
-                {viewLabel}の記録（支払 {yen(walletOn(memos, viewDate))}
-                {kcalOn(memos, viewDate) > 0 && ` ・ ${kcalText(kcalOn(memos, viewDate))}`}）
-              </span>
+              <div>
+                <strong>{viewLabel}</strong>
+                <small>
+                  支払 {yen(walletOn(memos, viewDate))}
+                  {kcalOn(memos, viewDate) > 0 && ` ・ ${kcalText(kcalOn(memos, viewDate))}`}
+                </small>
+              </div>
               <button type="button" aria-label="次の日" disabled={viewDate >= today} onClick={() => setViewDate(shiftDateKey(viewDate, 1))}>
                 <ChevronRight size={18} />
               </button>
@@ -486,46 +531,47 @@ function MealSheet({ onClose }: { onClose: () => void }) {
             {dayRecords.length === 0 ? (
               <p className="meal-empty">記録はありません</p>
             ) : (
-              <ul>
+              <ul className="ms-list">
                 {dayRecords.map((m) => {
                   const at = m.meal?.at || m.expense!.at;
                   const name = m.meal ? m.meal.item : m.expense!.item;
+                  const amount = m.meal ? m.meal.price : Number(m.expense!.amount);
                   return (
                     <li key={m.id}>
-                      <span>
-                        {new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}{" "}
-                        {m.meal ? MEAL_LABEL[m.meal.kind] : <b className="meal-expense-tag">支出</b>} {name}
-                        {m.meal?.place ? <small className="meal-kcal"> @{m.meal.place}</small> : null}
+                      <time>{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</time>
+                      <b className={`ms-tag ${m.meal ? m.meal.kind : "expense"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</b>
+                      <span className="ms-name">
+                        {name}
+                        {(m.meal?.place || m.meal?.kcal) && (
+                          <small>{[m.meal?.place, m.meal?.kcal ? kcalText(m.meal.kcal) : ""].filter(Boolean).join("・")}</small>
+                        )}
                       </span>
-                      <span>
-                        {m.meal?.kcal ? <small className="meal-kcal">{kcalText(m.meal.kcal)}</small> : null}
-                        {m.meal ? m.meal.price !== null && yen(m.meal.price) : yen(Number(m.expense!.amount))}
-                        {m.meal && paidAmount(m.meal) !== (m.meal.price || 0) && <small className="meal-kcal">（支払{yen(paidAmount(m.meal))}）</small>}
-                        <button
-                          type="button"
-                          aria-label={`${name}の記録を削除`}
-                          onClick={() => removeMeal(m.id).then(() => syncNow().catch(() => undefined))}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                      <span className="ms-amount">
+                        {amount !== null && amount !== undefined ? yen(amount) : "—"}
+                        {m.meal && paidAmount(m.meal) !== (m.meal.price || 0) && <small>支払{yen(paidAmount(m.meal))}</small>}
                       </span>
+                      <button
+                        type="button"
+                        aria-label={`${name}の記録を削除`}
+                        onClick={() => removeMeal(m.id).then(() => syncNow().catch(() => undefined))}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </li>
                   );
                 })}
               </ul>
             )}
           </div>
-        </div>
-        <footer className="modal-actions meal-footer">
           <button
             type="button"
-            className="button secondary"
+            className="ms-link ms-reminder"
             onClick={() => setMealReminder({ enabled: !reminder.enabled })}
           >
-            {reminder.enabled ? <Bell size={16} /> : <BellOff size={16} />}
+            {reminder.enabled ? <Bell size={14} /> : <BellOff size={14} />}
             平日12:45のお昼通知：{reminder.enabled ? "ON" : "OFF"}
           </button>
-        </footer>
+        </div>
       </section>
     </div>
   );

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DoorOpen, Pencil, Play, Plus, Trash2, X } from "lucide-react";
@@ -18,6 +19,14 @@ import type { VoiceConfig } from "./types";
 import { speakVoice } from "./voice";
 import { makeId } from "./db";
 
+const ROUTINE_HOURS: Record<string, [number, number]> = { morning: [4, 11], noon: [11, 15], "leave-work": [15, 19], night: [19, 28] };
+function routineFit(routine: Routine, now = new Date()): number {
+  const range = ROUTINE_HOURS[routine.id];
+  if (!range) return 0;
+  const h = now.getHours() < 4 ? now.getHours() + 24 : now.getHours();
+  return h >= range[0] && h < range[1] ? 1 : 0;
+}
+
 /** Today: one tap starts a saved routine (all steps added, first one started). */
 export function RoutineBar() {
   const routines = useLiveQuery(async () => {
@@ -26,6 +35,8 @@ export function RoutineBar() {
   }, [], DEFAULT_ROUTINES) || DEFAULT_ROUTINES;
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // その時間に合うルーティンを先頭に出す（朝→昼→退社前→夜）。
+  const ordered = [...routines].sort((a, b) => routineFit(b) - routineFit(a));
   const start = async (routine: Routine) => {
     if (busy) return;
     setBusy(true);
@@ -47,7 +58,7 @@ export function RoutineBar() {
         <button type="button" className="routine-edit" aria-label="ルーティンを編集" onClick={() => setEditing(true)}>
           <Pencil size={15} />
         </button>
-        {routines.map((routine) => (
+        {ordered.map((routine) => (
           <button key={routine.id} type="button" className="routine-chip" disabled={busy} onClick={() => start(routine)}>
             <Play size={14} />
             {routine.name}
@@ -55,7 +66,7 @@ export function RoutineBar() {
           </button>
         ))}
       </section>
-      {editing && <RoutineEditor routines={routines} onClose={() => setEditing(false)} />}
+      {editing && createPortal(<RoutineEditor routines={routines} onClose={() => setEditing(false)} />, document.body)}
     </>
   );
 }

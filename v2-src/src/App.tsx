@@ -176,9 +176,12 @@ import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
+import { TimeLeftStrip } from "./TimeLeftPanel";
 import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
+import { isDiaryMemo } from "./diary";
+import { DiaryCard } from "./DiaryPanel";
 import { syncNativeCoach } from "./native-alarm";
 import baseSetupSql from "../supabase-setup.sql?raw";
 import calendarHistorySql from "../supabase-calendar-history.sql?raw";
@@ -1506,6 +1509,7 @@ function TodayPage({
         <RoutineBar />
       </section>
 
+      <TimeLeftStrip />
       <TodayProgress />
       <BudgetCard />
       <section className="today-list">
@@ -1587,6 +1591,7 @@ function TodayPage({
         </button>
       )}
       <MealQuickBar />
+      <DiaryCard />
       {runwayOpen && (
         <div className="runway-fullscreen" role="dialog" aria-modal="true" aria-label="今日の流れを広く見る">
           <header>
@@ -4556,7 +4561,7 @@ function App() {
           )}
           {page === "memos" && (
             <MemosPage
-              memos={memos.filter((memo) => !isLedgerMemo(memo))}
+              memos={memos.filter((memo) => !isLedgerMemo(memo) && !isDiaryMemo(memo))}
               onTaskCreated={(task) => {
                 setPage("inbox");
                 setEditing(task);

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
 import { completeTask } from './store';
-import { DEFAULT_ROUTINES, getRoutines, nextRoutineTask, parseRoutineSteps, routineStepsText, saveRoutines, startRoutine } from './routines';
+import { DEFAULT_ROUTINES, getRoutines, mergeRoutines, nextRoutineTask, parseRoutineSteps, routineStepsText, saveRoutines, startRoutine } from './routines';
+
+const NIGHT = DEFAULT_ROUTINES.find((r) => r.id === 'night')!;
 
 beforeEach(async () => {
   await db.delete();
@@ -16,11 +18,11 @@ describe('routines', () => {
       { title: 'ドライヤー', minutes: 5 },
       { title: '歯磨き', minutes: 5 },
     ]);
-    expect(parseRoutineSteps(routineStepsText(DEFAULT_ROUTINES[0].steps))).toEqual(DEFAULT_ROUTINES[0].steps);
+    expect(parseRoutineSteps(routineStepsText(NIGHT.steps))).toEqual(NIGHT.steps);
   });
 
   it('starts the first step and lines up the rest ahead of other tasks', async () => {
-    const { tasks, session } = await startRoutine(DEFAULT_ROUTINES[0]);
+    const { tasks, session } = await startRoutine(NIGHT);
     expect(tasks.map((t) => t.title)).toEqual(['シャワー', 'ドライヤー', '歯磨き', 'スラックスの汚れ落とし', '明日の準備']);
     expect(tasks.every((t) => t.flowOrder! < 0 && t.scheduledDate)).toBe(true);
     expect(session?.taskId).toBe(tasks[0].id);
@@ -42,9 +44,18 @@ describe('routines', () => {
 
 describe('routine started twice', () => {
   it('continues the unfinished run instead of adding another set', async () => {
-    const first = await startRoutine(DEFAULT_ROUTINES[1]);
-    const again = await startRoutine(DEFAULT_ROUTINES[1]);
+    const first = await startRoutine(DEFAULT_ROUTINES.find((r) => r.id === 'leave-work')!);
+    const again = await startRoutine(DEFAULT_ROUTINES.find((r) => r.id === 'leave-work')!);
     expect(again.tasks.map((t) => t.id)).toEqual(first.tasks.map((t) => t.id));
     expect((await db.tasks.toArray()).filter((t) => t.routine?.name === '退社前')).toHaveLength(3);
+  });
+
+  it('offers new templates (朝・昼) once to a saved list, and respects deletion afterwards', async () => {
+    const custom = { ...NIGHT, steps: [{ title: '歯磨き', minutes: 3 }] };
+    const old = mergeRoutines({ id: 'routines', list: [custom] });
+    expect(old.map((r) => r.id)).toEqual(['morning', 'noon', 'night']);
+    expect(old.find((r) => r.id === 'night')!.steps).toHaveLength(1);
+    await saveRoutines([custom]);
+    expect((await getRoutines()).map((r) => r.id)).toEqual(['night']);
   });
 });
