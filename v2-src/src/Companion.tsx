@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import sit from "./assets/companion/cat-1.png";
-import happy from "./assets/companion/cat-2.png";
-import stretch from "./assets/companion/cat-3.png";
-import sleep from "./assets/companion/cat-4.png";
-import tilt from "./assets/companion/cat-5.png";
-import walk from "./assets/companion/cat-6.png";
+import sit from "./assets/companion/cat-1.png?inline";
+import happy from "./assets/companion/cat-2.png?inline";
+import stretch from "./assets/companion/cat-3.png?inline";
+import sleep from "./assets/companion/cat-4.png?inline";
+import tilt from "./assets/companion/cat-5.png?inline";
+import walk from "./assets/companion/cat-6.png?inline";
 import { db } from "./db";
 import { haptic } from "./feedback";
 
