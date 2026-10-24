@@ -625,3 +625,34 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .round-break button.quiet { background: transparent; color: var(--accent-text); padding: 0 6px; }
 .round-break.over { animation: overpulse 1.6s ease-in-out infinite; }
 .interrupt-sheet .wish-add .button { min-width: 64px; }
+
+/* ==== 予定と実際 ==== */
+.dc-toggle { min-height: 34px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.dc-toggle.active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.day-compare { display: grid; gap: 10px; padding: 10px 12px 120px; overflow-y: auto; }
+.dc-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.dc-summary div { padding: 10px; border-radius: 14px; background: var(--paper); border: 1px solid var(--line); display: grid; gap: 2px; }
+.dc-summary span { font-size: 11px; color: var(--muted); font-weight: 700; }
+.dc-summary strong { font-family: var(--font-num); font-size: 18px; }
+.dc-head { display: grid; grid-template-columns: 38px 1fr 1fr; gap: 6px; font-size: 12px; color: var(--muted); }
+.dc-grid { position: relative; display: grid; grid-template-columns: 38px 1fr 1fr; gap: 6px; }
+.dc-hours { position: relative; }
+.dc-hours span { position: absolute; left: 0; transform: translateY(-50%); font-family: var(--font-num); font-size: 10px; color: var(--faint); }
+.dc-col { position: relative; }
+.dc-line { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.dc-block { position: absolute; left: 0; right: 0; box-sizing: border-box; padding: 3px 6px; border-radius: 7px; overflow: hidden; display: flex; flex-direction: column; font-size: 11px; line-height: 1.3; border: 0; text-align: left; font-family: inherit; }
+.dc-block span { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-block small { font-size: 10px; opacity: .8; font-family: var(--font-num); }
+.dc-block.plan { background: var(--soft); color: var(--ink); border: 1px solid var(--line-strong); }
+.dc-block.work { background: var(--accent-soft); color: var(--accent-text); }
+.dc-block.interrupt { background: var(--coral-soft); color: var(--danger); }
+.dc-block.detour { background: var(--yellow-soft); color: var(--warn-text); }
+.dc-block.meal { background: var(--green-soft); color: var(--good); left: 55%; z-index: 1; }
+.dc-block.gap { background: transparent; border: 1px dashed var(--line-strong); color: var(--muted); cursor: pointer; }
+.dc-now { position: absolute; left: 38px; right: 0; height: 2px; background: var(--danger); }
+.dc-empty { position: absolute; top: 8px; left: 0; right: 0; margin: 0; font-size: 11px; color: var(--faint); text-align: center; }
+.dc-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--muted); font-weight: 700; }
+.dc-legend b { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.dc-legend b.work { background: var(--accent); } .dc-legend b.interrupt { background: var(--danger); } .dc-legend b.detour { background: var(--warn); } .dc-legend b.meal { background: var(--good); }
+.dc-bias { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--paper); border: 1px solid var(--line); font-size: 13px; }
+.dc-bias span { color: var(--muted); }

@@ -172,6 +172,7 @@ import { MealQuickBar, OpenCountPanel } from "./MealPanel";
 import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { MobilePlanner } from "./MobilePlanner";
+import { DayCompare } from "./DayCompare";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
@@ -1817,6 +1818,7 @@ function CalendarPage({
   const [activeDate, setActiveDate] = useState(todayKey());
   const [search, setSearch] = useState("");
   const [showResults, setShowResults] = useState(false);
+  const [compare, setCompare] = useState(false);
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -2313,6 +2315,11 @@ function CalendarPage({
           <strong>{plannerActive ? plannerTitle : title}</strong>
         </div>
         <div className="calendar-toolbar-actions">
+          {plannerActive && mode === "day" && (
+            <button type="button" className={`dc-toggle${compare ? " active" : ""}`} aria-pressed={compare} onClick={() => setCompare((v) => !v)}>
+              予定と実際
+            </button>
+          )}
           {!plannerActive && <label className="calendar-results-toggle">
             <input
               type="checkbox"
@@ -2335,7 +2342,9 @@ function CalendarPage({
           </div>
         </div>
       </div>
-      {mobile && (mode === "day" || mode === "week" || mode === "list") ? (
+      {mobile && mode === "day" && compare ? (
+        <DayCompare date={activeDate} />
+      ) : mobile && (mode === "day" || mode === "week" || mode === "list") ? (
         <MobilePlanner
           tasks={tasks}
           mode={mode === "week" ? "week" : "day"}

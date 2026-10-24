@@ -1069,6 +1069,36 @@ export async function stopFocusSessionAt(id: string, stoppedAt: string): Promise
   return updateSession(id, { status: 'paused', pausedAt: new Date(at).toISOString() }, label);
 }
 
+/** Add a finished record for a past time range (filling a gap). Running timers are left alone. */
+export async function recordPastSession(task: Task, startedAt: string, endedAt: string, label: string): Promise<FocusSession> {
+  const deviceId = await getDeviceId();
+  const at = nowIso();
+  const minutes = Math.max(1, Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 60_000));
+  const session: FocusSession = {
+    id: makeId('session'),
+    taskId: task.id,
+    taskTitle: task.title,
+    plannedMin: minutes,
+    carriedElapsedSec: 0,
+    startedAt,
+    pausedAt: null,
+    pausedTotalSec: 0,
+    endedAt,
+    status: 'completed',
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+    sync: { deviceId },
+  };
+  await db.transaction('rw', db.sessions, db.history, db.outbox, async () => {
+    await db.sessions.add(session);
+    await queueRecord('session', session);
+    await db.history.add(history('session', session.id, 'start', label, null, session));
+  });
+  announceChange();
+  return session;
+}
+
 /** Throw away the current attempt and start the same task again from now. */
 export async function restartFocusSession(id: string): Promise<FocusSession | null> {
   const session = await db.sessions.get(id);
