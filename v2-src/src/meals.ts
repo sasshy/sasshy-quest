@@ -332,6 +332,38 @@ export function parseMealPaste(text: string, fallbackKind: MealKind): MealInput[
   return items;
 }
 
+export interface MealEdit { kind: MealKind; item: string; price: number | null; at: string; place: string | null; payment: MealPayment; paid: number | null }
+
+/** Fix a meal after the fact. Nutrition and unknown AI keys are kept. */
+export async function updateMeal(id: string, edit: MealEdit): Promise<Memo | null> {
+  const memo = await db.memos.get(id);
+  if (!memo?.meal) return null;
+  const item = edit.item.trim();
+  if (!item) throw new Error('食べたものを入力してください');
+  const price = cleanNumber(edit.price);
+  const meal: MealInfo = { ...memo.meal, kind: edit.kind, item, price, at: edit.at };
+  if (price === null || price !== memo.meal.price) delete meal.priceSource;
+  const place = (edit.place || '').trim().slice(0, 60);
+  if (place) meal.place = place; else delete meal.place;
+  const payment = edit.payment !== 'self' ? edit.payment : null;
+  let paid = cleanNumber(edit.paid);
+  if (payment === 'treated' && paid === null) paid = 0;
+  if (payment) meal.payment = payment; else delete meal.payment;
+  if (payment && paid !== null && paid !== price) meal.paid = paid; else delete meal.paid;
+  return updateMemo(id, { meal, title: mealTitle(meal), body: mealBody(meal) }, '食事の記録を修正');
+}
+
+export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string }): Promise<Memo | null> {
+  const memo = await db.memos.get(id);
+  if (!memo?.expense) return null;
+  const item = edit.item.trim();
+  if (!item) throw new Error('何に使ったかを入力してください');
+  const amount = cleanNumber(edit.amount);
+  if (amount === null) throw new Error('金額を入力してください');
+  const expense: ExpenseInfo = { ...memo.expense, item, amount, at: edit.at };
+  return updateMemo(id, { expense, title: `支出：${item} ¥${amount.toLocaleString('ja-JP')}` }, '支出の記録を修正');
+}
+
 export async function removeMeal(id: string): Promise<void> {
   await updateMemo(id, { deletedAt: new Date().toISOString(), archived: true }, '食事・支出の記録を削除');
 }

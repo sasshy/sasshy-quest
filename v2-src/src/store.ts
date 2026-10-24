@@ -869,7 +869,7 @@ export function setMorningProgress(
   }));
 }
 
-export async function startFocusSession(task: Task, plannedMin = task.estimateMin, carriedElapsedSec = 0): Promise<FocusSession> {
+export async function startFocusSession(task: Task, plannedMin = task.estimateMin, carriedElapsedSec = 0, extra: Pick<FocusSession, 'starter'> = {}): Promise<FocusSession> {
   const deviceId = await getDeviceId();
   const at = nowIso();
   const session: FocusSession = {
@@ -878,6 +878,7 @@ export async function startFocusSession(task: Task, plannedMin = task.estimateMi
     taskTitle: task.title,
     plannedMin: Math.max(1, plannedMin),
     carriedElapsedSec: Math.max(0, carriedElapsedSec),
+    ...(extra.starter ? { starter: true } : {}),
     startedAt: at,
     pausedAt: null,
     pausedTotalSec: 0,
@@ -1086,7 +1087,7 @@ export async function setFocusSessionPlannedMinutes(id: string, plannedMin: numb
   return updateSession(id, { plannedMin: nextMinutes }, `タイマーを${nextMinutes}分に変更`);
 }
 
-export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<Pick<Memo, 'category' | 'pinned' | 'reminderAt' | 'source' | 'legacyId' | 'meal' | 'expense' | 'planned' | 'diary'>>, source: HistoryEntry['source'] = 'local'): Promise<Memo> {
+export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<Pick<Memo, 'category' | 'pinned' | 'reminderAt' | 'source' | 'legacyId' | 'meal' | 'expense' | 'planned' | 'diary' | 'wish' | 'area'>>, source: HistoryEntry['source'] = 'local'): Promise<Memo> {
   const at = nowIso();
   const deviceId = await getDeviceId();
   const memo: Memo = {
@@ -1106,6 +1107,8 @@ export async function createMemo(input: Pick<Memo, 'title' | 'body'> & Partial<P
     ...(input.expense ? { expense: input.expense } : {}),
     ...(input.planned ? { planned: input.planned } : {}),
     ...(input.diary ? { diary: input.diary } : {}),
+    ...(input.wish ? { wish: input.wish } : {}),
+    ...(input.area ? { area: input.area } : {}),
     sync: { deviceId },
   };
   await db.transaction('rw', db.memos, db.history, db.outbox, async () => {

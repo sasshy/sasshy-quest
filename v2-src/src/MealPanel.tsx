@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Home, Sparkles, Trash2, Utensils, Wallet, X } from "lucide-react";
+import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Home, Sparkles, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import {
   DEFAULT_MEAL_REMINDER,
@@ -25,13 +25,13 @@ import {
   walletOn,
   recordMeal,
   recordMeals,
-  removeMeal,
   setMealReminder,
   spendOn,
   suggestKind,
 } from "./meals";
 import { syncNow } from "./sync";
-import type { AppSetting, MealKind, MealPayment } from "./types";
+import type { AppSetting, MealKind, MealPayment, Memo } from "./types";
+import { RecordEditSheet } from "./RecordEditSheet";
 
 const KINDS: MealKind[] = ["breakfast", "lunch", "dinner", "snack"];
 const PAYMENTS: MealPayment[] = ["self", "treated", "split", "paid_for_others"];
@@ -138,6 +138,7 @@ function MealSheet({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState<"meal" | "expense">("meal");
+  const [editing, setEditing] = useState<Memo | null>(null);
   const favorites = mealFavorites(memos, Date.now(), 10, { kind, minCount: 2, maxLength: 24 });
   const hidden = (useLiveQuery(() => db.settings.get("mealFavHidden"), [], undefined) as unknown as { items?: string[] } | undefined)?.items || [];
   const setHidden = (items: string[]) => db.settings.put({ id: "mealFavHidden", items } as unknown as AppSetting);
@@ -532,30 +533,27 @@ function MealSheet({ onClose }: { onClose: () => void }) {
               <p className="meal-empty">記録はありません</p>
             ) : (
               <ul className="ms-list">
+                {editing && <RecordEditSheet memo={editing} onClose={() => setEditing(null)} />}
                 {dayRecords.map((m) => {
                   const at = m.meal?.at || m.expense!.at;
                   const name = m.meal ? m.meal.item : m.expense!.item;
                   const amount = m.meal ? m.meal.price : Number(m.expense!.amount);
                   return (
                     <li key={m.id}>
-                      <time>{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</time>
-                      <b className={`ms-tag ${m.meal ? m.meal.kind : "expense"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</b>
-                      <span className="ms-name">
-                        {name}
-                        {(m.meal?.place || m.meal?.kcal) && (
-                          <small>{[m.meal?.place, m.meal?.kcal ? kcalText(m.meal.kcal) : ""].filter(Boolean).join("・")}</small>
-                        )}
-                      </span>
-                      <span className="ms-amount">
-                        {amount !== null && amount !== undefined ? yen(amount) : "—"}
-                        {m.meal && paidAmount(m.meal) !== (m.meal.price || 0) && <small>支払{yen(paidAmount(m.meal))}</small>}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`${name}の記録を削除`}
-                        onClick={() => removeMeal(m.id).then(() => syncNow().catch(() => undefined))}
-                      >
-                        <Trash2 size={15} />
+                      <button type="button" className="ms-row" onClick={() => setEditing(m)} aria-label={`${name}の記録を直す`}>
+                        <time>{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</time>
+                        <b className={`ms-tag ${m.meal ? m.meal.kind : "expense"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</b>
+                        <span className="ms-name">
+                          {name}
+                          {(m.meal?.place || m.meal?.kcal) && (
+                            <small>{[m.meal?.place, m.meal?.kcal ? kcalText(m.meal.kcal) : ""].filter(Boolean).join("・")}</small>
+                          )}
+                        </span>
+                        <span className="ms-amount">
+                          {amount !== null && amount !== undefined ? yen(amount) : "—"}
+                          {m.meal && paidAmount(m.meal) !== (m.meal.price || 0) && <small>支払{yen(paidAmount(m.meal))}</small>}
+                        </span>
+                        <ChevronRight size={16} className="ms-go" aria-hidden="true" />
                       </button>
                     </li>
                   );

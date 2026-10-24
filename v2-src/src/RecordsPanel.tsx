@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
-import { DiaryList } from "./DiaryPanel";
+import { DiaryMonth, peekDiaryRequest, takeDiaryRequest } from "./DiaryPanel";
+import { RecordEditSheet } from "./RecordEditSheet";
 import { sessionActiveSeconds } from "./insights";
 import {
   MEAL_LABEL,
@@ -136,6 +137,13 @@ export function RecordsPanel() {
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const today = localDateKey(Date.now());
   const [range, setRange] = useState<Range>(1);
+  const [view, setView] = useState<"stats" | "diary">(() => (peekDiaryRequest() ? "diary" : "stats"));
+  useEffect(() => {
+    takeDiaryRequest();
+    const open = () => { takeDiaryRequest(); setView("diary"); };
+    window.addEventListener("sasshy-open-diary", open);
+    return () => window.removeEventListener("sasshy-open-diary", open);
+  }, []);
   const [selected, setSelected] = useState(today);
   const rows = useMemo(() => buildDayRows(memos, sessions, tasks, range, today), [memos, sessions, tasks, range, today]);
   // 今日と比べる用（昨日・直近1週間の平均）
@@ -168,6 +176,11 @@ export function RecordsPanel() {
 
   return (
     <div className="page-content records-page">
+      <div className="rec-view" role="tablist" aria-label="見るもの">
+        <button type="button" role="tab" aria-selected={view === "stats"} className={view === "stats" ? "active" : ""} onClick={() => setView("stats")}>お金・作業</button>
+        <button type="button" role="tab" aria-selected={view === "diary"} className={view === "diary" ? "active" : ""} onClick={() => setView("diary")}>日記</button>
+      </div>
+      {view === "diary" ? <DiaryMonth /> : (<>
       <div className="rec-range" role="group" aria-label="期間">
         {([1, 7, 30] as Range[]).map((value) => (
           <button key={value} type="button" className={range === value ? "active" : ""} onClick={() => { setRange(value); setSelected(today); }}>
@@ -260,15 +273,7 @@ export function RecordsPanel() {
             <h3>食事・支出</h3>
             <ul className="rec-list">
               {dayRecords.map((m) => {
-                const at = m.meal?.at || m.expense!.at;
-                return (
-                  <li key={m.id}>
-                    <span className="rec-time">{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
-                    <span className={`rec-tag ${m.meal ? "meal" : "other"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</span>
-                    <span className="rec-name">{m.meal ? m.meal.item : m.expense!.item}</span>
-                    <span className="rec-amount">{m.meal ? (m.meal.price !== null ? yen(paidAmount(m.meal)) : "—") : yen(Number(m.expense!.amount))}</span>
-                  </li>
-                );
+                return <RecordRow key={m.id} memo={m} />;
               })}
             </ul>
           </>
@@ -307,10 +312,10 @@ export function RecordsPanel() {
         </section>
       )}
       </>)}
-      <DiaryList memos={memos} days={range === 1 ? 7 : range} />
       {mealsOn(memos, today).length === 0 && expensesOn(memos, today).length === 0 && (
         <p className="rec-hint">食事・支出は「今日」の「食事・支出を記録」から追加できます。</p>
       )}
+      </>)}
     </div>
   );
 }
@@ -346,15 +351,7 @@ function TodaySummary({ memos, tasks, sessions, week, today }: { memos: Memo[]; 
         {records.length ? (
           <ul className="rec-list">
             {records.map((m) => {
-              const at = m.meal?.at || m.expense!.at;
-              return (
-                <li key={m.id}>
-                  <span className="rec-time">{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
-                  <span className={`rec-tag ${m.meal ? "meal" : "other"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</span>
-                  <span className="rec-name">{m.meal ? m.meal.item : m.expense!.item}</span>
-                  <span className="rec-amount">{m.meal ? (m.meal.price !== null ? yen(paidAmount(m.meal)) : "—") : yen(Number(m.expense!.amount))}</span>
-                </li>
-              );
+              return <RecordRow key={m.id} memo={m} />;
             })}
           </ul>
         ) : (
@@ -408,5 +405,22 @@ function WeekDone({ tasks, rows }: { tasks: Task[]; rows: DayRow[] }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/** One meal / spend line; tap to fix it. */
+function RecordRow({ memo }: { memo: Memo }) {
+  const [open, setOpen] = useState(false);
+  const at = memo.meal?.at || memo.expense!.at;
+  return (
+    <li>
+      <button type="button" className="rec-row" onClick={() => setOpen(true)}>
+        <span className="rec-time">{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
+        <span className={`rec-tag ${memo.meal ? "meal" : "other"}`}>{memo.meal ? MEAL_LABEL[memo.meal.kind] : "支出"}</span>
+        <span className="rec-name">{memo.meal ? memo.meal.item : memo.expense!.item}</span>
+        <span className="rec-amount">{memo.meal ? (memo.meal.price !== null ? yen(paidAmount(memo.meal)) : "—") : yen(Number(memo.expense!.amount))}</span>
+      </button>
+      {open && <RecordEditSheet memo={memo} onClose={() => setOpen(false)} />}
+    </li>
   );
 }

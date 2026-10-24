@@ -58,6 +58,7 @@ import {
   Settings,
   SlidersHorizontal,
   Sparkles,
+  Map as MapIcon,
   Square,
   TimerReset,
   Trash2,
@@ -177,6 +178,9 @@ import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
 import { TimeLeftStrip } from "./TimeLeftPanel";
+import { LifeMapPanel } from "./LifeMapPanel";
+import { isAreaMemo, isWishMemo } from "./wishes";
+import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
@@ -193,6 +197,7 @@ const setupSql = `${baseSetupSql}\n\n${calendarHistorySql}\n\n${credentialSetupS
 type Page =
   | "today"
   | "calendar"
+  | "map"
   | "records"
   | "inbox"
   | "later"
@@ -241,6 +246,7 @@ function formatCalendarTitle(info: DatesSetArg): string {
 const PAGE_LABEL: Record<Page, string> = {
   today: "今日",
   calendar: "カレンダー",
+  map: "地図",
   records: "記録",
   inbox: "やること",
   later: "あとで",
@@ -1305,7 +1311,7 @@ function TodayPage({
   sessions: FocusSession[];
   syncState: SyncState;
   onEdit: (task: Task) => void;
-  onStart: (task: Task) => Promise<void>;
+  onStart: (task: Task, opts?: { starter?: boolean }) => Promise<void>;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [runwayOpen, setRunwayOpen] = useState(false);
@@ -1472,11 +1478,25 @@ function TodayPage({
                     : `${focus.estimateMin}分`}
                 </span>
               </div>
-              <button className="now-start" type="button" onClick={() => onStart(focus)}>
-                <Play size={20} fill="currentColor" />
-                {activeSession ? "開く" : "開始"}
-              </button>
+              {activeSession && (
+                <button className="now-start" type="button" onClick={() => onStart(focus)}>
+                  <Play size={20} fill="currentColor" />
+                  開く
+                </button>
+              )}
             </div>
+            {!activeSession && (
+              <div className="now-buttons">
+                <button className="now-two" type="button" onClick={() => onStart(focus, { starter: true })}>
+                  2分だけ
+                  <small>手をつけるだけでOK</small>
+                </button>
+                <button className="now-full" type="button" onClick={() => onStart(focus)}>
+                  <Play size={16} fill="currentColor" />
+                  {focus.estimateMin}分やる
+                </button>
+              </div>
+            )}
             {activeSession && activeRemaining !== null && activeRemaining < 0 && (
               <details className="now-recover">
                 <summary>長引いている → 決め直す</summary>
@@ -3959,7 +3979,7 @@ function TimerDock({
     .map((min) => ({ min, at: new Date(Date.now() - min * 60_000) }))
     .filter(({ at }) => at.getTime() > startedMs);
   const showSetup =
-    !task?.routine && !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
+    !task?.routine && !session.starter && !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
   const saveGoal = async () => {
     if (!task || goalDraft.trim() === (task.doneWhen || "")) return;
     await updateTask(task.id, { doneWhen: goalDraft.trim() }, "終わりの目安を設定");
@@ -4190,6 +4210,7 @@ function App() {
   const mobile = useMobile();
   const [taskLink] = useState(() => parseTaskLink(window.location.href));
   const [incomingTask, setIncomingTask] = useState<ParsedTaskLink | null>(() => taskLink.task);
+  const startTimerRef = useRef<((task: Task, opts?: { starter?: boolean }) => Promise<void>) | null>(null);
   const [page, setPage] = useState<Page>(() => {
     const requested = new URLSearchParams(location.search).get("open");
     return requested && requested in PAGE_LABEL ? (requested as Page) : "today";
@@ -4284,6 +4305,16 @@ function App() {
     window.addEventListener("sasshy-open-page", go);
     return () => window.removeEventListener("sasshy-open-page", go);
   }, []);
+  // 地図の「2分だけ」など、App の外からタスクを始める。
+  useEffect(() => {
+    const start = async (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; starter?: boolean }>).detail;
+      const task = detail?.id ? await db.tasks.get(detail.id) : undefined;
+      if (task) startTimerRef.current?.(task, { starter: detail.starter });
+    };
+    window.addEventListener("sasshy-start-task", start);
+    return () => window.removeEventListener("sasshy-start-task", start);
+  }, []);
   // ルーティン開始など、App の外で始めたタイマーも画面に出す。
   useEffect(() => {
     const open = () => setTimerVisible(true);
@@ -4348,7 +4379,7 @@ function App() {
         sessionStorage.setItem(`memo-notified-${memo.id}`, "1");
       });
   }, [memos]);
-  const startTimer = async (task: Task) => {
+  const startTimer = async (task: Task, opts: { starter?: boolean } = {}) => {
     haptic("start");
     playStart();
     if (activeSession?.taskId === task.id) {
@@ -4376,15 +4407,20 @@ function App() {
     const remainingSec = task.estimateMin * 60 - carriedElapsedSec;
     if (voice?.enabled)
       speakVoice(
-        carriedElapsedSec > 0
+        opts.starter
+          ? "2分だけやってみましょう"
+          : carriedElapsedSec > 0
           ? `続きから再開します。${remainingStatusText(remainingSec)}`
           : `${task.estimateMin}分タイマーを開始します`,
         voice,
       );
-    await startFocusSession(task, task.estimateMin, carriedElapsedSec);
+    if (opts.starter)
+      await startFocusSession(task, starterPlannedMin(carriedElapsedSec), carriedElapsedSec, { starter: true });
+    else await startFocusSession(task, task.estimateMin, carriedElapsedSec);
     setTimerVisible(true);
     syncNow().catch(() => undefined);
   };
+  startTimerRef.current = startTimer;
   const reopenTimer = async () => {
     setTimerVisible(true);
     if (!activeSession || !voice?.enabled) return;
@@ -4413,8 +4449,9 @@ function App() {
   const navItems: { id: Page; icon: ReactNode }[] = [
     { id: "today", icon: <Sparkles /> },
     { id: "calendar", icon: <CalendarDays /> },
-    { id: "records", icon: <BarChart3 /> },
     { id: "inbox", icon: <ListTodo /> },
+    { id: "map", icon: <MapIcon /> },
+    { id: "records", icon: <BarChart3 /> },
     { id: "memos", icon: <MessageSquareText /> },
     { id: "history", icon: <History /> },
     { id: "settings", icon: <Settings /> },
@@ -4493,6 +4530,9 @@ function App() {
             )}
           </div>
           <div className="topbar-actions">
+            <button type="button" className="topbar-more" aria-label="メモ・設定などを開く" onClick={() => setMenuOpen(true)}>
+              <Settings size={19} />
+            </button>
             <IconButton
               label="元に戻す"
               onClick={() => runHistoryAction("undo")}
@@ -4553,6 +4593,7 @@ function App() {
             />
           )}
           {page === "records" && <RecordsPanel />}
+          {page === "map" && <LifeMapPanel />}
           {page === "inbox" && (
             <InboxPage tasks={tasks} onEdit={setEditing} onStart={startTimer} />
           )}
@@ -4561,7 +4602,7 @@ function App() {
           )}
           {page === "memos" && (
             <MemosPage
-              memos={memos.filter((memo) => !isLedgerMemo(memo) && !isDiaryMemo(memo))}
+              memos={memos.filter((memo) => !isLedgerMemo(memo) && !isDiaryMemo(memo) && !isWishMemo(memo) && !isAreaMemo(memo))}
               onTaskCreated={(task) => {
                 setPage("inbox");
                 setEditing(task);
@@ -4632,10 +4673,11 @@ function App() {
         />
       )}
       <Celebrate />
+      <TwoMinutePrompt />
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
         {navItems
-          .filter((item) => ["today", "calendar", "records", "inbox"].includes(item.id))
+          .filter((item) => ["today", "calendar", "inbox", "map", "records"].includes(item.id))
           .map((item) => (
           <button
             key={item.id}
@@ -4647,10 +4689,6 @@ function App() {
             <span>{PAGE_LABEL[item.id]}</span>
           </button>
           ))}
-        <button type="button" onClick={() => setMenuOpen(true)}>
-          <MoreHorizontal />
-          <span>その他</span>
-        </button>
       </nav>
       {menuOpen && mobile && (
         <button

@@ -86,6 +86,8 @@ export interface FocusSession {
   taskTitle: string;
   plannedMin: number;
   carriedElapsedSec?: number;
+  /** Started with 「2分だけ」: ask at the end whether to keep going. */
+  starter?: boolean;
   startedAt: string;
   pausedAt: string | null;
   pausedTotalSec: number;
@@ -116,7 +118,30 @@ export interface Memo {
   planned?: { item: string; amount: number; date?: string | null };
   /** ひとこと日記 (category 日記): one per day. mood 1 (bad) .. 5 (great). */
   diary?: { date: string; mood: number | null };
+  /** やりたいこと (category やりたいこと). */
+  wish?: WishInfo;
+  /** 6つの領域 (category 領域): one per key. */
+  area?: AreaInfo;
   sync: SyncMeta;
+}
+
+export interface WishInfo {
+  status: 'active' | 'resting' | 'done';
+  pinned: boolean;
+  /** Optional goal for the number of tries (e.g. 映画 5本). */
+  target: number | null;
+  /** The next small step, written as an action. */
+  next: string;
+  attempts: { at: string; note: string }[];
+}
+
+export type AreaKey = 'money' | 'work' | 'family' | 'health' | 'fun' | 'people';
+export interface AreaInfo {
+  key: AreaKey;
+  state: string;
+  next: string;
+  /** good / watch (needs attention) / none */
+  tone?: 'good' | 'watch' | null;
 }
 
 export type MealKind = 'breakfast' | 'lunch' | 'dinner' | 'snack';
