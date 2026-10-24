@@ -173,6 +173,7 @@ import { LeaveBanner, RoutineBar } from "./RoutinePanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { MobilePlanner } from "./MobilePlanner";
 import { DayCompare } from "./DayCompare";
+import { TimeGrid, threeDays } from "./TimeGrid";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
@@ -208,7 +209,7 @@ type Page =
   | "memos"
   | "history"
   | "settings";
-type CalendarMode = "list" | "day" | "week" | "month";
+type CalendarMode = "list" | "day" | "three" | "week" | "month";
 
 function formatCalendarTitle(info: DatesSetArg): string {
   const current = info.view.calendar.getDate();
@@ -1808,7 +1809,7 @@ function CalendarPage({
       ? "mobile"
       : "desktop";
     const saved = localStorage.getItem(`sasshy-calendar-view-${device}`);
-    return saved === "list" || saved === "day" || saved === "week" || saved === "month"
+    return saved === "list" || saved === "day" || saved === "week" || saved === "month" || (saved === "three" && device === "mobile")
       ? saved
       : device === "mobile"
         ? "day"
@@ -1819,6 +1820,7 @@ function CalendarPage({
   const [search, setSearch] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [compare, setCompare] = useState(false);
+  const [dayList, setDayList] = useState(false);
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -2065,7 +2067,7 @@ function CalendarPage({
   const viewFor = (nextMode: CalendarMode) =>
     nextMode === "list"
       ? "listWeek"
-      : nextMode === "day"
+      : nextMode === "day" || nextMode === "three"
       ? "timeGridDay"
       : nextMode === "month"
         ? "dayGridMonth"
@@ -2084,7 +2086,7 @@ function CalendarPage({
       `sasshy-calendar-view-${mobile ? "mobile" : "desktop"}`,
     );
     const nextMode =
-      saved === "list" || saved === "day" || saved === "week" || saved === "month"
+      saved === "list" || saved === "day" || saved === "week" || saved === "month" || (saved === "three" && mobile)
         ? saved
         : mobile
           ? "day"
@@ -2271,17 +2273,22 @@ function CalendarPage({
   };
 
   // スマホの日・週は自前の表示なので、前後移動と見出しも日付から作る。
-  const plannerActive = mobile && (mode === "day" || mode === "week" || mode === "list");
+  const plannerActive = mobile && (mode === "day" || mode === "three" || mode === "week" || mode === "list");
   const step = (direction: -1 | 1) => {
     if (!plannerActive) {
       if (direction < 0) calendarRef.current?.getApi().prev();
       else calendarRef.current?.getApi().next();
       return;
     }
-    setActiveDate((current) => shiftDate(current, direction * (mode === "week" ? 7 : 1)));
+    setActiveDate((current) => shiftDate(current, direction * (mode === "week" ? 7 : mode === "three" ? 3 : 1)));
   };
   const plannerTitle = (() => {
     const d = new Date(`${activeDate}T12:00:00`);
+    if (mode === "three") {
+      const last = new Date(d);
+      last.setDate(d.getDate() + 2);
+      return `${d.getMonth() + 1}/${d.getDate()} – ${last.getMonth() + 1}/${last.getDate()}`;
+    }
     if (mode !== "week") return d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
     const monday = new Date(d);
     monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -2316,9 +2323,14 @@ function CalendarPage({
         </div>
         <div className="calendar-toolbar-actions">
           {plannerActive && mode === "day" && (
-            <button type="button" className={`dc-toggle${compare ? " active" : ""}`} aria-pressed={compare} onClick={() => setCompare((v) => !v)}>
-              予定と実際
-            </button>
+            <>
+              <button type="button" className={`dc-toggle${compare ? " active" : ""}`} aria-pressed={compare} onClick={() => { setCompare((v) => !v); setDayList(false); }}>
+                予定と実際
+              </button>
+              <button type="button" className={`dc-toggle${dayList ? " active" : ""}`} aria-pressed={dayList} onClick={() => { setDayList((v) => !v); setCompare(false); }}>
+                並べ替え
+              </button>
+            </>
           )}
           {!plannerActive && <label className="calendar-results-toggle">
             <input
@@ -2329,14 +2341,14 @@ function CalendarPage({
             実績も表示
           </label>}
           <div className="segmented" aria-label="カレンダー表示">
-            {(["day", "week", "month"] as CalendarMode[]).map((item) => (
+            {((mobile ? ["day", "three", "week", "month"] : ["day", "week", "month"]) as CalendarMode[]).map((item) => (
               <button
                 key={item}
                 type="button"
                 className={mode === item ? "active" : ""}
                 onClick={() => changeMode(item)}
               >
-                {item === "list" ? "一覧" : item === "day" ? "日" : item === "week" ? "週" : "月"}
+                {item === "list" ? "一覧" : item === "day" ? "日" : item === "three" ? "3日" : item === "week" ? "週" : "月"}
               </button>
             ))}
           </div>
@@ -2344,6 +2356,14 @@ function CalendarPage({
       </div>
       {mobile && mode === "day" && compare ? (
         <DayCompare date={activeDate} />
+      ) : mobile && (mode === "three" || (mode === "day" && !dayList)) ? (
+        <TimeGrid
+          tasks={tasks}
+          dates={mode === "three" ? threeDays(activeDate) : [activeDate]}
+          onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
+          onOpen={openScheduleMove}
+          onStart={onStart}
+        />
       ) : mobile && (mode === "day" || mode === "week" || mode === "list") ? (
         <MobilePlanner
           tasks={tasks}

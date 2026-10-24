@@ -26,7 +26,7 @@ const durationText = (min: number) =>
 const dateLabel = (key: string) =>
   new Date(`${key}T12:00:00`).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
 
-function byFlow(a: Task, b: Task): number {
+export function byFlow(a: Task, b: Task): number {
   if (a.flowOrder !== undefined || b.flowOrder !== undefined) {
     if (a.flowOrder === undefined) return 1;
     if (b.flowOrder === undefined) return -1;
@@ -35,7 +35,7 @@ function byFlow(a: Task, b: Task): number {
   return a.createdAt.localeCompare(b.createdAt);
 }
 
-const isFixed = (task: Task) => task.startMinute !== null && task.isFixed !== false;
+export const isFixed = (task: Task) => task.startMinute !== null && task.isFixed !== false;
 
 export function dayTasksFor(tasks: Task[], date: string): Task[] {
   return tasks.filter((t) => !t.deletedAt && t.scheduledDate === date && t.status !== "done");

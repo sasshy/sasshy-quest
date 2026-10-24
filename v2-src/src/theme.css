@@ -689,3 +689,36 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .timer-undo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .timer-undo-row button { min-height: 42px; border: 0; border-radius: 12px; background: rgba(255,255,255,.07); color: rgba(255,255,255,.75); font: inherit; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
 .timer-undo-row button.danger { color: #ff9b8e; }
+
+/* ==== 時間の目盛り（日・3日） ==== */
+.tg { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 0 8px; }
+.tg-head { display: grid; gap: 4px; padding: 6px 0; position: sticky; top: 0; background: var(--canvas); z-index: 2; }
+.tg-day { display: grid; justify-items: center; gap: 1px; padding: 4px 0; border-radius: 10px; }
+.tg-day strong { font-family: var(--font-num); font-size: 17px; display: flex; align-items: baseline; gap: 3px; }
+.tg-day strong small { font-family: var(--font-ui); font-size: 11px; color: var(--muted); }
+.tg-day > small { font-size: 10px; color: var(--good); font-weight: 700; }
+.tg-day.today { background: var(--accent-soft); }
+.tg-day.today strong { color: var(--accent-text); }
+.tg-scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 120px; }
+.tg-grid { position: relative; display: grid; gap: 4px; }
+.tg-grid.dragging { touch-action: none; user-select: none; -webkit-user-select: none; }
+.tg-hours { position: relative; }
+.tg-hours span { position: absolute; right: 4px; transform: translateY(-50%); font-family: var(--font-num); font-size: 10px; color: var(--faint); }
+.tg-col { position: relative; }
+.tg-line { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.tg-gap { position: absolute; left: 2px; right: 2px; border: 1px dashed color-mix(in srgb, var(--good) 60%, transparent); border-radius: 8px; background: transparent; color: var(--good); font: inherit; font-size: 10px; font-weight: 700; text-align: left; padding: 2px 5px; cursor: pointer; overflow: hidden; }
+.tg-block { position: absolute; left: 2px; right: 2px; box-sizing: border-box; border-radius: 8px; background: var(--accent-soft); color: var(--accent-text); border-left: 3px solid var(--accent); display: flex; align-items: flex-start; overflow: hidden; touch-action: pan-y; transition: box-shadow .15s ease, transform .15s ease; z-index: 1; }
+.tg-block.fixed { background: var(--blue-soft); border-left-color: #3a6ab0; color: var(--ink); }
+.tg-block.running { outline: 2px solid var(--accent); }
+.tg-block.lifted { z-index: 5; transform: scale(1.03); box-shadow: 0 10px 24px rgba(0,0,0,.22); opacity: .95; }
+.tg-title { flex: 1; min-width: 0; display: grid; align-content: start; gap: 1px; padding: 3px 5px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.tg-title strong { font-size: 11px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tg-title small { font-family: var(--font-num); font-size: 9px; opacity: .8; }
+.tg-play { flex: none; width: 24px; height: 24px; margin: 2px; border: 0; border-radius: 6px; background: var(--paper); color: var(--accent-text); display: grid; place-items: center; cursor: pointer; }
+.tg-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 10px; cursor: ns-resize; touch-action: none; }
+.tg-resize::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 18px; height: 3px; margin-left: -9px; border-radius: 2px; background: currentColor; opacity: .35; }
+.tg-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+.tg-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+.tg-hint { margin: 4px 0 0; font-size: 11px; color: var(--muted); text-align: center; }
+.calendar-page.mode-three .calendar-surface, .calendar-page.planner .tg { height: calc(100dvh - var(--topbar) - 140px - env(safe-area-inset-bottom)); }
+.tg-gap { display: flex; align-items: flex-start; border: 0; border-left: 2px dashed color-mix(in srgb, var(--good) 55%, transparent); border-radius: 0; background: color-mix(in srgb, var(--good) 6%, transparent); }
