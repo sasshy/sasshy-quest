@@ -49,3 +49,14 @@ describe('2分だけ', () => {
     expect(starterPlannedMin(610)).toBe(13);
   });
 });
+
+describe('meal fixes', () => {
+  it('scales nutrition and records home meals as free', async () => {
+    const { paidAmount } = await import('./meals');
+    const memo = await recordMeal({ kind: 'lunch', item: 'フレンチトースト 2枚', price: null, kcal: 600, protein: 20 });
+    await updateMeal(memo.id, { kind: 'lunch', item: 'フレンチトースト 1枚', price: null, at: memo.meal!.at, place: '家', payment: 'home', paid: null, kcal: 300, protein: 10 });
+    const fixed = (await db.memos.get(memo.id))!.meal!;
+    expect(fixed).toMatchObject({ kcal: 300, protein: 10, payment: 'home' });
+    expect(paidAmount(fixed)).toBe(0);
+  });
+});

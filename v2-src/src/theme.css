@@ -656,3 +656,25 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .dc-legend b.work { background: var(--accent); } .dc-legend b.interrupt { background: var(--danger); } .dc-legend b.detour { background: var(--warn); } .dc-legend b.meal { background: var(--good); }
 .dc-bias { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--paper); border: 1px solid var(--line); font-size: 13px; }
 .dc-bias span { color: var(--muted); }
+.re-nutrition { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: var(--soft); }
+.re-nut-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.re-nut-head > span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.re-scale { display: flex; gap: 4px; }
+.re-scale button { min-height: 32px; padding: 0 10px; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); font-weight: 700; font-size: 12px; cursor: pointer; }
+.re-nut-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.record-edit .re-nut-grid input { min-height: 42px; padding: 0 8px; font-family: var(--font-num); }
+.re-hint { font-size: 11px; color: var(--muted); }
+.timer-undo-start { min-height: 40px; border: 0; border-radius: 12px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.75); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+/* 時間の流れで見る：ダークモードで文字が消えないように */
+.runway-fullscreen { background: var(--canvas) !important; color: var(--ink) !important; }
+.runway-fullscreen > header { background: color-mix(in srgb, var(--canvas) 94%, transparent) !important; }
+.runway-fullscreen-grid > section, .runway-fullscreen-grid > .runway-timeline { background: var(--paper) !important; box-shadow: none !important; border: 1px solid var(--line); }
+.runway-fullscreen * { border-color: var(--line); }
+/* 日・週・月の切り替えが、ほかのボタンの有無で左右に動かないように先頭に固定 */
+.calendar-toolbar-actions .segmented { order: -1; }
+.runway-fullscreen .runway-queue-item, .runway-fullscreen .runway-timeline li > button { background: var(--paper) !important; color: var(--ink) !important; border-color: var(--line-strong) !important; }
+.runway-fullscreen .runway-queue-item strong, .runway-fullscreen .runway-queue-item span:not(.runway-queue-main > span), .runway-fullscreen .runway-timeline li > button strong { color: inherit; }
+.runway-timeline li.fixed > button { background: var(--blue-soft) !important; }
+.runway-timeline li.conflict > button { background: var(--coral-soft) !important; }
+.runway-queue-main > span { background: var(--accent-soft) !important; color: var(--accent-text) !important; }

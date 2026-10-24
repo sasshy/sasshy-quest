@@ -3981,8 +3981,8 @@ function TimerDock({
     setFixOpen(false);
     syncNow().catch(() => undefined);
   };
-  const discard = async () => {
-    if (!window.confirm("このタイマーの記録を取り消しますか？（作業していなかった時用）")) return;
+  const discard = async (ask = true) => {
+    if (ask && !window.confirm("このタイマーの記録を取り消しますか？（作業していなかった時用）")) return;
     stopVoice();
     await discardFocusSession(session.id);
     syncNow().catch(() => undefined);
@@ -4062,6 +4062,11 @@ function TimerDock({
         </span>
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
+      {now - new Date(session.startedAt).getTime() < 5 * 60_000 && !session.interrupt && (
+        <button type="button" className="timer-undo-start" onClick={() => discard(false)}>
+          間違えて開始した → 取り消して開始前に戻す
+        </button>
+      )}
       <RoundBar session={session} />
       {showSetup && (
         <div className="timer-setup" aria-label="何分で・どこまでやるか">
@@ -4189,7 +4194,7 @@ function TimerDock({
               <Play size={15} />
               今からやり直す
             </button>
-            <button className="button secondary" type="button" onClick={discard}>
+            <button className="button secondary" type="button" onClick={() => discard()}>
               <Trash2 size={15} />
               記録を取り消す
             </button>

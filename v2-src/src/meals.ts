@@ -59,12 +59,13 @@ export const PAYMENT_LABEL: Record<MealPayment, string> = {
   treated: 'おごってもらった',
   split: '割り勘',
   paid_for_others: '自分がおごった',
+  home: '家で食べた（お金なし）',
 };
 
 /** The amount that left the user's wallet (falls back to price). */
 export function paidAmount(meal: MealInfo): number {
   if (meal.paid !== undefined && meal.paid !== null) return meal.paid;
-  if (meal.payment === 'treated') return 0;
+  if (meal.payment === 'treated' || meal.payment === 'home') return 0;
   return meal.price || 0;
 }
 
@@ -332,7 +333,7 @@ export function parseMealPaste(text: string, fallbackKind: MealKind): MealInput[
   return items;
 }
 
-export interface MealEdit { kind: MealKind; item: string; price: number | null; at: string; place: string | null; payment: MealPayment; paid: number | null }
+export interface MealEdit extends MealNutrition { kind: MealKind; item: string; price: number | null; at: string; place: string | null; payment: MealPayment; paid: number | null }
 
 /** Fix a meal after the fact. Nutrition and unknown AI keys are kept. */
 export async function updateMeal(id: string, edit: MealEdit): Promise<Memo | null> {
@@ -350,6 +351,12 @@ export async function updateMeal(id: string, edit: MealEdit): Promise<Memo | nul
   if (payment === 'treated' && paid === null) paid = 0;
   if (payment) meal.payment = payment; else delete meal.payment;
   if (payment && paid !== null && paid !== price) meal.paid = paid; else delete meal.paid;
+  // 栄養は渡されたものだけ書き換える（空欄にしたら消す）。
+  for (const [key, digits] of [['kcal', 0], ['protein', 1], ['fat', 1], ['carbs', 1]] as const) {
+    if (!(key in edit)) continue;
+    const v = cleanNumber(edit[key], digits);
+    if (v === null) delete meal[key]; else meal[key] = v;
+  }
   return updateMemo(id, { meal, title: mealTitle(meal), body: mealBody(meal) }, '食事の記録を修正');
 }
 

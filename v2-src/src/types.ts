@@ -157,7 +157,7 @@ export interface AreaInfo {
 export type MealKind = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 /** self = paid in full; treated = someone else paid (0); split / paid_for_others use `paid`. */
-export type MealPayment = 'self' | 'treated' | 'split' | 'paid_for_others';
+export type MealPayment = 'self' | 'treated' | 'split' | 'paid_for_others' | 'home';
 
 /** Meal/snack details on a memo with category '食事'. Unknown extra keys from AI imports are kept as-is. */
 export interface MealInfo {

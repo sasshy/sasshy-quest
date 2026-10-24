@@ -34,7 +34,7 @@ import type { AppSetting, MealKind, MealPayment, Memo } from "./types";
 import { RecordEditSheet } from "./RecordEditSheet";
 
 const KINDS: MealKind[] = ["breakfast", "lunch", "dinner", "snack"];
-const PAYMENTS: MealPayment[] = ["self", "treated", "split", "paid_for_others"];
+const PAYMENTS: MealPayment[] = ["self", "home", "treated", "split", "paid_for_others"];
 const yen = (value: number) => `¥${value.toLocaleString("ja-JP")}`;
 const kcalText = (value: number) => `${value.toLocaleString("ja-JP")}kcal`;
 
@@ -327,7 +327,7 @@ function MealSheet({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="ms-chips">
                   {showHome && !editingFavs && (
-                    <button type="button" className="ms-chip home" disabled={busy} onClick={() => save({ kind, item: "家ごはん", price: null, place: place.trim() || "家" }, false)}>
+                    <button type="button" className="ms-chip home" disabled={busy} onClick={() => save({ kind, item: "家ごはん", price: null, place: place.trim() || "家", payment: "home" }, false)}>
                       <Home size={14} />
                       <span>家ごはん</span>
                     </button>

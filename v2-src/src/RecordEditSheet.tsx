@@ -6,7 +6,7 @@ import { syncNow } from "./sync";
 import type { MealKind, MealPayment, Memo } from "./types";
 
 const KINDS: MealKind[] = ["breakfast", "lunch", "dinner", "snack"];
-const PAYMENTS: MealPayment[] = ["self", "treated", "split", "paid_for_others"];
+const PAYMENTS: MealPayment[] = ["self", "home", "treated", "split", "paid_for_others"];
 
 function toLocalInput(iso: string): string {
   const d = new Date(iso);
@@ -22,6 +22,14 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
   const [kind, setKind] = useState<MealKind>(meal?.kind || "snack");
   const [payment, setPayment] = useState<MealPayment>(meal?.payment || "self");
   const [error, setError] = useState("");
+  const num = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
+  const [nut, setNut] = useState({ kcal: num(meal?.kcal), protein: num(meal?.protein), fat: num(meal?.fat), carbs: num(meal?.carbs) });
+  // 量を変えたら、カロリーと栄養をまとめて同じ割合で直す。
+  const scale = (factor: number) => setNut((n) => {
+    const f = (v: string, digits: number) => (v.trim() === "" ? "" : String(Math.round(Number(v) * factor * 10 ** digits) / 10 ** digits));
+    return { kcal: f(n.kcal, 0), protein: f(n.protein, 1), fat: f(n.fat, 1), carbs: f(n.carbs, 1) };
+  });
+  const toNum = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^0-9.]/g, "")));
   const [busy, setBusy] = useState(false);
 
   const submit = async (form: FormData) => {
@@ -39,6 +47,10 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
           place: String(form.get("place") || "") || null,
           payment,
           paid: toYen(String(form.get("paid") || "")),
+          kcal: toNum(String(form.get("kcal") ?? nut.kcal)),
+          protein: toNum(String(form.get("protein") ?? nut.protein)),
+          fat: toNum(String(form.get("fat") ?? nut.fat)),
+          carbs: toNum(String(form.get("carbs") ?? nut.carbs)),
         });
       } else {
         await updateExpense(memo.id, { item: String(form.get("item") || ""), amount: toYen(String(form.get("price") || "")), at });
@@ -93,6 +105,26 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
                     <span>{PAYMENT_LABEL[p]}</span>
                   </button>
                 ))}
+              </div>
+              <div className="re-nutrition">
+                <div className="re-nut-head">
+                  <span>カロリー・栄養（だいたいでOK）</span>
+                  <div className="re-scale" role="group" aria-label="量を変える">
+                    <button type="button" onClick={() => scale(0.5)}>半分</button>
+                    <button type="button" onClick={() => scale(0.75)}>少なめ</button>
+                    <button type="button" onClick={() => scale(1.5)}>1.5倍</button>
+                    <button type="button" onClick={() => scale(2)}>2倍</button>
+                  </div>
+                </div>
+                <div className="re-nut-grid">
+                  {([["kcal", "kcal"], ["protein", "P(g)"], ["fat", "F(g)"], ["carbs", "C(g)"]] as const).map(([key, label]) => (
+                    <label key={key} className="re-field">
+                      <span>{label}</span>
+                      <input name={key} inputMode="decimal" value={nut[key]} onChange={(e) => setNut((n) => ({ ...n, [key]: e.target.value }))} />
+                    </label>
+                  ))}
+                </div>
+                <small className="re-hint">「2枚→1枚」なら「半分」を押すだけ。薄切りなら「少なめ」も</small>
               </div>
               {(payment === "split" || payment === "paid_for_others") && (
                 <label className="re-field">

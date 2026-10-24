@@ -1113,7 +1113,13 @@ export async function restartFocusSession(id: string): Promise<FocusSession | nu
 /** The timer was started by mistake / no work was done: drop the record. */
 export async function discardFocusSession(id: string): Promise<FocusSession | null> {
   const at = nowIso();
-  return updateSession(id, { status: 'interrupted', endedAt: at, pausedAt: null, deletedAt: at }, 'タイマーの記録を取り消し');
+  const result = await updateSession(id, { status: 'interrupted', endedAt: at, pausedAt: null, deletedAt: at }, 'タイマーの記録を取り消し');
+  // 開始前の状態に戻す（「実行中」の印を外す）。タスク自体は消さない。
+  const task = result ? await db.tasks.get(result.taskId) : undefined;
+  if (task && task.status === 'active') {
+    await updateTask(task.id, { status: task.scheduledDate ? 'planned' : 'inbox' }, '開始を取り消し', false);
+  }
+  return result;
 }
 
 export async function setFocusSessionPlannedMinutes(id: string, plannedMin: number): Promise<FocusSession | null> {
