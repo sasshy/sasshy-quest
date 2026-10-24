@@ -6,6 +6,7 @@ import { setFocusSessionPlannedMinutes, updateSession, updateTask } from "./stor
 import { syncNow } from "./sync";
 import { localDateKey, shiftDateKey } from "./meals";
 import type { FocusSession } from "./types";
+import { isStale } from "./StaleSession";
 
 /** Seconds left on a session (negative = over). */
 export function sessionRemainingSec(session: FocusSession, now = Date.now()): number {
@@ -40,7 +41,7 @@ export function TwoMinutePrompt() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [session?.id]);
-  if (!session || session.status !== "running" || sessionRemainingSec(session, now) > 0) return null;
+  if (!session || session.status !== "running" || sessionRemainingSec(session, now) > 0 || isStale(session, now)) return null;
 
   const keepGoing = async () => {
     const task = await db.tasks.get(session.taskId);

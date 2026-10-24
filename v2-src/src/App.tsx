@@ -181,6 +181,7 @@ import { TimeLeftStrip } from "./TimeLeftPanel";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
+import { StaleSessionPrompt, isStale } from "./StaleSession";
 import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
@@ -4216,6 +4217,29 @@ function App() {
     return requested && requested in PAGE_LABEL ? (requested as Page) : "today";
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  // 画面の左端から右へスワイプでメニュー、メニューを左へスワイプで閉じる。
+  useEffect(() => {
+    let start: { x: number; y: number } | null = null;
+    const down = (e: TouchEvent) => {
+      const t = e.touches[0];
+      start = t ? { x: t.clientX, y: t.clientY } : null;
+    };
+    const up = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      if (!start || !t) return;
+      const dx = t.clientX - start.x;
+      const dy = Math.abs(t.clientY - start.y);
+      if (start.x < 28 && dx > 60 && dy < 50) setMenuOpen(true);
+      else if (dx < -60 && dy < 50) setMenuOpen(false);
+      start = null;
+    };
+    window.addEventListener("touchstart", down, { passive: true });
+    window.addEventListener("touchend", up, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", down);
+      window.removeEventListener("touchend", up);
+    };
+  }, []);
   const [editing, setEditing] = useState<Task | null>(null);
   const [timerVisible, setTimerVisible] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
@@ -4264,6 +4288,11 @@ function App() {
   const activeTask = activeSession
     ? tasks.find((task) => task.id === activeSession.taskId)
     : undefined;
+  // 止め忘れたタイマーは、大きなオーバー表示で迎えずに「おかえり」で聞く。
+  const staleId = activeSession && isStale(activeSession) ? activeSession.id : null;
+  useEffect(() => {
+    if (staleId) setTimerVisible(false);
+  }, [staleId]);
   useEffect(() => startAutoSync(), []);
   // その日最初に開いたとき：「おはよう。今日の1つ目は〇〇」
   useEffect(() => {
@@ -4530,7 +4559,7 @@ function App() {
             )}
           </div>
           <div className="topbar-actions">
-            <button type="button" className="topbar-more" aria-label="メモ・設定などを開く" onClick={() => setMenuOpen(true)}>
+            <button type="button" className="topbar-more" aria-label="設定を開く" onClick={() => { setMenuOpen(false); setPage("settings"); }}>
               <Settings size={19} />
             </button>
             <IconButton
@@ -4674,6 +4703,7 @@ function App() {
       )}
       <Celebrate />
       <TwoMinutePrompt />
+      <StaleSessionPrompt />
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
         {navItems

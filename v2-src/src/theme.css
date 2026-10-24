@@ -577,3 +577,22 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .lm-area small { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .lm-area .lm-area-next { color: var(--accent-text); font-weight: 700; }
 .record-edit .form-stack, .wish-sheet .form-stack { padding-bottom: 14px !important; }
+
+/* ==== おかえり（止め忘れ） ==== */
+.stale { position: fixed; inset: 0; z-index: 210; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 761px) { .stale { align-items: center; } }
+.stale-card { width: min(520px, 100%); box-sizing: border-box; background: var(--paper); color: var(--ink); border-radius: 24px 24px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); display: grid; gap: 12px; animation: twomin .25s ease; }
+@media (min-width: 761px) { .stale-card { border-radius: 22px; } }
+.stale-card h2 { margin: 0; font-size: 22px; }
+.stale-card p { margin: 0; font-size: 15px; line-height: 1.7; }
+.stale-q { font-size: 13px; font-weight: 700; color: var(--muted); }
+.stale-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.stale-choices button { min-height: 42px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.stale-choices button.picked { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.stale-time { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); font-weight: 700; }
+.stale-time input { min-height: 40px; border-radius: 10px; border: 1px solid var(--line-strong); padding: 0 10px; font-size: 16px; background: var(--paper); color: var(--ink); }
+.stale-actions { display: grid; grid-template-columns: 1.2fr 1fr; gap: 8px; }
+.stale-actions button { min-height: 52px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.stale-actions button.primary { border: 0; background: var(--accent); color: var(--accent-ink); }
+.stale-links { display: flex; justify-content: space-between; gap: 8px; }
+.stale-links button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 0; cursor: pointer; }

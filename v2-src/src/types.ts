@@ -88,6 +88,10 @@ export interface FocusSession {
   carriedElapsedSec?: number;
   /** Started with 「2分だけ」: ask at the end whether to keep going. */
   starter?: boolean;
+  /** Ended by SASSHY because it ran far past the plan (forgotten timer). */
+  autoStopped?: boolean;
+  /** The user has confirmed how long it really took. */
+  reviewed?: boolean;
   startedAt: string;
   pausedAt: string | null;
   pausedTotalSec: number;
