@@ -66,6 +66,7 @@ import {
   Volume2,
   X,
   Undo2,
+  Mic,
 } from "lucide-react";
 import { db } from "./db";
 import { createBackup, downloadBackup } from "./backup";
@@ -184,6 +185,7 @@ import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
+import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
 import { RoundBar, RoundBreakBanner, RoundEndPrompt, type StartOptions } from "./RoundPanel";
 import { nextRound, planSuggestions, usesRounds } from "./rounds";
 import { haptic, playStart } from "./feedback";
@@ -3465,6 +3467,22 @@ function SettingsPage({
               }
             />
           </label>
+          <label className="toggle-row">
+            <span>
+              <strong>AIの自然な声（iPhoneアプリ）</strong>
+              <small>同じ言葉は2回目から無料。新しい言葉だけ1回約0.1円。電波がないときは今までの声</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={Boolean(voiceConfig.aiVoice)}
+              onChange={(event) =>
+                setVoiceConfig({
+                  ...voiceConfig,
+                  aiVoice: event.target.checked,
+                })
+              }
+            />
+          </label>
           <label>
             <span>通常の予定で準備を始める時間（分前）</span>
             <input
@@ -3942,6 +3960,36 @@ function TimerDock({
       stopVoice();
     }
   };
+  const [listening, setListening] = useState(false);
+  const [heard, setHeard] = useState("");
+  const voiceControl = async () => {
+    if (listening) return;
+    setListening(true);
+    setHeard("");
+    const { text, error } = await listenOnce();
+    setListening(false);
+    if (error) { setHeard(error); return; }
+    const command = parseVoiceCommand(text);
+    if (command.kind === "extend") {
+      const live = await db.sessions.get(session.id);
+      if (live) await setFocusSessionPlannedMinutes(live.id, live.plannedMin + command.minutes);
+      setHeard(`「${text}」→ ${command.minutes}分延長しました`);
+      if (voice.enabled) speakVoice(`${command.minutes}分延長しました`, voice);
+    } else if (command.kind === "pause") {
+      if (!paused) await pauseToggle();
+      setHeard(`「${text}」→ 一時停止しました`);
+    } else if (command.kind === "resume") {
+      if (paused) await pauseToggle();
+      setHeard(`「${text}」→ 再開しました`);
+    } else if (command.kind === "complete") {
+      setHeard(`「${text}」→ 完了にします`);
+      await finish(true);
+      return;
+    } else {
+      setHeard(text ? `「${text}」はわかりませんでした（例：あと5分・止めて・終わった）` : "聞き取れませんでした");
+    }
+    syncNow().catch(() => undefined);
+  };
   const finish = async (complete: boolean) => {
     if (!complete) {
       await pauseFocusSession(session.id, "作業を中断");
@@ -4237,6 +4285,14 @@ function TimerDock({
           完了
         </button>
       </div>
+      {canListen() && (
+        <div className="timer-voice">
+          <button type="button" className={listening ? "on" : ""} onClick={voiceControl} disabled={listening}>
+            <Mic size={16} /> {listening ? "聞いています…（5秒）" : "声で操作（あと5分・止めて・終わった）"}
+          </button>
+          {heard && <small>{heard}</small>}
+        </div>
+      )}
       <div className="timer-undo-row">
         <button type="button" onClick={() => discard(false)}>
           <Undo2 size={15} /> 開始を取り消す

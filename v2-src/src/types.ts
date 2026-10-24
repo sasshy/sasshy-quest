@@ -312,6 +312,8 @@ export interface VoiceConfig {
   id: 'voice';
   enabled: boolean;
   coachEnabled?: boolean;
+  /** iPhone app: natural AI voice (each sentence made once, about 0.1 yen). */
+  aiVoice?: boolean;
   defaultPreparationMin?: number;
   rate: number;
   volume: number;

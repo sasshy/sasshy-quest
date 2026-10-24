@@ -71,6 +71,7 @@ export function speakVoice(text: string, config: VoiceConfig): boolean {
       text,
       rate: config.rate,
       volume: config.volume,
+      ai: Boolean(config.aiVoice),
     });
     return true;
   }
