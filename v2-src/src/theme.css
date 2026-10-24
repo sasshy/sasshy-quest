@@ -726,3 +726,87 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .timer-voice button { min-height: 46px; border: 1px solid rgba(255,255,255,.18); border-radius: 14px; background: transparent; color: #fff; font: inherit; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
 .timer-voice button.on { background: var(--accent); border-color: transparent; animation: overpulse 1.2s ease-in-out infinite; }
 .timer-voice small { color: rgba(255,255,255,.75); font-size: 12px; text-align: center; }
+/* 日・3日・週・月は幅を固定（隣のボタンの有無で伸び縮みしない） */
+.calendar-toolbar-actions { flex-wrap: wrap; row-gap: 6px; }
+.calendar-toolbar-actions .segmented { flex: none !important; width: auto !important; }
+.calendar-toolbar-actions .segmented button { flex: none !important; width: 50px !important; min-width: 50px !important; padding: 0 !important; }
+
+/* ==== 習慣 ==== */
+.rec-view { grid-template-columns: repeat(3, 1fr) !important; }
+.habits { display: grid; gap: 12px; }
+.hb-today { padding: 16px; border-radius: 18px; background: var(--paper); border: 1px solid var(--line); display: grid; gap: 10px; }
+.hb-today header { display: grid; gap: 2px; }
+.hb-today h2 { margin: 0; font-size: 16px; }
+.hb-today header small, .hb-empty { color: var(--muted); font-size: 12px; margin: 0; }
+.hb-checks { display: grid; gap: 6px; }
+.hb-check { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 10px; min-height: 52px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background .15s ease, transform .1s ease; }
+.hb-check:active { transform: scale(.98); }
+.hb-box { width: 28px; height: 28px; border-radius: 9px; border: 2px solid var(--line-strong); display: grid; place-items: center; color: var(--accent-ink); }
+.hb-check.done { background: var(--accent-soft); border-color: transparent; }
+.hb-check.done .hb-box { background: var(--accent); border-color: var(--accent); animation: hbpop .3s cubic-bezier(.2,1.6,.4,1); }
+@keyframes hbpop { from { transform: scale(.6); } to { transform: none; } }
+.hb-name { font-weight: 700; font-size: 15px; }
+.hb-check small { color: var(--muted); font-family: var(--font-num); font-size: 12px; }
+.hb-nav { padding: 0 4px; }
+.hb-card { padding: 14px; border-radius: 18px; background: var(--paper); border: 1px solid var(--line); display: grid; gap: 8px; }
+.hb-card header { display: flex; align-items: center; gap: 8px; }
+.hb-card header strong { flex: 1; font-size: 15px; }
+.hb-count { font-family: var(--font-num); font-size: 22px; font-weight: 700; color: var(--accent-text); }
+.hb-count small { font-size: 11px; margin-left: 2px; }
+.hb-more { width: 34px; height: 34px; border: 0; border-radius: 10px; background: var(--soft); color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.hb-menu { display: flex; gap: 6px; }
+.hb-menu button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--paper); color: var(--ink); font-weight: 700; cursor: pointer; }
+.hb-menu button.danger { color: var(--danger); }
+.hb-day { aspect-ratio: 1; border: 0; border-radius: 9px; background: var(--soft); color: var(--faint); font-family: var(--font-num); font-weight: 700; font-size: 12px; cursor: pointer; }
+.hb-day.done { background: var(--accent); color: var(--accent-ink); }
+.hb-day.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.hb-day:disabled { background: transparent; opacity: .35; cursor: default; }
+
+/* ==== 地図：期間と表示の形 ==== */
+.pv { padding: 16px; border-radius: 20px; background: var(--hero); color: var(--hero-ink); display: grid; gap: 12px; }
+.pv-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: -2px -4px 0; padding: 0 4px; }
+.pv-tabs::-webkit-scrollbar { display: none; }
+.pv-tabs button { flex: none; min-height: 34px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--hero-line); background: transparent; color: var(--hero-sub); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.pv-tabs button.active { background: var(--hero-ink); border-color: var(--hero-ink); color: var(--hero); }
+.pv-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.pv-head > div:first-child { display: grid; gap: 2px; }
+.pv-head > div:first-child span { font-size: 12px; color: var(--hero-sub); font-weight: 700; }
+.pv-head strong { font-family: var(--font-num); font-size: 40px; line-height: 1; letter-spacing: -.03em; display: flex; align-items: baseline; gap: 3px; }
+.pv-head strong small { font-size: 15px; letter-spacing: 0; }
+.pv-head strong em { font-style: normal; font-size: 13px; color: var(--hero-sub); margin-left: 4px; letter-spacing: 0; }
+.pv-looks { display: inline-grid; grid-auto-flow: column; gap: 2px; padding: 3px; border-radius: 10px; background: color-mix(in srgb, var(--hero-ink) 10%, transparent); }
+.pv-looks button { width: 40px; min-height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--hero-sub); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.pv-looks button.active { background: var(--hero-ink); color: var(--hero); }
+.pv-life { display: grid; gap: 1px; }
+.pv-life-row { height: 3px; display: flex; background: var(--hero-line); -webkit-mask: repeating-linear-gradient(90deg, #000 0 calc(100% / 52 - 1px), transparent calc(100% / 52 - 1px) calc(100% / 52)); mask: repeating-linear-gradient(90deg, #000 0 calc(100% / 52 - 1px), transparent calc(100% / 52 - 1px) calc(100% / 52)); }
+.pv-life-row i { display: block; height: 100%; }
+.pv-life-row i.used { background: #8b8b86; }
+.pv-life-row i.now { background: var(--accent); }
+.pv-grid { display: grid; gap: 4px; }
+.pv-grid span { aspect-ratio: 1; border-radius: 6px; background: var(--hero-line); display: grid; place-items: center; font-family: var(--font-num); font-size: 10px; font-weight: 700; color: var(--hero-sub); position: relative; }
+.pv-grid.tiny { gap: 2px; }
+.pv-grid.tiny span { border-radius: 2px; }
+.pv-grid.big span { font-size: 15px; border-radius: 12px; }
+.pv-grid span.used { background: #6f6f6b; color: #d8d8d4; }
+.pv-grid span.now { background: var(--accent); color: var(--accent-ink); }
+.pv-grid span.tried::after { content: ""; position: absolute; right: 3px; top: 3px; width: 6px; height: 6px; border-radius: 50%; background: #f0a33a; }
+.pv-grid.tiny span.tried::after { right: 0; top: 0; width: 4px; height: 4px; }
+.pv-ring { position: relative; width: 190px; height: 190px; margin: 0 auto; }
+.pv-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.pv-ring circle { fill: none; stroke-width: 14; }
+.pv-ring-left { stroke: var(--accent); }
+.pv-ring-used { stroke: #6f6f6b; stroke-linecap: butt; transition: stroke-dashoffset .6s ease; }
+.pv-ring > div { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.pv-ring strong { font-family: var(--font-num); font-size: 40px; line-height: 1; }
+.pv-ring strong small { font-size: 16px; }
+.pv-ring span { font-size: 12px; color: var(--hero-sub); font-weight: 700; }
+.pv-bar { display: grid; gap: 6px; padding: 8px 0; }
+.pv-bar-track { position: relative; height: 22px; border-radius: 99px; background: var(--accent); overflow: visible; }
+.pv-bar-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px 0 0 99px; background: #6f6f6b; }
+.pv-bar-track b { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1px; border-radius: 2px; background: var(--hero-ink); }
+.pv-bar-labels { display: flex; justify-content: space-between; font-family: var(--font-num); font-size: 11px; color: var(--hero-sub); }
+.pv-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--hero-sub); font-weight: 700; }
+.pv-key { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
+.pv-key.tried { background: #f0a33a; }
+.pv-grid span { background: color-mix(in srgb, var(--accent) 45%, var(--hero-line)); color: var(--hero-ink); }
+.pv-grid span.used { background: color-mix(in srgb, var(--hero-sub) 45%, var(--hero)); color: var(--hero-sub); }

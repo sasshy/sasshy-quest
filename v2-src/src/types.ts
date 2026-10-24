@@ -132,6 +132,8 @@ export interface Memo {
   wish?: WishInfo;
   /** 6つの領域 (category 領域): one per key. */
   area?: AreaInfo;
+  /** 習慣 (category 習慣): the days it was done. No streaks, only counts. */
+  habit?: HabitInfo;
   sync: SyncMeta;
 }
 
@@ -143,6 +145,14 @@ export interface WishInfo {
   /** The next small step, written as an action. */
   next: string;
   attempts: { at: string; note: string }[];
+}
+
+export interface HabitInfo {
+  name: string;
+  /** YYYY-MM-DD, sorted */
+  days: string[];
+  /** When this routine is finished, the day is checked automatically. */
+  routineName?: string | null;
 }
 
 export type AreaKey = 'money' | 'work' | 'family' | 'health' | 'fun' | 'people';

@@ -7,6 +7,7 @@ import { createTask } from "./store";
 import { syncNow } from "./sync";
 import { DEFAULT_TIME_LEFT, ageOn, daysLived, getTimeLeft } from "./timeleft";
 import { localDateKey } from "./meals";
+import { PeriodView } from "./PeriodView";
 import {
   AREA_KEYS,
   AREA_LABEL,
@@ -23,7 +24,6 @@ import {
 } from "./wishes";
 import type { AreaKey, Memo } from "./types";
 
-const LIFE_YEARS = 80;
 const STATUS_LABEL = { active: "やりたい", resting: "寝かせる", done: "できた" } as const;
 
 /** Start a wish's next step as a 2-minute try: it becomes a task for today and counts as one try. */
@@ -33,43 +33,6 @@ async function tryWishNow(memo: Memo): Promise<void> {
   await addAttempt(memo, "2分だけやった");
   window.dispatchEvent(new CustomEvent("sasshy-start-task", { detail: { id: task.id, starter: true } }));
   syncNow().catch(() => undefined);
-}
-
-function WeeksGrid({ birthday, now }: { birthday: string; now: Date }) {
-  const age = ageOn(birthday, now) ?? 0;
-  const b = new Date(`${birthday}T00:00:00`);
-  const lastBirthday = new Date(b.getFullYear() + age, b.getMonth(), b.getDate());
-  const weeksInto = Math.min(52, Math.floor((now.getTime() - lastBirthday.getTime()) / (7 * 86_400_000)));
-  const rows = Array.from({ length: LIFE_YEARS }, (_, year) => {
-    if (year < age) return { past: 100, now: 0 };
-    if (year === age) return { past: (weeksInto / 52) * 100, now: ((52 - weeksInto) / 52) * 100 };
-    return { past: 0, now: 0 };
-  });
-  const lived = daysLived(birthday, now) ?? 0;
-  return (
-    <section className="lm-weeks" aria-label="人生を週で見る">
-      <header>
-        <h2>人生を週で見る</h2>
-        <small>1マス＝1週・1行＝1年（{LIFE_YEARS}歳まで）</small>
-      </header>
-      <div className="lm-grid-wrap">
-        <div className="lm-ages" aria-hidden="true">{[0, 20, 40, 60, 80].map((a) => <span key={a}>{a}</span>)}</div>
-        <div className="lm-grid" role="img" aria-label={`過ごした週 ${Math.floor(lived / 7)}週、${age + 1}歳までの残り ${52 - weeksInto}週`}>
-          {rows.map((r, i) => (
-            <div key={i} className="lm-row">
-              <i className="lm-past" style={{ width: `${r.past}%` }} />
-              <i className="lm-now" style={{ width: `${r.now}%` }} />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="lm-legend">
-        <span><b className="lm-past" />過ごした {Math.floor(lived / 7).toLocaleString("ja-JP")}週</span>
-        <span><b className="lm-now" />{age + 1}歳までの {52 - weeksInto}週</span>
-        <span><b />これから</span>
-      </div>
-    </section>
-  );
 }
 
 function WishCard({ memo, onOpen }: { memo: Memo; onOpen: () => void }) {
@@ -217,6 +180,7 @@ export function LifeMapPanel() {
   if (nextBirthday.getTime() <= new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) nextBirthday = new Date(now.getFullYear() + 1, b.getMonth(), b.getDate());
   const daysToBirthday = Math.floor((nextBirthday.getTime() - now.getTime()) / 86_400_000);
   const pinned = pinnedWishes(memos);
+  const triedDays = new Set(wishes(memos).flatMap((m) => m.wish!.attempts.map((a) => localDateKey(a.at))));
   const all = wishes(memos);
   const [openId, setOpenId] = useState<string | null>(null);
   const [areaKey, setAreaKey] = useState<AreaKey | null>(null);
@@ -231,7 +195,7 @@ export function LifeMapPanel() {
         <strong>{age}歳</strong>
         <span>{age + 1}歳まであと{daysToBirthday}日</span>
       </div>
-      <WeeksGrid birthday={setting.birthday} now={now} />
+      <PeriodView birthday={setting.birthday} triedDays={triedDays} />
 
       <section className="lm-card">
         <header>

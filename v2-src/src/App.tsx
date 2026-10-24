@@ -183,6 +183,7 @@ import { TodayProgress } from "./TodayProgress";
 import { TimeLeftStrip } from "./TimeLeftPanel";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
+import { checkRoutineHabit, isHabitMemo } from "./habits";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
 import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
@@ -4017,6 +4018,8 @@ function TimerDock({
       if (voice.enabled) speakVoice(`次は${next.title}、${next.estimateMin}分`, voice);
       return;
     }
+    // ルーティンを最後までやったら、習慣のカレンダーに自動で✓。
+    if (task?.routine) checkRoutineHabit(task.routine.name, todayKey()).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
     onClose();
   };
   // 「別の作業をしていて、止めるのを忘れた」時の修正。
@@ -4748,7 +4751,7 @@ function App() {
           )}
           {page === "memos" && (
             <MemosPage
-              memos={memos.filter((memo) => !isLedgerMemo(memo) && !isDiaryMemo(memo) && !isWishMemo(memo) && !isAreaMemo(memo))}
+              memos={memos.filter((memo) => !isLedgerMemo(memo) && !isDiaryMemo(memo) && !isWishMemo(memo) && !isAreaMemo(memo) && !isHabitMemo(memo))}
               onTaskCreated={(task) => {
                 setPage("inbox");
                 setEditing(task);
