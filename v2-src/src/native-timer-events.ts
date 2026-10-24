@@ -1,5 +1,6 @@
 import { db } from './db';
 import { getRoutines, startRoutine } from './routines';
+import { detourKind, startInterruptAt } from './rounds';
 import { setFocusSessionPlannedMinutes, stopFocusSessionAt } from './store';
 import type { FocusSession } from './types';
 
@@ -13,7 +14,7 @@ import type { FocusSession } from './types';
  */
 export interface NativeTimerEvent {
   id: string;
-  type: 'stopped' | 'extended' | 'routine';
+  type: 'stopped' | 'extended' | 'routine' | 'detour';
   taskId: string; // the session id sent with notifyNativeAlarm
   at: string;
   seconds?: number;
@@ -45,6 +46,15 @@ export async function applyNativeTimerEvent(event: NativeTimerEvent, now = Date.
       await startRoutine(routine);
       window.dispatchEvent(new Event('sasshy-open-timer'));
     }
+    return;
+  }
+  if (event.type === 'detour') {
+    applied.add(event.id);
+    // taskId はアプリ名。3時間より前の記録は今さら区切らない。
+    const at = Date.parse(event.at) || now;
+    if (now - at > 3 * 60 * 60_000) return;
+    const started = await startInterruptAt(detourKind(event.taskId), event.taskId, Math.min(now, at));
+    if (started) window.dispatchEvent(new Event('sasshy-open-timer'));
     return;
   }
   const session = await db.sessions.get(event.taskId);

@@ -70,3 +70,40 @@ export async function setRoundBreak(value: Omit<RoundBreak, 'id'> | null): Promi
 
 export const INTERRUPT_CHOICES = ['電話', 'お客さん', '急ぎの出荷', 'kintone確認', '別の仕事', 'トイレ・休憩'];
 export const DETOUR_CHOICES = ['X', 'YouTube', 'Kindle', 'その他'];
+
+/**
+ * Begin an interruption / detour at a given time (from the iPhone Shortcuts
+ * automation, which noted when X / YouTube / kintone was opened). The current
+ * work ends at that moment and the detour is timed from then, so the day's
+ * record shows it; coming back offers 続きから.
+ */
+export async function startInterruptAt(kind: 'interrupt' | 'detour', label: string, at: number): Promise<FocusSession | null> {
+  const { createTask, startFocusSession, updateSession } = await import('./store');
+  const { localDateKey } = await import('./meals');
+  const running = (await db.sessions.where('status').equals('running').toArray())
+    .filter((s) => !s.deletedAt && !s.interrupt && Date.parse(s.startedAt) <= at)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  if (!running) return null;
+  const elapsed = Math.floor((at - Date.parse(running.startedAt)) / 1000) - running.pausedTotalSec + (running.carriedElapsedSec || 0);
+  const leftMin = Math.max(1, Math.ceil((running.plannedMin * 60 - elapsed) / 60));
+  const task = await createTask({
+    title: `${kind === 'interrupt' ? '割り込み' : '寄り道'}：${label}`,
+    notes: `「${running.taskTitle}」の途中`,
+    scheduledDate: localDateKey(at),
+    estimateMin: kind === 'detour' ? 5 : 10,
+    durationMin: kind === 'detour' ? 5 : 10,
+    log: kind,
+  });
+  const detour = await startFocusSession(task, kind === 'detour' ? 5 : 10, 0, {
+    interrupt: { kind, returnTaskId: running.taskId, returnTitle: running.taskTitle, returnLeftMin: leftMin, returnPlan: running.round?.plan || '' },
+  });
+  const atIso = new Date(at).toISOString();
+  // 開始と終了を、実際にアプリを開いた時刻に合わせる。
+  await updateSession(running.id, { endedAt: atIso }, `${label}を開いたところで区切る`);
+  return updateSession(detour.id, { startedAt: atIso }, `${label}を開いた時刻から`);
+}
+
+/** kintone など仕事のアプリは「割り込み」、それ以外は「寄り道」。 */
+export function detourKind(app: string): 'interrupt' | 'detour' {
+  return /kintone|キントーン|メール|mail|slack|teams|電話|phone/i.test(app) ? 'interrupt' : 'detour';
+}

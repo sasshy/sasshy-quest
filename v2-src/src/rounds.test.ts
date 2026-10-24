@@ -29,3 +29,16 @@ describe('15-minute rounds', () => {
     expect(await planSuggestions(today, current)).toEqual(['伝票を出す', '箱を組む', '詰める']);
   });
 });
+
+describe('detour from the iPhone shortcut', () => {
+  it('ends the work when X was opened and times the detour from then', async () => {
+    const { startInterruptAt, detourKind } = await import('./rounds');
+    const task = await createTask({ title: '梱包', estimateMin: 15 });
+    const work = await startFocusSession(task, 15);
+    const at = Date.parse(work.startedAt) + 4 * 60_000;
+    const detour = await startInterruptAt(detourKind('X'), 'X', at);
+    expect(detour).toMatchObject({ startedAt: new Date(at).toISOString(), interrupt: { kind: 'detour', returnTaskId: task.id, returnLeftMin: 11 } });
+    expect((await db.sessions.get(work.id))!).toMatchObject({ status: 'interrupted', endedAt: new Date(at).toISOString() });
+    expect(detourKind('kintone')).toBe('interrupt');
+  });
+});
