@@ -686,3 +686,6 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .ms-menu-ai > div { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
 .ms2 .form-stack .ms-menu-ai input { min-height: 44px; border-radius: 12px; border: 0; padding: 0 12px; background: var(--paper); }
 .ms-menu-ai button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; white-space: nowrap; }
+.timer-undo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.timer-undo-row button { min-height: 42px; border: 0; border-radius: 12px; background: rgba(255,255,255,.07); color: rgba(255,255,255,.75); font: inherit; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.timer-undo-row button.danger { color: #ff9b8e; }

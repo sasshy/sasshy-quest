@@ -4062,11 +4062,6 @@ function TimerDock({
         </span>
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
-      {now - new Date(session.startedAt).getTime() < 5 * 60_000 && !session.interrupt && (
-        <button type="button" className="timer-undo-start" onClick={() => discard(false)}>
-          間違えて開始した → 取り消して開始前に戻す
-        </button>
-      )}
       <RoundBar session={session} />
       {showSetup && (
         <div className="timer-setup" aria-label="何分で・どこまでやるか">
@@ -4220,6 +4215,21 @@ function TimerDock({
         >
           <Check size={17} />
           完了
+        </button>
+      </div>
+      <div className="timer-undo-row">
+        <button type="button" onClick={() => discard(false)}>
+          <Undo2 size={15} /> 開始を取り消す
+        </button>
+        <button type="button" className="danger" onClick={async () => {
+          if (!window.confirm(`「${session.taskTitle}」を消しますか？（ゴミ箱から戻せます）`)) return;
+          stopVoice();
+          await discardFocusSession(session.id);
+          await softDeleteTask(session.taskId);
+          syncNow().catch(() => undefined);
+          onClose();
+        }}>
+          <Trash2 size={15} /> このタスクを消す
         </button>
       </div>
     </div>
