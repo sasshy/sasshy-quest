@@ -182,6 +182,8 @@ import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
+import { RoundBar, RoundBreakBanner, RoundEndPrompt, type StartOptions } from "./RoundPanel";
+import { nextRound, planSuggestions, usesRounds } from "./rounds";
 import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
@@ -1325,6 +1327,7 @@ function TodayPage({
     .filter(
       (task) =>
         !task.deletedAt &&
+        !task.log &&
         task.scheduledDate === today,
     )
     .sort((a, b) =>
@@ -1463,6 +1466,7 @@ function TodayPage({
   return (
     <div className="page-content today-page today-v3">
       <LeaveBanner />
+      <RoundBreakBanner />
       <section className={`now-card${activeSession ? " running" : ""}`}>
         <span className="now-label">{activeSession ? "いま" : "次はこれ"}</span>
         {focus ? (
@@ -1494,7 +1498,7 @@ function TodayPage({
                 </button>
                 <button className="now-full" type="button" onClick={() => onStart(focus)}>
                   <Play size={16} fill="currentColor" />
-                  {focus.estimateMin}分やる
+                  {usesRounds(focus) ? `15分ずつ（${Math.ceil(focus.estimateMin / 15)}回）` : `${focus.estimateMin}分やる`}
                 </button>
               </div>
             )}
@@ -3980,7 +3984,7 @@ function TimerDock({
     .map((min) => ({ min, at: new Date(Date.now() - min * 60_000) }))
     .filter(({ at }) => at.getTime() > startedMs);
   const showSetup =
-    !task?.routine && !session.starter && !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
+    !task?.routine && !session.starter && !session.round && !session.interrupt && !setupClosed && !paused && now - new Date(session.startedAt).getTime() < 120_000;
   const saveGoal = async () => {
     if (!task || goalDraft.trim() === (task.doneWhen || "")) return;
     await updateTask(task.id, { doneWhen: goalDraft.trim() }, "終わりの目安を設定");
@@ -4049,6 +4053,7 @@ function TimerDock({
         </span>
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
+      <RoundBar session={session} />
       {showSetup && (
         <div className="timer-setup" aria-label="何分で・どこまでやるか">
           <div className="timer-setup-row">
@@ -4211,7 +4216,7 @@ function App() {
   const mobile = useMobile();
   const [taskLink] = useState(() => parseTaskLink(window.location.href));
   const [incomingTask, setIncomingTask] = useState<ParsedTaskLink | null>(() => taskLink.task);
-  const startTimerRef = useRef<((task: Task, opts?: { starter?: boolean }) => Promise<void>) | null>(null);
+  const startTimerRef = useRef<((task: Task, opts?: StartOptions) => Promise<void>) | null>(null);
   const [page, setPage] = useState<Page>(() => {
     const requested = new URLSearchParams(location.search).get("open");
     return requested && requested in PAGE_LABEL ? (requested as Page) : "today";
@@ -4337,9 +4342,9 @@ function App() {
   // 地図の「2分だけ」など、App の外からタスクを始める。
   useEffect(() => {
     const start = async (event: Event) => {
-      const detail = (event as CustomEvent<{ id: string; starter?: boolean }>).detail;
-      const task = detail?.id ? await db.tasks.get(detail.id) : undefined;
-      if (task) startTimerRef.current?.(task, { starter: detail.starter });
+      const { id, ...opts } = (event as CustomEvent<{ id: string } & StartOptions>).detail || { id: "" };
+      const task = id ? await db.tasks.get(id) : undefined;
+      if (task) startTimerRef.current?.(task, opts);
     };
     window.addEventListener("sasshy-start-task", start);
     return () => window.removeEventListener("sasshy-start-task", start);
@@ -4408,10 +4413,13 @@ function App() {
         sessionStorage.setItem(`memo-notified-${memo.id}`, "1");
       });
   }, [memos]);
-  const startTimer = async (task: Task, opts: { starter?: boolean } = {}) => {
+  const startTimer = async (task: Task, opts: StartOptions = {}) => {
     haptic("start");
     playStart();
-    if (activeSession?.taskId === task.id) {
+    // 直前に終えたラウンドなど、画面の情報が古いことがあるので保存先を読み直す。
+    const live = activeSession ? await db.sessions.get(activeSession.id) : undefined;
+    const stillActive = live && !live.deletedAt && (live.status === "running" || live.status === "paused");
+    if (stillActive && activeSession?.taskId === task.id) {
       if (activeSession.status === "paused")
         await resumeFocusSession(activeSession.id);
       if (task.workStartSupport?.days[todayKey()]?.enabled)
@@ -4445,6 +4453,15 @@ function App() {
       );
     if (opts.starter)
       await startFocusSession(task, starterPlannedMin(carriedElapsedSec), carriedElapsedSec, { starter: true });
+    else if (opts.interrupt)
+      await startFocusSession(task, task.estimateMin, carriedElapsedSec, { interrupt: opts.interrupt });
+    else if (usesRounds(task)) {
+      const plan = opts.plan ?? (await planSuggestions(task, null, 1))[0] ?? "";
+      const next = nextRound(task, carriedElapsedSec, plan);
+      const plannedMin = opts.leftMin ? Math.ceil(carriedElapsedSec / 60) + opts.leftMin : next.plannedMin;
+      await startFocusSession(task, plannedMin, carriedElapsedSec, { round: next.round });
+    } else if (opts.leftMin)
+      await startFocusSession(task, Math.ceil(carriedElapsedSec / 60) + opts.leftMin, carriedElapsedSec);
     else await startFocusSession(task, task.estimateMin, carriedElapsedSec);
     setTimerVisible(true);
     syncNow().catch(() => undefined);
@@ -4704,6 +4721,7 @@ function App() {
       <Celebrate />
       <TwoMinutePrompt />
       <StaleSessionPrompt />
+      <RoundEndPrompt />
       {actionMessage && <div className="action-toast">{actionMessage}</div>}
       <nav className="mobile-nav">
         {navItems

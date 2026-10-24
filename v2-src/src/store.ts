@@ -245,6 +245,7 @@ export interface NewTaskInput {
   legacyId?: string;
   flowOrder?: number;
   routine?: Task['routine'];
+  log?: Task['log'];
 }
 
 export async function createTask(input: NewTaskInput, source: HistoryEntry['source'] = 'local'): Promise<Task> {
@@ -282,6 +283,7 @@ export async function createTask(input: NewTaskInput, source: HistoryEntry['sour
     legacyId: input.legacyId,
     ...(input.flowOrder !== undefined ? { flowOrder: input.flowOrder } : {}),
     ...(input.routine ? { routine: input.routine } : {}),
+    ...(input.log ? { log: input.log } : {}),
     sync: { deviceId },
   };
   await db.transaction('rw', [db.tasks, db.history, db.outbox, db.scheduleHistory, db.scheduleOutbox, db.settings], async () => {
@@ -869,7 +871,7 @@ export function setMorningProgress(
   }));
 }
 
-export async function startFocusSession(task: Task, plannedMin = task.estimateMin, carriedElapsedSec = 0, extra: Pick<FocusSession, 'starter'> = {}): Promise<FocusSession> {
+export async function startFocusSession(task: Task, plannedMin = task.estimateMin, carriedElapsedSec = 0, extra: Pick<FocusSession, 'starter' | 'round' | 'interrupt'> = {}): Promise<FocusSession> {
   const deviceId = await getDeviceId();
   const at = nowIso();
   const session: FocusSession = {
@@ -879,6 +881,8 @@ export async function startFocusSession(task: Task, plannedMin = task.estimateMi
     plannedMin: Math.max(1, plannedMin),
     carriedElapsedSec: Math.max(0, carriedElapsedSec),
     ...(extra.starter ? { starter: true } : {}),
+    ...(extra.round ? { round: extra.round } : {}),
+    ...(extra.interrupt ? { interrupt: extra.interrupt } : {}),
     startedAt: at,
     pausedAt: null,
     pausedTotalSec: 0,

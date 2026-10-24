@@ -66,6 +66,8 @@ export interface Task {
   doneWhen?: string;
   /** Set on tasks created by a routine: completing one starts the next step. */
   routine?: { runId: string; name: string; index: number; count: number };
+  /** A record of an interruption or a detour (not a planned task; hidden from today's list). */
+  log?: 'interrupt' | 'detour';
   importance: 0 | 1 | 2;
   urgency: 0 | 1 | 2;
   createdAt: string;
@@ -88,6 +90,10 @@ export interface FocusSession {
   carriedElapsedSec?: number;
   /** Started with 「2分だけ」: ask at the end whether to keep going. */
   starter?: boolean;
+  /** 15-minute round of a longer task. */
+  round?: { index: number; total: number; plan: string; result?: 'done' | 'half' | 'not' };
+  /** This session is an interruption; where to go back afterwards. */
+  interrupt?: { kind: 'interrupt' | 'detour'; returnTaskId: string; returnTitle: string; returnLeftMin: number; returnPlan: string };
   /** Ended by SASSHY because it ran far past the plan (forgotten timer). */
   autoStopped?: boolean;
   /** The user has confirmed how long it really took. */

@@ -596,3 +596,32 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .stale-actions button.primary { border: 0; background: var(--accent); color: var(--accent-ink); }
 .stale-links { display: flex; justify-content: space-between; gap: 8px; }
 .stale-links button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 0; cursor: pointer; }
+
+/* ==== ラウンド・割り込み ==== */
+.round-bar { display: grid; gap: 10px; margin: 4px 0 6px; }
+.round-seg { display: flex; gap: 4px; }
+.round-seg i { flex: 1; height: 6px; border-radius: 99px; background: rgba(255,255,255,.14); }
+.round-seg i.done { background: var(--accent); }
+.round-seg i.now { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.round-plan { display: grid; gap: 6px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.07); }
+.round-plan span { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.6); }
+.round-plan input { border: 0 !important; background: transparent !important; color: #fff; font-size: 19px; font-weight: 700; padding: 0; min-height: 30px; outline: none; }
+.round-plan input::placeholder { color: rgba(255,255,255,.35); }
+.round-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.round-row button, .round-main { min-height: 46px; border-radius: 14px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #fff; font: inherit; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.round-main { min-height: 54px; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 16px; }
+.round-bar.interrupt .round-label { font-size: 13px; font-weight: 700; color: rgba(255,255,255,.7); }
+.round-results { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.round-results button, .round-next button { min-height: 44px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.round-results button.picked, .round-next button.picked { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.round-next { display: grid; gap: 6px; }
+.round-next button { text-align: left; padding: 0 14px; font-size: 14px; }
+.round-next input { min-height: 44px; border-radius: 12px; border: 1px dashed var(--line-strong); padding: 0 14px; font-size: 16px; background: var(--paper); color: var(--ink); }
+.round-break { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; margin: 0 0 12px; padding: 12px 14px; border-radius: 16px; background: var(--accent-soft); color: var(--accent-text); }
+.round-break div { display: grid; }
+.round-break strong { font-family: var(--font-num); font-size: 16px; }
+.round-break small { font-size: 12px; opacity: .85; }
+.round-break button { min-height: 40px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; }
+.round-break button.quiet { background: transparent; color: var(--accent-text); padding: 0 6px; }
+.round-break.over { animation: overpulse 1.6s ease-in-out infinite; }
+.interrupt-sheet .wish-add .button { min-width: 64px; }
