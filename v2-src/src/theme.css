@@ -310,3 +310,5 @@ input, select, textarea { background: var(--paper); border-color: var(--line-str
   .timer-dock:has(.timer-setup) .timer-ring > span { font-size: clamp(36px, 11vw, 46px) !important; }
   .timer-dock:has(.timer-fix) .timer-ring { width: min(46vw, 180px) !important; }
 }
+/* Disabled buttons must look disabled (the accent override hid it) */
+.button:disabled, .button[disabled] { opacity: .45 !important; cursor: default; }

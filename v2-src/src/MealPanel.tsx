@@ -148,13 +148,13 @@ function MealSheet({ onClose }: { onClose: () => void }) {
     : viewDate === shiftDateKey(today, -1)
       ? "昨日"
       : new Date(`${viewDate}T12:00:00`).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
-  const saveExpense = async () => {
+  const saveExpense = async (typedItem = expenseItem, typedAmount = expenseAmount) => {
     setBusy(true);
     try {
-      const amount = expenseAmount.trim() === "" ? null : Number(expenseAmount.replace(/[^0-9]/g, ""));
-      await recordExpense({ item: expenseItem, amount, at: atIso() });
+      const amount = typedAmount.trim() === "" ? null : Number(typedAmount.replace(/[^0-9]/g, ""));
+      await recordExpense({ item: typedItem, amount, at: atIso() });
       syncNow().catch(() => undefined);
-      setMessage(`支出「${expenseItem.trim()}」を記録しました`);
+      setMessage(`支出「${typedItem.trim()}」を記録しました`);
       setExpenseItem("");
       setExpenseAmount("");
     } catch (error) {
@@ -412,16 +412,24 @@ function MealSheet({ onClose }: { onClose: () => void }) {
             className="meal-manual"
             onSubmit={(event) => {
               event.preventDefault();
-              save({ kind, item, price: priceValue, paid: paidText.trim() === "" ? null : Number(paidText.replace(/[^0-9]/g, "")) }, false);
+              // iPhoneの日本語入力は、変換中の文字がまだstateに入っていないことがある。
+              // 押した瞬間の入力欄の中身を直接読む。
+              const form = new FormData(event.currentTarget);
+              const typedItem = String(form.get("item") || "");
+              const typedPrice = String(form.get("price") || "");
+              const typedPaid = String(form.get("paid") || "");
+              const toYen = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^0-9]/g, "")));
+              save({ kind, item: typedItem, price: toYen(typedPrice), paid: toYen(typedPaid) }, false);
             }}
           >
             <label>
               <span>食べたもの</span>
-              <input value={item} onChange={(event) => setItem(event.target.value)} placeholder="例：ローソン 唐揚げ弁当" />
+              <input name="item" value={item} onChange={(event) => setItem(event.target.value)} placeholder="例：ローソン 唐揚げ弁当" />
             </label>
             <label>
               <span>金額</span>
               <input
+                name="price"
                 value={price}
                 onChange={(event) => setPrice(event.target.value)}
                 inputMode="numeric"
@@ -431,10 +439,10 @@ function MealSheet({ onClose }: { onClose: () => void }) {
             {(payment === "split" || payment === "paid_for_others") && (
               <label className="meal-paid">
                 <span>実際に払った額</span>
-                <input value={paidText} onChange={(event) => setPaidText(event.target.value)} inputMode="numeric" placeholder="円" />
+                <input name="paid" value={paidText} onChange={(event) => setPaidText(event.target.value)} inputMode="numeric" placeholder="円" />
               </label>
             )}
-            <button className="button primary" type="submit" disabled={busy || !item.trim()}>
+            <button className="button primary" type="submit" disabled={busy}>
               記録
             </button>
           </form>
@@ -443,18 +451,19 @@ function MealSheet({ onClose }: { onClose: () => void }) {
             className="meal-manual meal-expense"
             onSubmit={(event) => {
               event.preventDefault();
-              saveExpense();
+              const form = new FormData(event.currentTarget);
+              saveExpense(String(form.get("expenseItem") || ""), String(form.get("expenseAmount") || ""));
             }}
           >
             <label>
               <span><Wallet size={13} /> 食事以外の支出</span>
-              <input value={expenseItem} onChange={(event) => setExpenseItem(event.target.value)} placeholder="例：タクシー、ドラッグストア" />
+              <input name="expenseItem" value={expenseItem} onChange={(event) => setExpenseItem(event.target.value)} placeholder="例：タクシー、ドラッグストア" />
             </label>
             <label>
               <span>金額</span>
-              <input value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} inputMode="numeric" placeholder="円" />
+              <input name="expenseAmount" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} inputMode="numeric" placeholder="円" />
             </label>
-            <button className="button secondary" type="submit" disabled={busy || !expenseItem.trim() || !expenseAmount.trim()}>
+            <button className="button secondary" type="submit" disabled={busy}>
               記録
             </button>
           </form>

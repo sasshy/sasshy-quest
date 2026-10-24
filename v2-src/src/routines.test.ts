@@ -39,3 +39,12 @@ describe('routines', () => {
     expect((await getRoutines()).map((r) => r.name)).toEqual(['朝']);
   });
 });
+
+describe('routine started twice', () => {
+  it('continues the unfinished run instead of adding another set', async () => {
+    const first = await startRoutine(DEFAULT_ROUTINES[1]);
+    const again = await startRoutine(DEFAULT_ROUTINES[1]);
+    expect(again.tasks.map((t) => t.id)).toEqual(first.tasks.map((t) => t.id));
+    expect((await db.tasks.toArray()).filter((t) => t.routine?.name === '退社前')).toHaveLength(3);
+  });
+});

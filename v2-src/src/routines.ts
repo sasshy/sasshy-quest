@@ -66,8 +66,16 @@ export function routineStepsText(steps: RoutineStep[]): string {
 /** Add all steps to today (ahead of other tasks) and start the first one. */
 export async function startRoutine(routine: Routine, now = new Date()): Promise<{ tasks: Task[]; session: FocusSession | null }> {
   if (!routine.steps.length) return { tasks: [], session: null };
-  const runId = makeId('routine-run');
   const today = localDateKey(now);
+  // 連打や二重起動で同じルーティンが何組もできないように、今日の途中のものがあれば続きから。
+  const unfinished = (await db.tasks.toArray())
+    .filter((t) => t.routine?.name === routine.name && t.scheduledDate === today && !t.deletedAt && t.status !== 'done')
+    .sort((a, b) => a.routine!.index - b.routine!.index);
+  if (unfinished.length) {
+    const session = await startFocusSession(unfinished[0], unfinished[0].estimateMin);
+    return { tasks: unfinished, session };
+  }
+  const runId = makeId('routine-run');
   const tasks: Task[] = [];
   for (const [index, step] of routine.steps.entries()) {
     tasks.push(await createTask({
