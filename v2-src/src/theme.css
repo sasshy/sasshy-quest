@@ -678,3 +678,11 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .runway-timeline li.fixed > button { background: var(--blue-soft) !important; }
 .runway-timeline li.conflict > button { background: var(--coral-soft) !important; }
 .runway-queue-main > span { background: var(--accent-soft) !important; color: var(--accent-text) !important; }
+.re-ai { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.record-edit .re-ai input { min-height: 40px; font-size: 16px; }
+.re-ai button { min-height: 40px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.ms-menu-ai { display: grid; gap: 6px; padding: 12px; border-radius: 14px; background: var(--accent-soft); }
+.ms-menu-ai > span { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent-text); }
+.ms-menu-ai > div { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.ms2 .form-stack .ms-menu-ai input { min-height: 44px; border-radius: 12px; border: 0; padding: 0 12px; background: var(--paper); }
+.ms-menu-ai button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; white-space: nowrap; }

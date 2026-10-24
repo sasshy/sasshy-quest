@@ -3,11 +3,12 @@ import { resolveWorkspace } from '../_shared/workspace-auth.ts';
 import { parseTaskRequest } from '../sasshy-add-task/validation.ts';
 import { parseTaskMutationRequest, parseTaskSearchRequest, type TaskMutationOperation } from '../sasshy-add-task/management.ts';
 import { TOOLS, SERVER_INSTRUCTIONS, tokyoDate, addDays } from './tools.ts';
+import { applyNutrition, parseMealRequest, parseMealSearchRequest, parseNutritionRequest } from '../sasshy-add-task/meal.ts';
 
 /**
  * SASSHY as a remote MCP server (Streamable HTTP, stateless JSON responses) so
  * Claude and ChatGPT can add / look up / complete tasks directly in a chat.
- * Tasks only (same scope as the ChatGPT action). The secret is the last path
+ * Tasks and meal records (the user approved meals on 2026-10-24). The secret is the last path
  * segment: /functions/v1/sasshy-mcp/<token>; only its SHA-256 is stored.
  */
 
@@ -69,6 +70,36 @@ async function callTool(client: any, syncKey: string, name: string, args: Record
     const { data, error } = await client.rpc('sasshy_v2_action_search_tasks', { p_sync_key: syncKey, ...input });
     if (error) throw error;
     return text(data);
+  }
+  if (name === 'record_meals') {
+    const input = parseMealRequest({ idempotency_key: `mcp-${crypto.randomUUID()}`, meals: args.meals });
+    const { data, error } = await client.rpc('sasshy_v2_ingest_meals', { p_sync_key: syncKey, p_idempotency_key: input.idempotency_key, p_memos: input.memos });
+    if (error) throw error;
+    const memos = Array.isArray(data?.memos) ? data.memos : [];
+    // deno-lint-ignore no-explicit-any
+    const kcal = memos.reduce((sum: number, m: any) => sum + (typeof m.meal?.kcal === 'number' ? m.meal.kcal : 0), 0);
+    // deno-lint-ignore no-explicit-any
+    return text({ ok: true, count: memos.length, meals: memos.map((m: any) => ({ memo_id: m.id, item: m.meal?.item, kind: m.meal?.kind, kcal: m.meal?.kcal ?? null })), message: `SASSHYに${memos.length}品記録しました${kcal ? `（計${kcal}kcal）` : ''}` });
+  }
+  if (name === 'list_meals') {
+    const input = parseMealSearchRequest({ from_date: args.from_date, to_date: args.to_date, missing_nutrition: args.missing_nutrition ?? false, limit: 50 });
+    const { data, error } = await client.rpc('sasshy_v2_action_search_meals', { p_sync_key: syncKey, ...input });
+    if (error) throw error;
+    return text(data);
+  }
+  if (name === 'fix_meal_nutrition') {
+    const updates = parseNutritionRequest({ updates: args.updates });
+    const found = await client.rpc('sasshy_v2_action_search_meals', { p_sync_key: syncKey, p_from_date: null, p_to_date: null, p_missing_nutrition: false, p_limit: 100, p_ids: updates.map((u) => u.memo_id) });
+    if (found.error) throw found.error;
+    const current = new Map<string, { meal: Record<string, unknown> }>();
+    for (const row of (found.data?.meals || []) as { memo_id: string; meal: Record<string, unknown> }[]) current.set(row.memo_id, row);
+    // deno-lint-ignore no-explicit-any
+    const changes = updates.filter((u) => current.has(u.memo_id)).map((u) => ({ memo_id: u.memo_id, revision: u.revision, ...applyNutrition(current.get(u.memo_id)!.meal as any, u) }));
+    if (!changes.length) return text('該当する食事が見つかりませんでした', true);
+    const saved = await client.rpc('sasshy_v2_action_set_meal_nutrition', { p_sync_key: syncKey, p_changes: changes });
+    if (saved.error) throw saved.error;
+    const conflicts = saved.data?.conflicts || [];
+    return text({ ok: true, updated: (saved.data?.updated || []).length, conflicts, message: conflicts.length ? '別の端末で更新されていたものがあります。list_meals で取り直してください' : 'カロリー・栄養を直しました' });
   }
   const operations: Record<string, TaskMutationOperation> = { complete_task: 'complete', update_task: 'update', delete_task: 'delete', reopen_task: 'reopen' };
   if (name in operations) {

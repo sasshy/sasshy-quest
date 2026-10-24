@@ -33,8 +33,8 @@ export interface MealMemoDraft {
   };
 }
 
-export type MealPayment = 'treated' | 'split' | 'paid_for_others';
-const PAYMENT_LABEL: Record<MealPayment, string> = { treated: 'おごってもらった', split: '割り勘', paid_for_others: '自分がおごった' };
+export type MealPayment = 'treated' | 'split' | 'paid_for_others' | 'home';
+const PAYMENT_LABEL: Record<MealPayment, string> = { treated: 'おごってもらった', split: '割り勘', paid_for_others: '自分がおごった', home: '家で食べた' };
 
 const KINDS: MealKind[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 const LABEL: Record<MealKind, string> = { breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食' };
@@ -130,11 +130,11 @@ export function parseMealRequest(body: MealActionRequest, now = new Date()): { i
     }
     let payment: MealPayment | null = null;
     if (input.payment !== undefined && input.payment !== null && input.payment !== '' && input.payment !== 'self') {
-      if (input.payment !== 'treated' && input.payment !== 'split' && input.payment !== 'paid_for_others') fail('paymentは self / treated / split / paid_for_others のいずれかです');
+      if (input.payment !== 'treated' && input.payment !== 'split' && input.payment !== 'paid_for_others' && input.payment !== 'home') fail('paymentは self / home / treated / split / paid_for_others のいずれかです');
       payment = input.payment;
     }
     let paid = optionalNumber(input.paid, 'paid', 1_000_000, 0);
-    if (payment === 'treated' && paid === null) paid = 0;
+    if ((payment === 'treated' || payment === 'home') && paid === null) paid = 0;
     if (payment) meal.payment = payment;
     if (paid !== null && paid !== price) meal.paid = paid;
 

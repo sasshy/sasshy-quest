@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Trash2, X } from "lucide-react";
 import { MEAL_LABEL, PAYMENT_LABEL, removeMeal, updateExpense, updateMeal } from "./meals";
 import { syncNow } from "./sync";
+import { estimateMeal } from "./meal-estimate";
 import type { MealKind, MealPayment, Memo } from "./types";
 
 const KINDS: MealKind[] = ["breakfast", "lunch", "dinner", "snack"];
@@ -29,6 +30,23 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
     const f = (v: string, digits: number) => (v.trim() === "" ? "" : String(Math.round(Number(v) * factor * 10 ** digits) / 10 ** digits));
     return { kcal: f(n.kcal, 0), protein: f(n.protein, 1), fat: f(n.fat, 1), carbs: f(n.carbs, 1) };
   });
+  const [aiText, setAiText] = useState(meal?.item || "");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState("");
+  const askAi = async () => {
+    setAiBusy(true);
+    setAiNote("");
+    try {
+      const { items, note } = await estimateMeal(aiText, "single");
+      const e = items[0];
+      setNut({ kcal: String(e.kcal), protein: String(e.protein), fat: String(e.fat), carbs: String(e.carbs) });
+      setAiNote(note || "AIの推定を入れました。保存で確定します");
+    } catch (err) {
+      setAiNote(err instanceof Error ? err.message : "計算できませんでした");
+    } finally {
+      setAiBusy(false);
+    }
+  };
   const toNum = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^0-9.]/g, "")));
   const [busy, setBusy] = useState(false);
 
@@ -125,6 +143,11 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
                   ))}
                 </div>
                 <small className="re-hint">「2枚→1枚」なら「半分」を押すだけ。薄切りなら「少なめ」も</small>
+                <div className="re-ai">
+                  <input value={aiText} onChange={(e) => setAiText(e.target.value)} placeholder="例：フレンチトースト 1枚 薄切り" aria-label="AIに伝える内容" />
+                  <button type="button" onClick={askAi} disabled={aiBusy || !aiText.trim()}>{aiBusy ? "計算中…" : "AIで計算し直す"}</button>
+                </div>
+                {aiNote && <small className="re-hint">{aiNote}</small>}
               </div>
               {(payment === "split" || payment === "paid_for_others") && (
                 <label className="re-field">

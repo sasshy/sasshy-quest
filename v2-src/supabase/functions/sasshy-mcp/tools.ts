@@ -14,6 +14,8 @@ export const SERVER_INSTRUCTIONS = [
   '日付の指定がなければ今日に入れます。いつかやること・ほしいものは date に "none"。',
   '完了・変更・削除の前には list_tasks で task_id と revision を取得してください。',
   '登録後は、入れた内容を短く1行で伝えてください。責めたり急かしたりしない言葉で。',
+  '食事の話が出たら record_meals で記録します。カロリー・P/F/Cはあなたが推定して入れてください（量・枚数・薄切りなどを反映）。家で食べたものは payment を "home"、price は空に。',
+  '記録済みの食事のカロリーを直すときは list_meals で memo_id と revision を取り、fix_meal_nutrition を使います。',
 ].join('\n');
 
 const dateProp = { type: 'string', description: 'YYYY-MM-DD（日本時間）' };
@@ -103,5 +105,82 @@ export const TOOLS = [
       additionalProperties: false,
     },
     annotations: { title: '消す', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'record_meals',
+    title: 'SASSHYに食事を記録',
+    description: '食べたものを記録します。1品ずつ meals に入れます。カロリー・栄養はあなたが推定して入れてください。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        meals: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 12,
+          items: {
+            type: 'object',
+            properties: {
+              item: { type: 'string', description: '品名と量（例：フレンチトースト 1枚 薄切り）' },
+              kind: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'], description: '省略すると時刻から判断' },
+              eaten_at: { type: 'string', description: '食べた日時 ISO 8601（例：2026-10-24T19:30:00+09:00）。省略で今' },
+              price: { type: 'integer', minimum: 0, description: '値段（円）。家で食べたものは省略' },
+              kcal: { type: 'number', minimum: 0 },
+              protein: { type: 'number', minimum: 0 },
+              fat: { type: 'number', minimum: 0 },
+              carbs: { type: 'number', minimum: 0 },
+              place: { type: 'string', description: '家・会社・店名など' },
+              payment: { type: 'string', enum: ['self', 'home', 'treated', 'split', 'paid_for_others'], description: 'home＝家で食べた（お金なし）' },
+            },
+            required: ['item'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['meals'],
+      additionalProperties: false,
+    },
+    annotations: { title: '食事を記録', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: 'list_meals',
+    title: 'SASSHYの食事記録を見る',
+    description: '期間の食事記録を見ます（省略で直近7日）。カロリーを直す前に memo_id と revision を得るために使います。',
+    inputSchema: {
+      type: 'object',
+      properties: { from_date: dateProp, to_date: dateProp, missing_nutrition: { type: 'boolean', description: 'カロリー未記入だけ' } },
+      additionalProperties: false,
+    },
+    annotations: { title: '食事を見る', readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'fix_meal_nutrition',
+    title: '食事のカロリー・栄養を直す',
+    description: '記録済みの食事のカロリー・P/F/Cを直します。memo_id と revision は list_meals から。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        updates: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: 'object',
+            properties: {
+              memo_id: { type: 'string' },
+              revision: { type: 'string' },
+              kcal: { type: 'number', minimum: 0 },
+              protein: { type: 'number', minimum: 0 },
+              fat: { type: 'number', minimum: 0 },
+              carbs: { type: 'number', minimum: 0 },
+            },
+            required: ['memo_id', 'revision'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['updates'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'カロリーを直す', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ];

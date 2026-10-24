@@ -30,6 +30,7 @@ import {
   suggestKind,
 } from "./meals";
 import { syncNow } from "./sync";
+import { estimateMeal } from "./meal-estimate";
 import type { AppSetting, MealKind, MealPayment, Memo } from "./types";
 import { RecordEditSheet } from "./RecordEditSheet";
 
@@ -182,6 +183,28 @@ function MealSheet({ onClose }: { onClose: () => void }) {
   }, [message]);
 
   const [aiOpen, setAiOpen] = useState(false);
+  const [menuText, setMenuText] = useState("");
+  const [menuBusy, setMenuBusy] = useState(false);
+  // 写真がなくても、メニューを書くだけでAIが品ごとにカロリーを出す（確認してから記録）。
+  const estimateMenu = async (typed: string) => {
+    if (!typed.trim()) return;
+    setMenuBusy(true);
+    try {
+      const { items, note } = await estimateMeal(typed, "menu");
+      const home = /家|実家/.test(place) || kind === "dinner" || kind === "breakfast";
+      setDrafts(items.map((i) => ({
+        kind, item: i.item, price: null, priceSource: null, kcal: i.kcal, protein: i.protein, fat: i.fat, carbs: i.carbs,
+        place: place.trim() || (home ? "家" : null), payment: home ? "home" : payment, use: true,
+      })));
+      setAiOpen(true);
+      setMenuText("");
+      setMessage(note ? `AIの推定：${note}` : "AIの推定です。確認して記録してください");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "計算できませんでした");
+    } finally {
+      setMenuBusy(false);
+    }
+  };
   const [pasted, setPasted] = useState("");
   const [drafts, setDrafts] = useState<(MealInput & { use: boolean })[]>([]);
 
@@ -355,6 +378,14 @@ function MealSheet({ onClose }: { onClose: () => void }) {
                   <button type="button" className="ms-link" onClick={() => setHidden([])}>隠したもの（{hidden.length}）を戻す</button>
                 )}
               </div>
+
+              <form className="ms-menu-ai" onSubmit={(e) => { e.preventDefault(); estimateMenu(String(new FormData(e.currentTarget).get("menu") || menuText)); }}>
+                <span><Sparkles size={14} /> 写真がないとき：メニューを書くだけでAIがカロリーを出す</span>
+                <div>
+                  <input name="menu" value={menuText} onChange={(e) => setMenuText(e.target.value)} placeholder="例：肉じゃが、ご飯、味噌汁、ほうれん草" aria-label="食べたメニュー" />
+                  <button type="submit" disabled={menuBusy}>{menuBusy ? "計算中…" : "AIで記録"}</button>
+                </div>
+              </form>
 
               <details className="ms-more">
                 <summary>
