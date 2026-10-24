@@ -26,7 +26,7 @@ export function HabitsPanel() {
   };
   const toggle = async (memo: Memo, date: string) => {
     const done = !memo.habit!.days.includes(date);
-    if (done) haptic("complete");
+    if (done) haptic("success");
     await setHabitDay(memo, date, done);
     syncNow().catch(() => undefined);
   };
