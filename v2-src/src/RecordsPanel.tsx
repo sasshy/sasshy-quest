@@ -4,6 +4,7 @@ import { db } from "./db";
 import { DiaryMonth, peekDiaryRequest, takeDiaryRequest } from "./DiaryPanel";
 import { RecordEditSheet } from "./RecordEditSheet";
 import { HabitsPanel } from "./HabitsPanel";
+import { MealsLog } from "./MealsLog";
 import { sessionActiveSeconds } from "./insights";
 import {
   MEAL_LABEL,
@@ -138,7 +139,7 @@ export function RecordsPanel() {
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const today = localDateKey(Date.now());
   const [range, setRange] = useState<Range>(1);
-  const [view, setView] = useState<"stats" | "diary" | "habits">(() => (peekDiaryRequest() ? "diary" : "stats"));
+  const [view, setView] = useState<"stats" | "meals" | "diary" | "habits">(() => (peekDiaryRequest() ? "diary" : "stats"));
   useEffect(() => {
     takeDiaryRequest();
     const open = () => { takeDiaryRequest(); setView("diary"); };
@@ -181,10 +182,11 @@ export function RecordsPanel() {
     <div className="page-content records-page">
       <div className="rec-view" role="tablist" aria-label="見るもの">
         <button type="button" role="tab" aria-selected={view === "stats"} className={view === "stats" ? "active" : ""} onClick={() => setView("stats")}>お金・作業</button>
+        <button type="button" role="tab" aria-selected={view === "meals"} className={view === "meals" ? "active" : ""} onClick={() => setView("meals")}>食事</button>
         <button type="button" role="tab" aria-selected={view === "diary"} className={view === "diary" ? "active" : ""} onClick={() => setView("diary")}>日記</button>
         <button type="button" role="tab" aria-selected={view === "habits"} className={view === "habits" ? "active" : ""} onClick={() => setView("habits")}>習慣</button>
       </div>
-      {view === "habits" ? <HabitsPanel /> : view === "diary" ? <DiaryMonth /> : (<>
+      {view === "habits" ? <HabitsPanel /> : view === "meals" ? <MealsLog /> : view === "diary" ? <DiaryMonth /> : (<>
       <div className="rec-range" role="group" aria-label="期間">
         {([1, 7, 30] as Range[]).map((value) => (
           <button key={value} type="button" className={range === value ? "active" : ""} onClick={() => { setRange(value); setSelected(today); }}>

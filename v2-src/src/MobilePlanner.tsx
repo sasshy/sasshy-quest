@@ -121,32 +121,41 @@ export function MobilePlanner({
   );
 
   if (mode === "week") {
+    // 1日＝1行。8〜22時の帯に予定のかたまりを置き、空いている時間がひと目でわかる。
+    const span = DAY_END - DAY_START;
+    const pct = (m: number) => `${((Math.min(DAY_END, Math.max(DAY_START, m)) - DAY_START) / span) * 100}%`;
     return (
       <div className="mp">
-        <div className="mp-week">
+        <div className="wk">
+          <div className="wk-scale" aria-hidden="true">
+            {[8, 12, 16, 20].map((h) => <span key={h} style={{ left: pct(h * 60) }}>{h}</span>)}
+          </div>
           {week.map((key) => {
             const dayTasks = dayTasksFor(tasks, key);
-            const { busy, free } = planDay(dayTasks, key, dayTasks.filter((t) => !isFixed(t)).sort(byFlow).map((t) => t.id));
-            const total = busy + free || 1;
+            const order = dayTasks.filter((t) => !isFixed(t)).sort(byFlow).map((t) => t.id);
+            const plan = planDay(dayTasks, key, order);
+            const placed = plan.rows.filter((r): r is Extract<typeof r, { kind: "task" }> => r.kind === "task");
+            const d = new Date(`${key}T12:00:00`);
+            const dow = d.getDay();
             return (
-              <button key={key} type="button" className={`mp-week-day${key === today ? " today" : ""}`} onClick={() => onShowDay(key)}>
-                <div className="mp-week-head">
-                  <strong>{dateLabel(key)}</strong>
-                  <span>{dayTasks.length ? `${dayTasks.length}件・予定${durationText(busy)}` : "予定なし"}</span>
+              <button key={key} type="button" className={`wk-day${key === today ? " today" : ""}${key < today ? " past" : ""}`} onClick={() => onShowDay(key)}>
+                <div className="wk-head">
+                  <strong className={dow === 0 ? "sun" : dow === 6 ? "sat" : ""}>{d.getDate()}<small>{d.toLocaleDateString("ja-JP", { weekday: "short" })}</small></strong>
+                  <span>{dayTasks.length ? `${dayTasks.length}件・${durationText(plan.busy)}` : "予定なし"}</span>
+                  {key >= today && <em>空き {durationText(plan.free)}</em>}
                 </div>
-                <div className="mp-load" aria-label={`予定${durationText(busy)}、空き${durationText(free)}`}>
-                  <i style={{ width: `${(busy / total) * 100}%` }} />
+                <div className="wk-bar" aria-hidden="true">
+                  {placed.map((r) => (
+                    <i key={r.task.id} className={isFixed(r.task) ? "fixed" : ""} style={{ left: pct(r.entry.startMinute), width: `calc(${pct(r.entry.endMinute)} - ${pct(r.entry.startMinute)})` }} />
+                  ))}
                 </div>
-                {key >= today && <small className="mp-free">空き {durationText(free)}</small>}
-                {dayTasks.length > 0 && (
-                  <ul>
-                    {dayTasks.sort((a, b) => (a.startMinute ?? 9999) - (b.startMinute ?? 9999) || byFlow(a, b)).slice(0, 3).map((t) => (
-                      <li key={t.id}>
-                        {t.startMinute !== null && isFixed(t) ? <b>{hm(t.startMinute)}</b> : null}
-                        {t.title}
+                {placed.length > 0 && (
+                  <ul className="wk-list">
+                    {placed.map((r) => (
+                      <li key={r.task.id} className={isFixed(r.task) ? "fixed" : ""}>
+                        <b>{hm(r.entry.startMinute)}</b>{r.task.title}
                       </li>
                     ))}
-                    {dayTasks.length > 3 && <li className="more">ほか{dayTasks.length - 3}件</li>}
                   </ul>
                 )}
               </button>

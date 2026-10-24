@@ -16,7 +16,11 @@ import type { Task } from "./types";
  */
 const FROM = 6 * 60;
 const TO = 24 * 60;
-const PX = 1.0; // px per minute
+// 1分あたりの高さ（px）。細かいタスクが見えるよう、拡大縮小できる。
+const ZOOMS = [1, 1.6, 2.4, 3.4];
+const loadZoom = () => {
+  try { const v = Number(localStorage.getItem("sasshy-grid-zoom")); return ZOOMS.includes(v) ? v : 1.6; } catch { return 1.6; }
+};
 const SNAP = 15;
 const HOLD_MS = 350;
 
@@ -46,6 +50,15 @@ export function TimeGrid({
     const t = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(t);
   }, []);
+  const [PX, setPX] = useState(loadZoom);
+  const zoom = (dir: 1 | -1) => {
+    const i = Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(PX) + dir));
+    const el = scrollRef.current;
+    const ratio = ZOOMS[i] / PX;
+    setPX(ZOOMS[i]);
+    try { localStorage.setItem("sasshy-grid-zoom", String(ZOOMS[i])); } catch { /* 覚えられなくても表示はできる */ }
+    if (el) requestAnimationFrame(() => { el.scrollTop = (el.scrollTop + el.clientHeight / 2) * ratio - el.clientHeight / 2; });
+  };
   const gridRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -57,7 +70,7 @@ export function TimeGrid({
     const el = scrollRef.current;
     if (!el) return;
     const focus = dates.includes(today) ? now.getHours() * 60 + now.getMinutes() - 90 : 8 * 60;
-    el.scrollTop = Math.max(0, (focus - FROM) * PX);
+    el.scrollTop = Math.max(0, top(focus));
   }, [dates.join()]);
 
   const columns = dates.map((date) => {
@@ -70,6 +83,32 @@ export function TimeGrid({
     const gaps = plan.rows.filter((r): r is Extract<typeof r, { kind: "gap" }> => r.kind === "gap" && r.end - r.start >= 15);
     return { date, placed, gaps, busy: plan.busy, free: plan.free };
   });
+
+  // 細かいタスクがある時間だけ、自動で縦に広げる（1時間ごとに高さを決める）。
+  const MIN_BLOCK = 26;
+  const hourPx = Array.from({ length: (TO - FROM) / 60 }, (_, i) => {
+    const h0 = FROM + i * 60;
+    let need = 60 * PX;
+    for (const c of columns) for (const p of c.placed) {
+      if (p.end <= h0 || p.start >= h0 + 60) continue;
+      const d = Math.max(1, p.end - p.start);
+      if (d < 60) need = Math.max(need, (MIN_BLOCK * 60) / d);
+    }
+    return Math.min(need, 420);
+  });
+  const hourTop = hourPx.reduce<number[]>((acc, h, i) => { acc.push((acc[i - 1] ?? 0) + (i ? hourPx[i - 1] : 0)); return acc; }, []);
+  const top = (m: number) => {
+    const c = Math.min(TO, Math.max(FROM, m));
+    const i = Math.min(hourPx.length - 1, Math.floor((c - FROM) / 60));
+    return hourTop[i] + ((c - FROM - i * 60) / 60) * hourPx[i];
+  };
+  const minuteAt = (y: number) => {
+    for (let i = 0; i < hourPx.length; i += 1) {
+      if (y < hourTop[i] + hourPx[i] || i === hourPx.length - 1) return FROM + i * 60 + Math.max(0, Math.min(60, ((y - hourTop[i]) / hourPx[i]) * 60));
+    }
+    return TO;
+  };
+  const totalHeight = hourTop[hourTop.length - 1] + hourPx[hourPx.length - 1];
 
   const colWidth = () => {
     const grid = gridRef.current;
@@ -107,13 +146,12 @@ export function TimeGrid({
       return;
     }
     event.preventDefault();
-    const minutes = dy / PX;
     let next: Drag;
     if (d.kind === "resize") {
-      next = { ...d, end: Math.max(d.orig.start + 5, snap(d.orig.end + minutes, 5)) };
+      next = { ...d, end: Math.max(d.orig.start + 5, snap(minuteAt(top(d.orig.end) + dy), 5)) };
     } else {
       const length = d.orig.end - d.orig.start;
-      const start = Math.min(TO - length, Math.max(FROM, snap(d.orig.start + minutes)));
+      const start = Math.min(TO - length, Math.max(FROM, snap(minuteAt(top(d.orig.start) + dy))));
       const shift = Math.round((event.clientX - d.startX) / colWidth());
       const index = Math.min(dates.length - 1, Math.max(0, dates.indexOf(d.orig.date) + shift));
       next = { ...d, start, end: start + length, date: dates[index] };
@@ -149,13 +187,15 @@ export function TimeGrid({
   };
 
   const hours = Array.from({ length: (TO - FROM) / 60 + 1 }, (_, i) => FROM + i * 60);
-  const top = (m: number) => (m - FROM) * PX;
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   return (
     <div className="tg">
       <div className="tg-head" style={{ gridTemplateColumns: `40px repeat(${dates.length}, minmax(0, 1fr))` }}>
-        <span />
+        <span className="tg-zoom">
+          <button type="button" aria-label="縮小" disabled={PX === ZOOMS[0]} onClick={() => zoom(-1)}>−</button>
+          <button type="button" aria-label="拡大" disabled={PX === ZOOMS[ZOOMS.length - 1]} onClick={() => zoom(1)}>＋</button>
+        </span>
         {columns.map((c) => {
           const d = new Date(`${c.date}T12:00:00`);
           return (
@@ -170,7 +210,7 @@ export function TimeGrid({
         <div
           className={`tg-grid${drag?.active ? " dragging" : ""}`}
           ref={gridRef}
-          style={{ height: (TO - FROM) * PX, gridTemplateColumns: `40px repeat(${dates.length}, minmax(0, 1fr))` }}
+          style={{ height: totalHeight, gridTemplateColumns: `40px repeat(${dates.length}, minmax(0, 1fr))` }}
           onPointerMove={move}
           onPointerUp={end}
           onPointerCancel={end}
@@ -182,7 +222,7 @@ export function TimeGrid({
             <div key={c.date} className="tg-col">
               {hours.map((h) => <i key={h} className="tg-line" style={{ top: top(h) }} />)}
               {c.gaps.map((g) => (
-                <button key={`g${g.start}`} type="button" className="tg-gap" style={{ top: top(g.start) + 1, height: Math.max(16, (g.end - g.start) * PX - 2) }} onClick={() => onCreateAt(c.date, Math.ceil(g.start / 5) * 5)}>
+                <button key={`g${g.start}`} type="button" className="tg-gap" style={{ top: top(g.start) + 1, height: Math.max(16, top(g.end) - top(g.start) - 2) }} onClick={() => onCreateAt(c.date, Math.ceil(g.start / 5) * 5)}>
                   空き {durationText(g.end - g.start)}
                 </button>
               ))}
@@ -194,8 +234,8 @@ export function TimeGrid({
                 return (
                   <div
                     key={p.task.id}
-                    className={`tg-block${p.fixed ? " fixed" : ""}${live ? " lifted" : ""}${p.task.status === "active" ? " running" : ""}`}
-                    style={{ top: top(start), height: Math.max(20, (endMin - start) * PX - 2) }}
+                    className={`tg-block${p.fixed ? " fixed" : ""}${live ? " lifted" : ""}${p.task.status === "active" ? " running" : ""}${top(endMin) - top(start) < 34 ? " short" : ""}`}
+                    style={{ top: top(start), height: Math.max(22, top(endMin) - top(start) - 2) }}
                     onPointerDown={(e) => begin(e, p, "move")}
                   >
                     <button type="button" className="tg-title" onClick={() => { if (!dragRef.current?.active) onOpen(p.task); }}>
@@ -211,7 +251,7 @@ export function TimeGrid({
               })}
               {/* 別の日に持っていく途中のブロック */}
               {drag?.active && drag.kind === "move" && drag.date === c.date && drag.orig.date !== c.date && (
-                <div className="tg-block lifted" style={{ top: top(drag.start), height: Math.max(20, (drag.end - drag.start) * PX - 2) }}>
+                <div className="tg-block lifted" style={{ top: top(drag.start), height: Math.max(22, top(drag.end) - top(drag.start) - 2) }}>
                   <span className="tg-title"><strong>{drag.orig.task.title}</strong><small>{hm(drag.start)}</small></span>
                 </div>
               )}

@@ -855,3 +855,66 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .mg-title strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg-title small { font-size: 11px; color: var(--muted); }
 .mg-play { width: 32px; height: 32px; border: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; cursor: pointer; }
+.tg-zoom { display: grid; gap: 4px; align-content: center; }
+.tg-zoom button { width: 32px; height: 26px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--ink); font-weight: 700; font-size: 15px; line-height: 1; cursor: pointer; padding: 0; }
+.tg-zoom button:disabled { opacity: .35; }
+.tg-block.short .tg-title { grid-auto-flow: column; justify-content: start; align-items: center; gap: 4px; padding: 2px 5px; }
+.tg-block.short .tg-title strong { -webkit-line-clamp: 1; font-size: 10.5px; }
+.tg-block.short .tg-play { width: 20px; height: 18px; margin: 1px; }
+.tg-block.short .tg-resize { height: 6px; }
+
+/* ==== 週表示（スマホ） ==== */
+.wk { display: grid; gap: 8px; padding: 6px 10px 120px; }
+.wk-scale { position: relative; height: 14px; margin: 0 14px; }
+.wk-scale span { position: absolute; transform: translateX(-50%); font-family: var(--font-num); font-size: 10px; color: var(--faint); }
+.wk-day { display: grid; gap: 7px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.wk-day.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.wk-day.past { opacity: .6; }
+.wk-head { display: flex; align-items: baseline; gap: 8px; }
+.wk-head strong { font-family: var(--font-num); font-size: 18px; display: flex; align-items: baseline; gap: 3px; min-width: 48px; }
+.wk-head strong small { font-family: var(--font-ui); font-size: 11px; color: var(--muted); }
+.wk-head strong.sat { color: #3a6ab0; } .wk-head strong.sun { color: var(--danger); }
+.wk-head span { font-size: 12px; color: var(--muted); }
+.wk-head em { margin-left: auto; font-style: normal; font-size: 11px; font-weight: 700; color: var(--good); }
+.wk-bar { position: relative; height: 10px; border-radius: 99px; background: color-mix(in srgb, var(--good) 14%, var(--soft)); overflow: hidden; }
+.wk-bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; min-width: 3px; }
+.wk-bar i.fixed { background: #3a6ab0; }
+.wk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.wk-list li { font-size: 12px; padding: 3px 8px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-list li.fixed { background: var(--blue-soft); color: var(--ink); }
+.wk-list li b { font-family: var(--font-num); font-weight: 700; margin-right: 4px; opacity: .75; }
+
+/* ==== 記録 › 食事 ==== */
+.rec-view { grid-template-columns: 1.3fr 1fr 1fr 1fr !important; }
+.ml { display: grid; gap: 12px; }
+.ml-cal { display: grid; gap: 6px; }
+.ml-day { aspect-ratio: .8; border: 0; border-radius: 10px; background: var(--soft); display: grid; align-content: center; justify-items: center; gap: 1px; font: inherit; color: var(--faint); cursor: pointer; padding: 2px; }
+.ml-day strong { font-family: var(--font-num); font-size: 12px; }
+.ml-day small { font-family: var(--font-num); font-size: 9px; font-weight: 700; letter-spacing: -.02em; }
+.ml-day.has { color: var(--ink); background: color-mix(in srgb, var(--warn) var(--fill, 15%), var(--paper)); }
+.ml-day.selected { outline: 2px solid var(--ink); outline-offset: 1px; }
+.ml-day.today strong { text-decoration: underline; }
+.ml-day:disabled { background: transparent; opacity: .35; }
+.ml-dayc header, .ml-sum header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.ml-dayc h2, .ml-sum h2 { margin: 0; font-size: 15px; }
+.ml-dayc header small, .ml-sum header small { color: var(--muted); font-family: var(--font-num); }
+.ml-empty { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.ml-list { list-style: none; margin: 0; padding: 0; }
+.ml-list button { width: 100%; display: grid; grid-template-columns: 40px auto 1fr auto; align-items: center; gap: 8px; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ml-list time { font-family: var(--font-num); font-size: 12px; color: var(--faint); }
+.ml-item { display: grid; min-width: 0; font-size: 14px; font-weight: 600; }
+.ml-item small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.ml-yen { font-family: var(--font-num); font-weight: 700; font-size: 13px; }
+.ml-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ml-tiles div { padding: 10px; border-radius: 12px; background: var(--soft); display: grid; gap: 2px; }
+.ml-tiles span { font-size: 11px; color: var(--muted); font-weight: 700; }
+.ml-tiles strong { font-family: var(--font-num); font-size: 18px; }
+.ml-tiles small { font-size: 11px; margin-left: 2px; }
+.ml-pfc { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--muted); font-family: var(--font-num); }
+.ml-top { margin-top: 10px; display: grid; gap: 4px; }
+.ml-top > span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.ml-top ol { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
+.ml-top li { display: flex; justify-content: space-between; }
+.ml-top li b { font-family: var(--font-num); color: var(--accent-text); }
+.ml-export { margin-top: 12px; width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.ml-note { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; }
