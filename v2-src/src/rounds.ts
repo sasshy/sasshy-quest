@@ -1,4 +1,6 @@
 import { db } from './db';
+import { createTask, startFocusSession, updateSession } from './store';
+import { localDateKey } from './meals';
 import type { FocusSession, Task } from './types';
 
 /**
@@ -78,8 +80,6 @@ export const DETOUR_CHOICES = ['X', 'YouTube', 'Kindle', 'その他'];
  * record shows it; coming back offers 続きから.
  */
 export async function startInterruptAt(kind: 'interrupt' | 'detour', label: string, at: number): Promise<FocusSession | null> {
-  const { createTask, startFocusSession, updateSession } = await import('./store');
-  const { localDateKey } = await import('./meals');
   const running = (await db.sessions.where('status').equals('running').toArray())
     .filter((s) => !s.deletedAt && !s.interrupt && Date.parse(s.startedAt) <= at)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
