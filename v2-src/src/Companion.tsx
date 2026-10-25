@@ -17,8 +17,15 @@ import { haptic } from "./feedback";
  */
 type Pose = "sit" | "happy" | "stretch" | "sleep" | "tilt" | "walk";
 const IMAGES: Record<Pose, string> = { sit, happy, stretch, sleep, tilt, walk };
-/** Smooth loops made with ChatGPT (plain #F2F2EF background). Poses without a video use the still image. */
-const VIDEOS: Partial<Record<Pose, string>> = { sit: "companion/cat-idle.mp4" };
+/**
+ * Videos made with ChatGPT (plain #F2F2EF background, same framing). Idle poses
+ * loop; moment poses play once and then go back to the idle loop. Poses
+ * without a video use the still image.
+ */
+const VIDEOS: Partial<Record<Pose, string>> = {
+  sit: "companion/cat-idle.mp4",
+  happy: "companion/cat-happy.mp4",
+};
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
   stretch: "いこう",
@@ -44,7 +51,7 @@ export function Companion() {
   useEffect(() => {
     const onCelebrate = (e: Event) => {
       const levelUp = Boolean((e as CustomEvent<{ levelUp?: boolean }>).detail?.levelUp);
-      show(levelUp ? "walk" : "happy", levelUp ? 4200 : 3200);
+      show(levelUp ? "walk" : "happy", levelUp ? 4200 : 5000);
     };
     const onCompanion = (e: Event) => show(((e as CustomEvent<Pose>).detail || "happy"), 2600);
     window.addEventListener("sasshy-celebrate", onCelebrate);
@@ -66,16 +73,16 @@ export function Companion() {
   return (
     <button
       type="button"
-      className={`companion pose-${pose}${moment ? " moment" : ""}${Object.keys(VIDEOS).length ? " tile" : ""}`}
+      className={`companion pose-${pose}${moment && !VIDEOS[moment.pose] ? " moment" : ""}${Object.keys(VIDEOS).length ? " tile" : ""}`}
       data-moment={moment?.key ?? 0}
       aria-label="相棒のねこ"
-      onClick={() => { haptic("tap"); show("happy", 1800); }}
+      onClick={() => { haptic("tap"); show("happy", VIDEOS.happy ? 5000 : 1800); }}
     >
       {line && <span className="companion-say">{line}</span>}
       <span className="companion-frame">
       {VIDEOS[idlePose] && (
         <video
-          className={`companion-video${!moment && pose === idlePose ? " on" : ""}`}
+          className={`companion-video${!moment || VIDEOS[moment.pose] ? " on" : ""}`}
           src={VIDEOS[idlePose]}
           autoPlay
           loop
@@ -85,9 +92,22 @@ export function Companion() {
           aria-hidden="true"
         />
       )}
-      {/* 全ポーズを重ねておき、切り替えはふわっと入れ替える（パッと変わらないように）。 */}
+      {moment && VIDEOS[moment.pose] && (
+        <video
+          key={moment.key}
+          className="companion-video on"
+          src={VIDEOS[moment.pose]}
+          autoPlay
+          muted
+          playsInline
+          disablePictureInPicture
+          aria-hidden="true"
+          onEnded={() => { if (timer.current) window.clearTimeout(timer.current); setMoment(null); }}
+        />
+      )}
+      {/* 動画がないポーズは静止画。重ねておき、切り替えはふわっと入れ替える。 */}
       {(Object.keys(IMAGES) as Pose[]).map((p) => (
-        <img key={p === pose && moment ? `${p}-${moment.key}` : p} src={IMAGES[p]} alt="" draggable={false} className={p === pose && !(VIDEOS[p] && !moment && p === idlePose) ? "on" : ""} />
+        <img key={p === pose && moment ? `${p}-${moment.key}` : p} src={IMAGES[p]} alt="" draggable={false} className={p === pose && !VIDEOS[p] ? "on" : ""} />
       ))}
       </span>
     </button>
