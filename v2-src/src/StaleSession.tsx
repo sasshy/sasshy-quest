@@ -24,15 +24,31 @@ export function overtimeSec(session: FocusSession, now = Date.now()): number {
 
 /** Ran so far over that it was surely forgotten: ask instead of opening the timer. */
 export function isStale(session: FocusSession, now = Date.now()): boolean {
+  if (session.interrupt?.auto) return false;
   return overtimeSec(session, now) >= Math.max(20 * 60, session.plannedMin * 60);
 }
+
+/** An automatic detour record is closed after this long (you surely moved on). */
+export const AUTO_DETOUR_MAX_MS = 30 * 60_000;
 
 /** Close forgotten sessions at their planned end. Returns the sessions that were cut. */
 export async function autoCutForgotten(now = Date.now()): Promise<FocusSession[]> {
   const running = await db.sessions.where("status").equals("running").toArray();
   const cut: FocusSession[] = [];
   for (const s of running) {
-    if (s.deletedAt || overtimeSec(s, now) < AUTO_CUT_SEC) continue;
+    if (s.deletedAt) continue;
+    if (s.interrupt?.auto) {
+      if (now - Date.parse(s.startedAt) < AUTO_DETOUR_MAX_MS) continue;
+      const closed = await updateSession(s.id, {
+        status: "completed",
+        endedAt: new Date(Date.parse(s.startedAt) + AUTO_DETOUR_MAX_MS).toISOString(),
+        pausedAt: null,
+      }, "寄り道の記録を30分で区切る");
+      await completeTask(s.taskId, true);
+      if (closed) cut.push(closed);
+      continue;
+    }
+    if (overtimeSec(s, now) < AUTO_CUT_SEC) continue;
     const done = await updateSession(s.id, {
       status: "interrupted",
       endedAt: new Date(plannedEndMs(s)).toISOString(),

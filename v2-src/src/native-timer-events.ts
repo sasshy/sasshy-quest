@@ -56,8 +56,8 @@ export async function applyNativeTimerEvent(event: NativeTimerEvent, now = Date.
     // taskId はアプリ名。3時間より前の記録は今さら区切らない。
     const at = Date.parse(event.at) || now;
     if (now - at > 3 * 60 * 60_000) return;
-    const started = await startInterruptAt(detourKind(event.taskId), event.taskId, Math.min(now, at));
-    if (started) window.dispatchEvent(new Event('sasshy-open-timer'));
+    // 静かに記録するだけ。タイマー画面は開かない（戻ってきたら今日の画面に「おかえり」）。
+    await startInterruptAt(detourKind(event.taskId), event.taskId, Math.min(now, at));
     return;
   }
   const session = await db.sessions.get(event.taskId);

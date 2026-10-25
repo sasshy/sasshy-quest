@@ -34,6 +34,8 @@ function remainingSeconds(session: FocusSession): number {
 }
 
 export function notifyNativeAlarm(action: NativeAlarmAction, session: FocusSession): void {
+  // 自動で記録した寄り道は静かに測るだけ（アラームも読み上げもなし）。
+  if (session.interrupt?.auto && action !== 'cancel') return;
   handler()?.postMessage({
     action,
     taskId: session.id,

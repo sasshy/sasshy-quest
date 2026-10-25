@@ -93,7 +93,7 @@ export interface FocusSession {
   /** 15-minute round of a longer task. */
   round?: { index: number; total: number; plan: string; result?: 'done' | 'half' | 'not' };
   /** This session is an interruption; where to go back afterwards. */
-  interrupt?: { kind: 'interrupt' | 'detour'; returnTaskId: string; returnTitle: string; returnLeftMin: number; returnPlan: string };
+  interrupt?: { kind: 'interrupt' | 'detour'; returnTaskId: string; returnTitle: string; returnLeftMin: number; returnPlan: string; auto?: boolean };
   /** Ended by SASSHY because it ran far past the plan (forgotten timer). */
   autoStopped?: boolean;
   /** The user has confirmed how long it really took. */

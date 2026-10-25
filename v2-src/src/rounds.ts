@@ -77,7 +77,8 @@ export const DETOUR_CHOICES = ['X', 'YouTube', 'Kindle', 'その他'];
  * Begin an interruption / detour at a given time (from the iPhone Shortcuts
  * automation, which noted when X / YouTube / kintone was opened). The current
  * work ends at that moment and the detour is timed from then, so the day's
- * record shows it; coming back offers 続きから.
+ * record shows it; coming back offers 続きから. It is only a silent record: no
+ * countdown, alarm or voice while you are in the other app (auto: true).
  */
 export async function startInterruptAt(kind: 'interrupt' | 'detour', label: string, at: number): Promise<FocusSession | null> {
   const running = (await db.sessions.where('status').equals('running').toArray())
@@ -95,7 +96,7 @@ export async function startInterruptAt(kind: 'interrupt' | 'detour', label: stri
     log: kind,
   });
   const detour = await startFocusSession(task, kind === 'detour' ? 5 : 10, 0, {
-    interrupt: { kind, returnTaskId: running.taskId, returnTitle: running.taskTitle, returnLeftMin: leftMin, returnPlan: running.round?.plan || '' },
+    interrupt: { kind, returnTaskId: running.taskId, returnTitle: running.taskTitle, returnLeftMin: leftMin, returnPlan: running.round?.plan || '', auto: true },
   });
   const atIso = new Date(at).toISOString();
   // 開始と終了を、実際にアプリを開いた時刻に合わせる。

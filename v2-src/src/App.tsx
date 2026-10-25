@@ -191,7 +191,7 @@ import { checkRoutineHabit, isHabitMemo } from "./habits";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
 import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
-import { RoundBar, RoundBreakBanner, RoundEndPrompt, type StartOptions } from "./RoundPanel";
+import { RoundBar, RoundBreakBanner, RoundEndPrompt, returnFromInterrupt, type StartOptions } from "./RoundPanel";
 import { nextRound, planSuggestions, usesRounds } from "./rounds";
 import { haptic, playStart } from "./feedback";
 import { nextRoutineTask } from "./routines";
@@ -1482,6 +1482,7 @@ function TodayPage({
     syncNow().catch(() => undefined);
   };
   const focusUsual = focus ? usualMinutes(focus, sessions) : { minutes: 0, fromHistory: false };
+  const autoDetour = Boolean(activeSession?.interrupt?.auto);
   const [armedDelete, setArmedDelete] = useState(false);
   // 実行中のタスクは上のカードに出ているので、リストには重ねない。
   const queueTasks = flexibleTasks.filter((task) => task.id !== focus?.id);
@@ -1495,8 +1496,19 @@ function TodayPage({
       <LeaveBanner />
       <RoundBreakBanner />
       <section className={`now-card${activeSession ? " running" : ""}`}>
-        <span className="now-label">{activeSession ? "いま" : "次はこれ"}</span>
-        {focus ? (
+        <span className="now-label">{autoDetour ? "おかえり" : activeSession ? "いま" : "次はこれ"}</span>
+        {autoDetour && activeSession?.interrupt ? (
+          <div className="now-back">
+            <strong>寄り道 {Math.max(1, Math.round((now - Date.parse(activeSession.startedAt)) / 60_000))}分<small>（{activeSession.taskTitle.replace(/^(寄り道|割り込み)：/, "")}）</small></strong>
+            <button className="now-back-main" type="button" onClick={() => returnFromInterrupt(activeSession, "continue")}>
+              <Play size={18} fill="currentColor" />
+              「{activeSession.interrupt.returnTitle}」の続きから
+            </button>
+            <button className="now-back-sub" type="button" onClick={() => returnFromInterrupt(activeSession, "stop")}>
+              区切るだけ（記録して止める）
+            </button>
+          </div>
+        ) : focus ? (
           <>
             <div className="now-main">
               <div className="now-text">
@@ -4881,7 +4893,7 @@ function App() {
           key={activeSession.id}
           session={activeSession}
           task={activeTask}
-          voice={voice}
+          voice={activeSession.interrupt?.auto ? { ...voice, enabled: false } : voice}
           onClose={() => setTimerVisible(false)}
         />
       )}
