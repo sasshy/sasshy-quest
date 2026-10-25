@@ -65,12 +65,15 @@ export function Companion() {
     <button
       type="button"
       className={`companion pose-${pose}${moment ? " moment" : ""}`}
-      key={moment?.key ?? "idle"}
+      data-moment={moment?.key ?? 0}
       aria-label="相棒のねこ"
       onClick={() => { haptic("tap"); show("happy", 1800); }}
     >
       {line && <span className="companion-say">{line}</span>}
-      <img src={IMAGES[pose]} alt="" draggable={false} />
+      {/* 全ポーズを重ねておき、切り替えはふわっと入れ替える（パッと変わらないように）。 */}
+      {(Object.keys(IMAGES) as Pose[]).map((p) => (
+        <img key={p === pose && moment ? `${p}-${moment.key}` : p} src={IMAGES[p]} alt="" draggable={false} className={p === pose ? "on" : ""} />
+      ))}
     </button>
   );
 }

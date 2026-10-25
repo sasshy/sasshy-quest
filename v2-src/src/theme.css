@@ -932,3 +932,12 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .companion-say { position: absolute; right: 70%; top: 2px; white-space: nowrap; padding: 4px 9px; border-radius: 12px 12px 2px 12px; background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 700; animation: catsay .3s ease both; z-index: 1; }
 @keyframes catsay { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .companion img { animation: none !important; } }
+/* ねこ：ポーズはクロスフェード、動きはばねのようにやわらかく */
+.companion img { position: absolute; inset: 0; opacity: 0; transition: opacity .45s ease, transform .5s cubic-bezier(.2,.9,.3,1.2); animation: none; }
+.companion img.on { opacity: 1; animation: catbreathe 4s ease-in-out infinite; }
+.companion.moment img.on { animation: cathop2 .9s cubic-bezier(.25,.9,.3,1.15), catbreathe 4s ease-in-out .9s infinite; }
+.companion.pose-walk img.on { animation: catwalk2 1.6s ease-in-out, catbreathe 4s ease-in-out 1.6s infinite; }
+.companion.pose-sleep img.on { animation: catbreathe 6s ease-in-out infinite; }
+@keyframes catbreathe { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-.5px) scale(1.01, 1.025); } }
+@keyframes cathop2 { 0% { transform: translateY(0) scale(1, 1); } 18% { transform: translateY(2px) scale(1.04, .95); } 45% { transform: translateY(-16px) scale(.97, 1.04); } 70% { transform: translateY(0) scale(1.05, .95); } 85% { transform: translateY(-2px) scale(.99, 1.01); } 100% { transform: none; } }
+@keyframes catwalk2 { 0% { transform: translateX(18px); opacity: .2; } 60% { transform: translateX(-3px); opacity: 1; } 100% { transform: none; } }
