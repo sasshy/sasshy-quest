@@ -30,6 +30,8 @@ const VIDEOS: Partial<Record<Pose, string>> = {
   happy: "companion/cat-happy.mp4",
   // 開始：前足を伸ばして伸び（1回流して元に戻る）
   stretch: "companion/cat-stretch.mp4",
+  // しばらく使っていない・深夜：丸くなって眠る（ループ）
+  sleep: "companion/cat-sleep.mp4",
 };
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
