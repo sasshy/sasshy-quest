@@ -28,6 +28,8 @@ const VIDEOS: Partial<Record<Pose, string>> = {
   tilt: "companion/cat-watch.mp4",
   // 完了：目を細めて見上げる（1回流して元に戻る）
   happy: "companion/cat-happy.mp4",
+  // 開始：前足を伸ばして伸び（1回流して元に戻る）
+  stretch: "companion/cat-stretch.mp4",
 };
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
@@ -56,7 +58,10 @@ export function Companion() {
       const levelUp = Boolean((e as CustomEvent<{ levelUp?: boolean }>).detail?.levelUp);
       show(levelUp ? "walk" : "happy", levelUp ? 4200 : 5000);
     };
-    const onCompanion = (e: Event) => show(((e as CustomEvent<Pose>).detail || "happy"), 2600);
+    const onCompanion = (e: Event) => {
+      const pose = (e as CustomEvent<Pose>).detail || "happy";
+      show(pose, VIDEOS[pose] ? 5000 : 2600);
+    };
     window.addEventListener("sasshy-celebrate", onCelebrate);
     window.addEventListener("sasshy-companion", onCompanion);
     return () => {
