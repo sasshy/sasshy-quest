@@ -24,7 +24,8 @@ const IMAGES: Record<Pose, string> = { sit, happy, stretch, sleep, tilt, walk };
  */
 const VIDEOS: Partial<Record<Pose, string>> = {
   sit: "companion/cat-idle.mp4",
-  happy: "companion/cat-happy.mp4",
+  // 作業中の見守り：ちらっと見上げてまた戻る（ループ）
+  tilt: "companion/cat-watch.mp4",
 };
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
