@@ -17,6 +17,8 @@ import { haptic } from "./feedback";
  */
 type Pose = "sit" | "happy" | "stretch" | "sleep" | "tilt" | "walk";
 const IMAGES: Record<Pose, string> = { sit, happy, stretch, sleep, tilt, walk };
+/** Smooth loops made with ChatGPT (plain #F2F2EF background). Poses without a video use the still image. */
+const VIDEOS: Partial<Record<Pose, string>> = { sit: "companion/cat-idle.mp4" };
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
   stretch: "いこう",
@@ -64,16 +66,30 @@ export function Companion() {
   return (
     <button
       type="button"
-      className={`companion pose-${pose}${moment ? " moment" : ""}`}
+      className={`companion pose-${pose}${moment ? " moment" : ""}${Object.keys(VIDEOS).length ? " tile" : ""}`}
       data-moment={moment?.key ?? 0}
       aria-label="相棒のねこ"
       onClick={() => { haptic("tap"); show("happy", 1800); }}
     >
       {line && <span className="companion-say">{line}</span>}
+      <span className="companion-frame">
+      {VIDEOS[idlePose] && (
+        <video
+          className={`companion-video${!moment && pose === idlePose ? " on" : ""}`}
+          src={VIDEOS[idlePose]}
+          autoPlay
+          loop
+          muted
+          playsInline
+          disablePictureInPicture
+          aria-hidden="true"
+        />
+      )}
       {/* 全ポーズを重ねておき、切り替えはふわっと入れ替える（パッと変わらないように）。 */}
       {(Object.keys(IMAGES) as Pose[]).map((p) => (
-        <img key={p === pose && moment ? `${p}-${moment.key}` : p} src={IMAGES[p]} alt="" draggable={false} className={p === pose ? "on" : ""} />
+        <img key={p === pose && moment ? `${p}-${moment.key}` : p} src={IMAGES[p]} alt="" draggable={false} className={p === pose && !(VIDEOS[p] && !moment && p === idlePose) ? "on" : ""} />
       ))}
+      </span>
     </button>
   );
 }
