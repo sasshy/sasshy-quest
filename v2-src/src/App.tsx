@@ -1482,6 +1482,7 @@ function TodayPage({
     syncNow().catch(() => undefined);
   };
   const focusUsual = focus ? usualMinutes(focus, sessions) : { minutes: 0, fromHistory: false };
+  const [armedDelete, setArmedDelete] = useState(false);
   // 実行中のタスクは上のカードに出ているので、リストには重ねない。
   const queueTasks = flexibleTasks.filter((task) => task.id !== focus?.id);
   const startNext = async () => {
@@ -1525,19 +1526,27 @@ function TodayPage({
                 )}
                 <button type="button" onClick={async () => {
                   stopVoice();
-                  await discardFocusSession(activeSession.id);
+                  await discardRunning(activeSession.taskId);
+                  toast(`「${activeSession.taskTitle}」の開始を取り消しました`);
                   syncNow().catch(() => undefined);
                 }}>
                   <Undo2 size={14} /> 取り消す
                 </button>
-                <button type="button" className="danger" onClick={async () => {
-                  if (!window.confirm(`「${activeSession.taskTitle}」を消しますか？（ゴミ箱から戻せます）`)) return;
+                {/* 確認ダイアログに頼らず、2回押しで消す（iPhoneでも確実に効く）。 */}
+                <button type="button" className={`danger${armedDelete ? " armed" : ""}`} onClick={async () => {
+                  if (!armedDelete) {
+                    setArmedDelete(true);
+                    window.setTimeout(() => setArmedDelete(false), 3000);
+                    return;
+                  }
+                  setArmedDelete(false);
                   stopVoice();
-                  await discardFocusSession(activeSession.id);
+                  await discardRunning(activeSession.taskId);
                   await softDeleteTask(activeSession.taskId);
+                  toast(`「${activeSession.taskTitle}」を消しました（ゴミ箱から戻せます）`);
                   syncNow().catch(() => undefined);
                 }}>
-                  <Trash2 size={14} /> 消す
+                  <Trash2 size={14} /> {armedDelete ? "もう一度で消す" : "消す"}
                 </button>
               </div>
             )}
@@ -3848,6 +3857,15 @@ function SettingsPage({
   );
 }
 
+const toast = (text: string) => window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: text }));
+
+/** Undo a start: every running/paused timer of this task is removed (not just the newest). */
+async function discardRunning(taskId: string): Promise<void> {
+  const open = (await db.sessions.where("taskId").equals(taskId).toArray())
+    .filter((s) => !s.deletedAt && (s.status === "running" || s.status === "paused"));
+  for (const s of open) await discardFocusSession(s.id);
+}
+
 function TimerDock({
   session,
   task,
@@ -3863,6 +3881,7 @@ function TimerDock({
   const [voiceNeedsTap, setVoiceNeedsTap] = useState(false);
   const [durationDraft, setDurationDraft] = useState(String(session.plannedMin));
   const [fixOpen, setFixOpen] = useState(false);
+  const [armedDelete, setArmedDelete] = useState(false);
   const [stopDraft, setStopDraft] = useState("");
   const [fixError, setFixError] = useState("");
   // 始めて最初の2分だけ「何分で・どこまで」を決める欄を出す（開始前には何も聞かない）。
@@ -4119,7 +4138,8 @@ function TimerDock({
   const discard = async (ask = true) => {
     if (ask && !window.confirm("このタイマーの記録を取り消しますか？（作業していなかった時用）")) return;
     stopVoice();
-    await discardFocusSession(session.id);
+    await discardRunning(session.taskId);
+    toast(`「${session.taskTitle}」の開始を取り消しました`);
     syncNow().catch(() => undefined);
     onClose();
   };
@@ -4364,15 +4384,20 @@ function TimerDock({
         <button type="button" onClick={() => discard(false)}>
           <Undo2 size={15} /> 開始を取り消す
         </button>
-        <button type="button" className="danger" onClick={async () => {
-          if (!window.confirm(`「${session.taskTitle}」を消しますか？（ゴミ箱から戻せます）`)) return;
+        <button type="button" className={`danger${armedDelete ? " armed" : ""}`} onClick={async () => {
+          if (!armedDelete) {
+            setArmedDelete(true);
+            window.setTimeout(() => setArmedDelete(false), 3000);
+            return;
+          }
           stopVoice();
-          await discardFocusSession(session.id);
+          await discardRunning(session.taskId);
           await softDeleteTask(session.taskId);
+          toast(`「${session.taskTitle}」を消しました（ゴミ箱から戻せます）`);
           syncNow().catch(() => undefined);
           onClose();
         }}>
-          <Trash2 size={15} /> このタスクを消す
+          <Trash2 size={15} /> {armedDelete ? "もう一度押すと消す" : "このタスクを消す"}
         </button>
       </div>
     </div>

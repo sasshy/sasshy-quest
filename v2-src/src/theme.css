@@ -979,3 +979,4 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 
 .work-log-done { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 2px; font-size: 13px; color: var(--ink); cursor: pointer; }
 .work-log-done input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--accent); flex: none; }
+.now-actions button.danger.armed, .timer-undo-row button.danger.armed { background: var(--danger); border-color: var(--danger); color: #fff; }
