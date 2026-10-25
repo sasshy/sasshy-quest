@@ -34,48 +34,70 @@ export function computeProgress(tasks: Task[], sessions: FocusSession[], now = n
 export const minutesText = (min: number) =>
   min >= 60 ? `${Math.floor(min / 60)}時間${min % 60 ? `${min % 60}分` : ''}` : `${min}分`;
 
-export interface Celebration { gainedXp: number; level: number; levelUp: boolean; doneToday: number; workTodayMin: number; workMonthMin: number }
+/**
+ * 今週のビン: one marble per finished task, a fresh jar every Monday. Small
+ * numbers you can count, compared only with your own past weeks.
+ */
+export const weekStart = (d: Date): Date => {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+};
+export interface WeekJar { start: string; marbles: number; minutes: number }
 
-const LEVEL_KEY = 'sasshy-last-level';
-const XP_KEY = 'sasshy-last-xp';
-const readNumber = (key: string): number | null => {
-  try {
-    const v = localStorage.getItem(key);
-    return v === null ? null : Number(v);
-  } catch {
-    return null;
+/** Jars for the last `weeks` weeks, oldest first; the last one is this week. */
+export function weeklyJars(tasks: Task[], sessions: FocusSession[], now = new Date(), weeks = 8): WeekJar[] {
+  const first = weekStart(now);
+  first.setDate(first.getDate() - 7 * (weeks - 1));
+  const jars: WeekJar[] = Array.from({ length: weeks }, (_, i) => {
+    const d = new Date(first);
+    d.setDate(d.getDate() + 7 * i);
+    return { start: localDateKey(d), marbles: 0, minutes: 0 };
+  });
+  const index = (iso: string) => Math.round((weekStart(new Date(iso)).getTime() - first.getTime()) / (7 * 86_400_000));
+  for (const t of tasks) {
+    if (t.deletedAt || t.log || t.status !== 'done' || !t.completedAt) continue;
+    const i = index(t.completedAt);
+    if (i >= 0 && i < weeks) jars[i].marbles += 1;
   }
-};
-const writeNumber = (key: string, value: number) => {
-  try { localStorage.setItem(key, String(value)); } catch { /* private mode */ }
-};
+  for (const s of sessions) {
+    const sec = sessionActiveSeconds(s);
+    if (!sec || !s.endedAt) continue;
+    const i = index(s.endedAt);
+    if (i >= 0 && i < weeks) jars[i].minutes += sec / 60;
+  }
+  return jars.map((j) => ({ ...j, minutes: Math.round(j.minutes) }));
+}
 
-/** Called after a task is completed: celebration (check, XP, maybe level up) and a short summary. */
+/** Best week before this one (over every recorded week). */
+export function bestPastWeek(tasks: Task[], now = new Date()): number {
+  const thisWeek = weekStart(now).getTime();
+  const counts = new Map<number, number>();
+  for (const t of tasks) {
+    if (t.deletedAt || t.log || t.status !== 'done' || !t.completedAt) continue;
+    const w = weekStart(new Date(t.completedAt)).getTime();
+    if (w < thisWeek) counts.set(w, (counts.get(w) || 0) + 1);
+  }
+  return Math.max(0, ...counts.values());
+}
+
+export interface Celebration { marbles: number; record: boolean; doneToday: number; workTodayMin: number; workMonthMin: number }
+
+/** Called after a task is completed: a marble drops into this week's jar (bigger burst on a new best week). */
 export async function announceCompletion(): Promise<Celebration> {
-  const p = computeProgress(await db.tasks.toArray(), await db.sessions.toArray());
-  const xp = xpFrom(p);
-  const { level } = levelFrom(xp);
-  const lastXp = readNumber(XP_KEY);
-  const lastLevel = readNumber(LEVEL_KEY) ?? level;
-  const gainedXp = lastXp === null ? 10 : Math.max(10, xp - lastXp);
-  writeNumber(XP_KEY, xp);
-  writeNumber(LEVEL_KEY, level);
+  const tasks = await db.tasks.toArray();
+  const sessions = await db.sessions.toArray();
+  const p = computeProgress(tasks, sessions);
+  const jars = weeklyJars(tasks, sessions, new Date(), 2);
+  const marbles = jars[1].marbles;
+  const best = bestPastWeek(tasks);
   const celebration: Celebration = {
-    gainedXp, level, levelUp: level > lastLevel,
+    marbles, record: best > 0 && marbles === best + 1,
     doneToday: p.doneToday, workTodayMin: p.workTodayMin, workMonthMin: p.workMonthMin,
   };
   window.dispatchEvent(new CustomEvent('sasshy-celebrate', { detail: celebration }));
   window.dispatchEvent(new CustomEvent('sasshy-toast', {
-    detail: `✓ 今日${p.doneToday}件目　今日の作業 ${minutesText(p.workTodayMin)}・今月 ${minutesText(p.workMonthMin)}`,
+    detail: `✓ 今週${marbles}個目のビー玉　今日の作業 ${minutesText(p.workTodayMin)}`,
   }));
   return celebration;
-}
-
-/** XP = 10 per completed task + 1 per minute worked. Derived from records, so it only grows. */
-export const XP_PER_LEVEL = 100;
-export function xpFrom(p: Pick<Progress, 'doneTotal' | 'workTotalMin'>): number {
-  return p.doneTotal * 10 + p.workTotalMin;
-}
-export function levelFrom(xp: number): { level: number; into: number; need: number } {
-  return { level: Math.floor(xp / XP_PER_LEVEL) + 1, into: xp % XP_PER_LEVEL, need: XP_PER_LEVEL };
 }

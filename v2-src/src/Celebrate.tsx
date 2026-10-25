@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { ACCENT_LABEL, ACCENT_UNLOCK, type Accent } from "./appearance";
 import { haptic, playDone, playLevelUp } from "./feedback";
 import type { Celebration } from "./progress";
 
 const COLORS = ["var(--accent)", "#AFA9EC", "#EF9F27", "#5DCAA5"];
 
-/** Full-screen burst when a task is completed; a bigger one on level up. */
+/** Full-screen burst when a task is completed; a bigger one when this week beats every past week. */
 export function Celebrate() {
   const [shot, setShot] = useState<(Celebration & { key: number }) | null>(null);
   useEffect(() => {
@@ -13,7 +12,7 @@ export function Celebrate() {
       const detail = (event as CustomEvent<Celebration>).detail;
       if (!detail) return;
       setShot({ ...detail, key: Date.now() });
-      if (detail.levelUp) {
+      if (detail.record) {
         haptic("levelUp");
         playLevelUp();
       } else {
@@ -26,16 +25,15 @@ export function Celebrate() {
   }, []);
   useEffect(() => {
     if (!shot) return;
-    const timer = window.setTimeout(() => setShot(null), shot.levelUp ? 2600 : 1300);
+    const timer = window.setTimeout(() => setShot(null), shot.record ? 2600 : 1300);
     return () => window.clearTimeout(timer);
   }, [shot]);
   if (!shot) return null;
-  const unlocked = (Object.keys(ACCENT_UNLOCK) as Accent[]).find((a) => ACCENT_UNLOCK[a] === shot.level);
   return (
-    <div className={`celebrate${shot.levelUp ? " level-up" : ""}`} key={shot.key} aria-live="polite">
-      {Array.from({ length: shot.levelUp ? 28 : 16 }, (_, i) => {
-        const angle = (Math.PI * 2 * i) / (shot.levelUp ? 28 : 16);
-        const r = (shot.levelUp ? 150 : 100) + (i % 3) * 18;
+    <div className={`celebrate${shot.record ? " level-up" : ""}`} key={shot.key} aria-live="polite">
+      {Array.from({ length: shot.record ? 28 : 16 }, (_, i) => {
+        const angle = (Math.PI * 2 * i) / (shot.record ? 28 : 16);
+        const r = (shot.record ? 150 : 100) + (i % 3) * 18;
         return (
           <i
             key={i}
@@ -48,16 +46,16 @@ export function Celebrate() {
           />
         );
       })}
-      {shot.levelUp ? (
+      {shot.record ? (
         <div className="level-card">
-          <small>LEVEL UP</small>
-          <strong>Lv.{shot.level}</strong>
-          {unlocked && <span>新しい色「{ACCENT_LABEL[unlocked]}」が使えるようになりました</span>}
+          <small>自己ベスト</small>
+          <strong>{shot.marbles}個</strong>
+          <span>今週のビンが、今までで一番いっぱい</span>
         </div>
       ) : (
         <div className="check-pop">✓</div>
       )}
-      <b className="xp-fly">+{shot.gainedXp} XP</b>
+      <b className="xp-fly"><i className="marble-fly" />今週{shot.marbles}個目</b>
     </div>
   );
 }

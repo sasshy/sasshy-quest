@@ -11,7 +11,7 @@ import { haptic } from "./feedback";
 
 /**
  * 相棒のねこ. Sits next to today's progress. It only moves at moments:
- * starting (stretch), finishing (looks up and hops), level up (walks over).
+ * starting (stretch), finishing (looks up and hops), a best week (walks over).
  * While a timer runs it watches quietly; if SASSHY wasn't used for a while it
  * is just asleep — it never gets sad or weaker.
  */
@@ -36,7 +36,7 @@ const VIDEOS: Partial<Record<Pose, string>> = {
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
   stretch: "いこう",
-  walk: "レベルアップ！",
+  walk: "自己ベスト！",
   sleep: "おかえり。2分だけやる？",
 };
 
@@ -57,8 +57,8 @@ export function Companion() {
 
   useEffect(() => {
     const onCelebrate = (e: Event) => {
-      const levelUp = Boolean((e as CustomEvent<{ levelUp?: boolean }>).detail?.levelUp);
-      show(levelUp ? "walk" : "happy", levelUp ? 4200 : 5000);
+      const record = Boolean((e as CustomEvent<{ record?: boolean }>).detail?.record);
+      show(record ? "walk" : "happy", record ? 4200 : 5000);
     };
     const onCompanion = (e: Event) => {
       const pose = (e as CustomEvent<Pose>).detail || "happy";

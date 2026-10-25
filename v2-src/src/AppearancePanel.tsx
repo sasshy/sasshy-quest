@@ -1,9 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { Lock } from "lucide-react";
 import { db } from "./db";
 import {
   ACCENT_LABEL,
-  ACCENT_UNLOCK,
   DEFAULT_APPEARANCE,
   FONT_LABEL,
   getAppearance,
@@ -11,22 +9,18 @@ import {
   type Accent,
   type FontChoice,
 } from "./appearance";
-import { computeProgress, levelFrom, xpFrom } from "./progress";
 import { playDone } from "./feedback";
 
 const nativeBridge = () =>
   (window as unknown as { webkit?: { messageHandlers?: { sasshyAlarm?: { postMessage: (m: unknown) => void } } } })
     .webkit?.messageHandlers?.sasshyAlarm;
 
-/** Settings: font, sound, accent color (unlocked by level), daily goal. */
+/** Settings: font, sound, accent color, daily goal. */
 export function AppearancePanel() {
   const a = useLiveQuery(async () => {
     await db.settings.get("appearance");
     return getAppearance();
   }, [], DEFAULT_APPEARANCE) || DEFAULT_APPEARANCE;
-  const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
-  const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
-  const { level } = levelFrom(xpFrom(computeProgress(tasks, sessions)));
   return (
     <section className="settings-section appearance-panel">
       <h2>見た目と音</h2>
@@ -42,22 +36,20 @@ export function AppearancePanel() {
         </div>
       </div>
       <div className="ap-group">
-        <span className="ap-label">アクセントの色（レベルで増えます・今 Lv.{level}）</span>
+        <span className="ap-label">アクセントの色</span>
         <div className="ap-accents">
-          {(Object.keys(ACCENT_UNLOCK) as Accent[]).map((accent) => {
-            const locked = level < ACCENT_UNLOCK[accent];
+          {(Object.keys(ACCENT_LABEL) as Accent[]).map((accent) => {
             return (
               <button
                 key={accent}
                 type="button"
                 data-swatch={accent}
                 className={`ap-accent${a.accent === accent ? " active" : ""}`}
-                disabled={locked}
-                aria-label={locked ? `${ACCENT_LABEL[accent]}（Lv.${ACCENT_UNLOCK[accent]}で解放）` : ACCENT_LABEL[accent]}
+                aria-label={ACCENT_LABEL[accent]}
                 onClick={() => setAppearance({ accent })}
               >
                 <i />
-                <small>{locked ? <><Lock size={11} /> Lv.{ACCENT_UNLOCK[accent]}</> : ACCENT_LABEL[accent]}</small>
+                <small>{ACCENT_LABEL[accent]}</small>
               </button>
             );
           })}

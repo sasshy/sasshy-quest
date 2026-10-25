@@ -14,7 +14,6 @@ export interface Appearance { id: 'appearance'; font: FontChoice; sound: boolean
 export const DEFAULT_APPEARANCE: Appearance = { id: 'appearance', font: 3, sound: true, accent: 'purple', dailyGoalMin: 60 };
 
 /** Level needed to use each accent. */
-export const ACCENT_UNLOCK: Record<Accent, number> = { purple: 1, blue: 3, orange: 5, green: 7, gold: 10 };
 export const ACCENT_LABEL: Record<Accent, string> = { purple: '紫', blue: '青', orange: 'オレンジ', green: '緑', gold: 'ゴールド' };
 export const FONT_LABEL: Record<FontChoice, string> = { 1: '標準（ヒラギノ）', 2: 'Outfit（丸み）', 3: 'Space Grotesk（スタイリッシュ）' };
 
