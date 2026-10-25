@@ -92,7 +92,7 @@ export function Companion() {
       <span className="companion-frame">
       {VIDEOS[idlePose] && (
         <video
-          className={`companion-video${!moment || VIDEOS[moment.pose] ? " on" : ""}`}
+          className={`companion-video${!moment ? " on" : ""}`}
           src={VIDEOS[idlePose]}
           autoPlay
           loop

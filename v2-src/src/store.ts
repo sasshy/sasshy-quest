@@ -1001,6 +1001,20 @@ export async function createManualFocusSession(task: Task, startedAt: string, en
   return session;
 }
 
+/**
+ * 実績の時刻を入れた = その時間にやり終えた。タスクを完了にして、完了時刻を
+ * 実際に終えた時刻にそろえる。同じタスクで動いたままのタイマーは消す。
+ */
+export async function completeTaskFromActual(taskId: string, endedAt: string, keepSessionId?: string): Promise<void> {
+  const leftovers = (await db.sessions.where('taskId').equals(taskId).toArray())
+    .filter((s) => s.id !== keepSessionId && !s.deletedAt && (s.status === 'running' || s.status === 'paused'));
+  for (const s of leftovers) await discardFocusSession(s.id);
+  const task = await db.tasks.get(taskId);
+  if (!task || task.deletedAt) return;
+  if (task.status !== 'done') await completeTask(taskId, true);
+  await updateTask(taskId, { completedAt: endedAt }, '実績の終了時刻で完了', false);
+}
+
 export async function softDeleteSession(id: string): Promise<FocusSession | null> {
   return updateSession(id, { deletedAt: nowIso() }, '作業実績を削除');
 }

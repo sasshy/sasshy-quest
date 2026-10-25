@@ -73,6 +73,7 @@ import { createBackup, downloadBackup } from "./backup";
 import {
   compactDate,
   completeTask,
+  completeTaskFromActual,
   createManualFocusSession,
   createMemo,
   createTask,
@@ -708,7 +709,7 @@ function defaultActualRange(task: Task): { start: string; end: string } {
   return { start: toLocalDateTimeInput(start), end: toLocalDateTimeInput(end) };
 }
 
-function WorkLogRow({ session }: { session: FocusSession }) {
+function WorkLogRow({ session, markDone }: { session: FocusSession; markDone: boolean }) {
   const [start, setStart] = useState(toLocalDateTimeInput(session.startedAt));
   const [end, setEnd] = useState(
     toLocalDateTimeInput(session.endedAt || new Date()),
@@ -724,17 +725,20 @@ function WorkLogRow({ session }: { session: FocusSession }) {
       setMessage("終了時刻は開始時刻より後にしてください");
       return;
     }
+    const endedAt = new Date(end).toISOString();
     await updateSession(
       session.id,
       {
         startedAt: new Date(start).toISOString(),
-        endedAt: new Date(end).toISOString(),
+        endedAt,
         pausedAt: null,
         pausedTotalSec: 0,
+        ...(markDone ? { status: "completed" as const } : {}),
       },
       "作業実績の時刻を修正",
     );
-    setMessage("実績を更新しました");
+    if (markDone) await completeTaskFromActual(session.taskId, endedAt, session.id);
+    setMessage(markDone ? "実績を更新して、完了にしました" : "実績を更新しました");
     syncNow().catch(() => undefined);
   };
   return (
@@ -861,6 +865,7 @@ function TaskEditor({
       setSaving(false);
     }
   };
+  const [actualDone, setActualDone] = useState(task.status !== "done");
   const addActual = async () => {
     const minutes = actualMinutesBetween(actualRange.start, actualRange.end);
     if (!minutes) {
@@ -868,7 +873,13 @@ function TaskEditor({
       return;
     }
     try {
-      await createManualFocusSession(task, actualRange.start, actualRange.end);
+      const added = await createManualFocusSession(task, actualRange.start, actualRange.end);
+      if (actualDone) {
+        await completeTaskFromActual(task.id, added.endedAt!, added.id);
+        syncNow().catch(() => undefined);
+        onClose();
+        return;
+      }
       setActualMessage(`${minutes}分の実績を追加しました`);
       setAddingActual(false);
       setActualRange(defaultActualRange(task));
@@ -1241,13 +1252,19 @@ function TaskEditor({
                 </button>
               </div>
             )}
+            {task.status !== "done" && (
+              <label className="work-log-done">
+                <input type="checkbox" checked={actualDone} onChange={(event) => setActualDone(event.currentTarget.checked)} />
+                <span>時刻を入れたら、その時間にやり終えたことにして完了にする</span>
+              </label>
+            )}
             {actualMessage && (
               <p className="work-log-message">{actualMessage}</p>
             )}
             {taskSessions.length > 0 && (
               <div className="work-log-list">
                 {taskSessions.map((session) => (
-                  <WorkLogRow key={session.id} session={session} />
+                  <WorkLogRow key={session.id} session={session} markDone={actualDone} />
                 ))}
               </div>
             )}
