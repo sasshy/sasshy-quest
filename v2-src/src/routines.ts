@@ -1,4 +1,5 @@
 import { db, makeId } from './db';
+import { usualMinutes } from './insights';
 import { createTask, startFocusSession } from './store';
 import type { FocusSession, Task } from './types';
 import { localDateKey } from './work-start';
@@ -110,7 +111,7 @@ export async function startRoutine(routine: Routine, now = new Date()): Promise<
     .filter((t) => t.routine?.name === routine.name && t.scheduledDate === today && !t.deletedAt && t.status !== 'done')
     .sort((a, b) => a.routine!.index - b.routine!.index);
   if (unfinished.length) {
-    const session = await startFocusSession(unfinished[0], unfinished[0].estimateMin);
+    const session = await startFocusSession(unfinished[0], usualMinutes(unfinished[0], await db.sessions.toArray()).minutes);
     return { tasks: unfinished, session };
   }
   const runId = makeId('routine-run');
@@ -126,7 +127,7 @@ export async function startRoutine(routine: Routine, now = new Date()): Promise<
       routine: { runId, name: routine.name, index, count: routine.steps.length },
     }));
   }
-  const session = await startFocusSession(tasks[0], tasks[0].estimateMin);
+  const session = await startFocusSession(tasks[0], usualMinutes(tasks[0], await db.sessions.toArray()).minutes);
   return { tasks, session };
 }
 

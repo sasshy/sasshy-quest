@@ -1,4 +1,4 @@
-import type { FocusSession } from './types';
+import type { FocusSession, Task } from './types';
 
 export interface SessionDuration {
   activeMin: number;
@@ -79,7 +79,7 @@ export function predictDuration(title: string, sessions: FocusSession[], exclude
   const routineHint = routineEstimateHint(title);
   const grouped = new Map<string, FocusSession[]>();
   sessions
-    .filter((session) => session.taskId !== excludeTaskId && taskFamily(session.taskTitle) === family && !session.deletedAt)
+    .filter((session) => session.taskId !== excludeTaskId && taskFamily(session.taskTitle) === family && !session.deletedAt && !session.autoStopped)
     .forEach((session) => grouped.set(session.taskId, [...(grouped.get(session.taskId) || []), session]));
   const totals = [...grouped.values()]
     .filter((items) => items.some((session) => session.status === 'completed'))
@@ -106,6 +106,17 @@ export function predictDuration(title: string, sessions: FocusSession[], exclude
     sampleSize: reliable.length,
     ignoredCount,
   };
+}
+
+/**
+ * Timer length for a plain start: what this kind of task really took before
+ * (median of at least 2 believable past runs; forgotten timers are ignored),
+ * else the task's own estimate. Any whole minute, not 15-minute steps.
+ */
+export function usualMinutes(task: Pick<Task, 'id' | 'title' | 'estimateMin'>, sessions: FocusSession[]): { minutes: number; fromHistory: boolean } {
+  const prediction = predictDuration(task.title, sessions, task.id);
+  if (prediction && prediction.sampleSize >= 2) return { minutes: prediction.predictedMin, fromHistory: true };
+  return { minutes: task.estimateMin, fromHistory: false };
 }
 
 export function taskActualDuration(taskId: string, sessions: FocusSession[]): SessionDuration | null {

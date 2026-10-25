@@ -155,6 +155,7 @@ import {
   sessionDuration,
   taskActualDuration,
   taskWorkedSeconds,
+  usualMinutes,
 } from "./insights";
 import {
   disablePushNotifications,
@@ -1463,6 +1464,7 @@ function TodayPage({
     if (complete) announceCompletion().catch(() => undefined);
     syncNow().catch(() => undefined);
   };
+  const focusUsual = focus ? usualMinutes(focus, sessions) : { minutes: 0, fromHistory: false };
   // 実行中のタスクは上のカードに出ているので、リストには重ねない。
   const queueTasks = flexibleTasks.filter((task) => task.id !== focus?.id);
   const startNext = async () => {
@@ -1487,7 +1489,7 @@ function TodayPage({
                     ? activeRemaining < 0
                       ? `${Math.ceil(Math.abs(activeRemaining) / 60)}分オーバー`
                       : `あと約${Math.max(1, Math.ceil(activeRemaining / 60))}分`
-                    : `${focus.estimateMin}分`}
+                    : `${usesRounds(focus) ? focus.estimateMin : focusUsual.minutes}分`}
                 </span>
               </div>
               {activeSession && (
@@ -1497,6 +1499,31 @@ function TodayPage({
                 </button>
               )}
             </div>
+            {activeSession && (
+              <div className="now-actions">
+                {activeTask && (
+                  <button type="button" onClick={() => onEdit(activeTask)}>
+                    <Pencil size={14} /> 編集
+                  </button>
+                )}
+                <button type="button" onClick={async () => {
+                  stopVoice();
+                  await discardFocusSession(activeSession.id);
+                  syncNow().catch(() => undefined);
+                }}>
+                  <Undo2 size={14} /> 取り消す
+                </button>
+                <button type="button" className="danger" onClick={async () => {
+                  if (!window.confirm(`「${activeSession.taskTitle}」を消しますか？（ゴミ箱から戻せます）`)) return;
+                  stopVoice();
+                  await discardFocusSession(activeSession.id);
+                  await softDeleteTask(activeSession.taskId);
+                  syncNow().catch(() => undefined);
+                }}>
+                  <Trash2 size={14} /> 消す
+                </button>
+              </div>
+            )}
             {!activeSession && (
               <div className="now-buttons">
                 <button className="now-two" type="button" onClick={() => onStart(focus, { starter: true })}>
@@ -1505,7 +1532,8 @@ function TodayPage({
                 </button>
                 <button className="now-full" type="button" onClick={() => onStart(focus)}>
                   <Play size={16} fill="currentColor" />
-                  {usesRounds(focus) ? `15分ずつ（${Math.ceil(focus.estimateMin / 15)}回）` : `${focus.estimateMin}分やる`}
+                  {usesRounds(focus) ? `15分ずつ（${Math.ceil(focus.estimateMin / 15)}回）` : `${focusUsual.minutes}分やる`}
+                  {focusUsual.fromHistory && !usesRounds(focus) && <small>いつもの実績</small>}
                 </button>
               </div>
             )}
@@ -4032,8 +4060,9 @@ function TimerDock({
     // ルーティンなら、完了したらそのまま次のステップを始める（夜ルーティンで効いた流れ）。
     const next = await nextRoutineTask(task);
     if (next) {
-      await startFocusSession(next, next.estimateMin);
-      if (voice.enabled) speakVoice(`次は${next.title}、${next.estimateMin}分`, voice);
+      const minutes = usualMinutes(next, await db.sessions.toArray()).minutes;
+      await startFocusSession(next, minutes);
+      if (voice.enabled) speakVoice(`次は${next.title}、${minutes}分`, voice);
       return;
     }
     // ルーティンを最後までやったら、習慣のカレンダーに自動で✓。
@@ -4564,12 +4593,16 @@ function App() {
     }
     const carriedElapsedSec = taskWorkedSeconds(task.id, sessions);
     const remainingSec = task.estimateMin * 60 - carriedElapsedSec;
+    // 初めて始めるときは、同じ種類のタスクの実績（止め忘れは除く）から時間を決める。
+    const usual = usualMinutes(task, sessions);
     if (voice?.enabled)
       speakVoice(
         opts.starter
           ? "2分だけやってみましょう"
           : carriedElapsedSec > 0
           ? `続きから再開します。${remainingStatusText(remainingSec)}`
+          : usual.fromHistory
+          ? `いつもの${usual.minutes}分でタイマーを開始します`
           : `${task.estimateMin}分タイマーを開始します`,
         voice,
       );
@@ -4584,7 +4617,7 @@ function App() {
       await startFocusSession(task, plannedMin, carriedElapsedSec, { round: next.round });
     } else if (opts.leftMin)
       await startFocusSession(task, Math.ceil(carriedElapsedSec / 60) + opts.leftMin, carriedElapsedSec);
-    else await startFocusSession(task, task.estimateMin, carriedElapsedSec);
+    else await startFocusSession(task, carriedElapsedSec > 0 ? task.estimateMin : usual.minutes, carriedElapsedSec);
     setTimerVisible(true);
     syncNow().catch(() => undefined);
   };

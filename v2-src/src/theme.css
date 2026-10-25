@@ -507,6 +507,10 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .now-two { flex-direction: column; gap: 1px; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 17px; }
 .now-two small { font-size: 11px; font-weight: 500; opacity: .85; }
 .now-full { border: 1px solid var(--hero-line); background: transparent; color: var(--hero-ink); font-size: 15px; }
+.now-full small { font-size: 10px; font-weight: 500; color: var(--hero-sub); }
+.now-actions { display: flex; gap: 6px; margin-top: 10px; }
+.now-actions button { flex: 1; min-height: 36px; border-radius: 12px; border: 1px solid var(--hero-line); background: transparent; color: var(--hero-sub); font: 600 12px inherit; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+.now-actions button.danger { color: #f0997b; }
 .two-min { position: fixed; inset: 0; z-index: 200; background: var(--hero); color: var(--hero-ink); display: flex; flex-direction: column; align-items: center; gap: 18px; padding: calc(56px + env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom)); text-align: center; animation: twomin .3s ease; }
 @keyframes twomin { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
 .two-min-task { font-size: 13px; font-weight: 700; color: var(--hero-sub); }

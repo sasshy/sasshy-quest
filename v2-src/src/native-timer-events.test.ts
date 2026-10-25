@@ -12,15 +12,25 @@ beforeEach(async () => {
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 
 describe('lock-screen alarm actions reach the app timer', () => {
-  it('"ここで止める" pauses the timer at that time (not completed)', async () => {
+  it('"ここで止める" before the end pauses the timer at that time (not completed)', async () => {
     const task = await createTask({ title: '出荷準備' });
-    const session = await startFocusSession(task, 15);
+    const session = await startFocusSession(task, 30);
     await updateSession(session.id, { startedAt: ago(60) }, 'test');
     await applyNativeTimerEvent({ id: 'e1', type: 'stopped', taskId: session.id, at: ago(44) });
     const after = await db.sessions.get(session.id);
     expect(after?.status).toBe('paused');
     expect(Math.abs(Date.parse(after!.pausedAt!) - Date.parse(ago(44)))).toBeLessThan(2000);
     expect((await db.tasks.get(task.id))?.status).not.toBe('done');
+  });
+
+  it('stopping the ringing alarm only silences it: the timer keeps counting overtime', async () => {
+    const task = await createTask({ title: 'シャワー' });
+    const session = await startFocusSession(task, 5);
+    await updateSession(session.id, { startedAt: ago(6) }, 'test');
+    await applyNativeTimerEvent({ id: 'e1b', type: 'stopped', taskId: session.id, at: ago(1) });
+    const after = await db.sessions.get(session.id);
+    expect(after?.status).toBe('running');
+    expect(after?.plannedMin).toBe(5);
   });
 
   it('"10分延長" makes the app timer end 10 minutes after the tap', async () => {

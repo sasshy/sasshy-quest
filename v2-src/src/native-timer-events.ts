@@ -2,11 +2,14 @@ import { db } from './db';
 import { getRoutines, startRoutine } from './routines';
 import { detourKind, startInterruptAt } from './rounds';
 import { setFocusSessionPlannedMinutes, stopFocusSessionAt } from './store';
+import { plannedEndMs } from './StaleSession';
 import type { FocusSession } from './types';
 
 /**
  * iPhone app: what the user did on the lock-screen alarm.
- * - stopped:  "ここで止める" (or the alarm was removed) → the timer is paused at that time.
+ * - stopped:  "ここで止める" (or the alarm was removed). Before the planned end the timer
+ *             is stopped at that time. At or after the end it only silenced the alarm:
+ *             the timer keeps counting the overtime (+) until it is finished in the app.
  *             It is never turned into "completed" automatically.
  * - extended: "10分延長" → the timer ends `seconds` after `at`.
  * - routine:  a widget / Siri shortcut opened sasshy-timer://routine?id=… → start it
@@ -63,6 +66,7 @@ export async function applyNativeTimerEvent(event: NativeTimerEvent, now = Date.
   const at = Math.min(now, Math.max(new Date(session.startedAt).getTime(), Date.parse(event.at) || now));
   if (event.type === 'stopped') {
     if (session.status !== 'running') return;
+    if (at >= plannedEndMs(session) - 5_000) return;
     await stopFocusSessionAt(session.id, new Date(at).toISOString());
     return;
   }
