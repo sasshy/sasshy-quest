@@ -7,6 +7,7 @@ import { syncNow } from "./sync";
 import { haptic } from "./feedback";
 import { localDateKey } from "./work-start";
 import type { FocusSession, Task } from "./types";
+import { minuteFrom, workDayKey } from "./dayline";
 
 /**
  * 時間の目盛りの表示（日 / 3日）: tasks sit on a time grid like a calendar app.
@@ -21,7 +22,8 @@ import type { FocusSession, Task } from "./types";
  * 何もつかんでいないときは、横にスワイプで前後の日（3日なら3日ずつ）へ。
  */
 const FROM = 6 * 60;
-const TO = 24 * 60;
+// 夜中3時まで見せる（0時過ぎの夜ルーティンや完了も、その夜の列に出る）。
+const TO = 27 * 60;
 // 1分あたりの高さ（px）。細かいタスクが見えるよう、拡大縮小できる。
 const ZOOMS = [1, 1.6, 2.4, 3.4];
 const loadZoom = () => {
@@ -30,7 +32,7 @@ const loadZoom = () => {
 const SNAP = 15;
 const HOLD_MS = 350;
 
-const hm = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+const hm = (m: number) => `${Math.floor(m / 60) % 24}:${String(m % 60).padStart(2, "0")}`;
 const durationText = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}時間${min % 60 ? `${min % 60}分` : ""}` : `${min}分`);
 const snap = (m: number, step = SNAP) => Math.round(m / step) * step;
 const minuteOf = (iso: string) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
@@ -112,15 +114,23 @@ export function TimeGrid({
     const gaps = plan.rows.filter((r): r is Extract<typeof r, { kind: "gap" }> => r.kind === "gap" && r.end - r.start >= 15);
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const actual: Placed[] = sessions
-      .filter((s) => !s.deletedAt && s.endedAt && (s.status === "completed" || s.status === "interrupted") && localDateKey(new Date(s.startedAt)) === date)
+      .filter((s) => !s.deletedAt && s.endedAt && (s.status === "completed" || s.status === "interrupted") && workDayKey(s.startedAt) === date)
       .flatMap((s) => {
         const task = byId.get(s.taskId);
         if (!task || task.deletedAt) return [];
-        const start = minuteOf(s.startedAt);
+        const start = minuteFrom(date, s.startedAt);
         const realEnd = Math.max(start + 1, start + Math.round((Date.parse(s.endedAt!) - Date.parse(s.startedAt)) / 60_000));
         return [{ task, date, start, end: Math.max(realEnd, start + MIN_SHOWN), fixed: false, session: s }];
       });
-    return { date, placed, actual, gaps, busy: plan.busy, free: plan.free };
+    // 時間の記録なしで「完了」にしたものも、完了した時刻に✓として出す。
+    const timed = new Set(sessions.filter((s) => !s.deletedAt && s.endedAt).map((s) => s.taskId));
+    const checked = tasks
+      .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && !timed.has(t.id) && workDayKey(t.completedAt) === date)
+      .map((t) => {
+        const end = Math.min(TO, Math.max(FROM + 15, minuteFrom(date, t.completedAt!)));
+        return { task: t, end, start: end - 15 };
+      });
+    return { date, placed, actual, checked, gaps, busy: plan.busy, free: plan.free };
   });
 
   // 細かいタスクがある時間だけ、自動で縦に広げる（1時間ごとに高さを決める）。
@@ -513,6 +523,17 @@ export function TimeGrid({
                   </div>
                 );
               })}
+              {c.checked.map((k) => (
+                <button
+                  key={`chk-${k.task.id}`}
+                  type="button"
+                  className={`tg-block done checked${top(k.end) - top(k.start) < 34 ? " short" : ""}${c.placed.some((pl) => pl.start < k.end && pl.end > k.start) ? " beside" : ""}`}
+                  style={{ top: top(k.start), height: Math.max(22, top(k.end) - top(k.start) - 2) }}
+                  onClick={() => onOpen(k.task)}
+                >
+                  <span className="tg-title"><strong>✓ {k.task.title}</strong><small>{hm(minuteFrom(c.date, k.task.completedAt!))} 完了</small></span>
+                </button>
+              ))}
               {trayDrag?.active && trayDrag.date === c.date && (
                 <div className={`tg-block lifted${trayDrag.date < today || (trayDrag.date === today && trayDrag.start < nowMin) ? " done" : ""}`} style={{ top: top(trayDrag.start), height: Math.max(22, top(trayDrag.start + Math.max(15, trayDrag.task.estimateMin)) - top(trayDrag.start) - 2) }}>
                   <span className="tg-title"><strong>{trayDrag.task.title}</strong><small>{hm(trayDrag.start)}{trayDrag.date < today || (trayDrag.date === today && trayDrag.start < nowMin) ? " やった" : " 予定"}</small></span>

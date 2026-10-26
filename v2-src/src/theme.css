@@ -1128,3 +1128,4 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .todo-triage small { font-weight: 600; }
 .todo-pick { border-left: 3px solid var(--accent); }
 .triage-nudge { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 10px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.tg-block.done.checked { border-left-style: dashed; text-align: left; font: inherit; cursor: pointer; padding: 0; }

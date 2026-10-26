@@ -20,6 +20,7 @@ import {
 } from "./meals";
 import type { FocusSession, Memo, Task } from "./types";
 import { computeProgress, minutesText } from "./progress";
+import { workDayKey } from "./dayline";
 
 /**
  * 記録: meals, spends and work time over the last 7 / 30 days.
@@ -53,13 +54,13 @@ export function buildDayRows(memos: Memo[], sessions: FocusSession[], tasks: Tas
   for (const session of sessions) {
     const sec = sessionActiveSeconds(session);
     if (!sec || !session.endedAt) continue;
-    const key = localDateKey(session.endedAt);
+    const key = workDayKey(session.endedAt);
     work.set(key, (work.get(key) || 0) + sec);
   }
   const done = new Map<string, number>();
   for (const task of tasks) {
     if (task.deletedAt || task.log || task.status !== "done" || !task.completedAt) continue;
-    const key = localDateKey(task.completedAt);
+    const key = workDayKey(task.completedAt);
     done.set(key, (done.get(key) || 0) + 1);
   }
   return keys.map((key) => ({
@@ -138,7 +139,8 @@ export function RecordsPanel() {
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
-  const today = localDateKey(Date.now());
+  // 夜中4時までは前の日（夜にやった分はその夜の記録）。
+  const today = workDayKey(Date.now());
   const [range, setRange] = useState<Range>(1);
   const [view, setView] = useState<"money" | "stats" | "meals" | "diary" | "habits">(() => (peekDiaryRequest() ? "diary" : "money"));
   useEffect(() => {
@@ -158,7 +160,7 @@ export function RecordsPanel() {
   const doneCount = rows.reduce((sum, r) => sum + r.done, 0);
 
   const day = rows.find((r) => r.key === selected) || rows[rows.length - 1];
-  const dayDone = tasks.filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === day.key);
+  const dayDone = tasks.filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && workDayKey(t.completedAt) === day.key);
 
   return (
     <div className="page-content records-page">
@@ -247,7 +249,7 @@ function TodaySummary({ tasks, sessions, week, today }: { memos: Memo[]; tasks: 
   const past7 = week.slice(0, 7);
   const avg = past7.reduce((sum, r) => sum + r.workMin, 0) / 7;
   const done = tasks
-    .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === today)
+    .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && workDayKey(t.completedAt) === today)
     .sort((a, b) => (a.completedAt || "").localeCompare(b.completedAt || ""));
   return (
     <>
@@ -291,7 +293,7 @@ function TodaySummary({ tasks, sessions, week, today }: { memos: Memo[]; tasks: 
 function WeekDone({ tasks, rows }: { tasks: Task[]; rows: DayRow[] }) {
   const start = rows[0].key;
   const done = tasks
-    .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && localDateKey(t.completedAt) >= start)
+    .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && workDayKey(t.completedAt) >= start)
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
   const work = rows.reduce((sum, r) => sum + r.workMin, 0);
   const workDays = rows.filter((r) => r.workMin > 0).length;

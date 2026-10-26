@@ -184,6 +184,7 @@ import { announceCompletion } from "./progress";
 import { restoreBudgetCardOnce } from "./budget";
 import { dailyTidy, inboxTasks, pickTop, shouldNudgeTriage } from "./triage";
 import { TriageSheet } from "./TriageSheet";
+import { workDayKey } from "./dayline";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
@@ -1448,7 +1449,7 @@ function TodayPage({
         !task.deletedAt &&
         task.status === "done" &&
         task.completedAt &&
-        compactDate(new Date(task.completedAt)) === today,
+        workDayKey(task.completedAt) === workDayKey(Date.now()),
     )
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
   const activeSession = sessions
@@ -1940,7 +1941,7 @@ function CalendarPage({
         : "week";
   });
   const [title, setTitle] = useState("");
-  const [activeDate, setActiveDate] = useState(todayKey());
+  const [activeDate, setActiveDate] = useState(() => workDayKey(Date.now()));
   const [search, setSearch] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [compare, setCompare] = useState(false);
@@ -2441,7 +2442,7 @@ function CalendarPage({
           <button
             className="button today-button"
             type="button"
-            onClick={() => (plannerActive ? setActiveDate(todayKey()) : calendarRef.current?.getApi().today())}
+            onClick={() => (plannerActive ? setActiveDate(workDayKey(Date.now())) : calendarRef.current?.getApi().today())}
           >
             今日
           </button>
@@ -4247,7 +4248,7 @@ function TimerDock({
       return;
     }
     // ルーティンを最後までやったら、習慣のカレンダーに自動で✓。
-    if (task?.routine) checkRoutineHabit(task.routine.name, todayKey()).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
+    if (task?.routine) checkRoutineHabit(task.routine.name, workDayKey(Date.now())).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
     onClose();
   };
   // 「別の作業をしていて、止めるのを忘れた」時の修正。
@@ -4737,7 +4738,7 @@ function App() {
       const taskId = (event as CustomEvent<{ taskId?: string }>).detail?.taskId;
       const task = taskId ? await db.tasks.get(taskId) : undefined;
       if (!task) return;
-      const day = task.completedAt ? compactDate(new Date(task.completedAt)) : todayKey();
+      const day = workDayKey(task.completedAt || Date.now());
       if (await checkHabitForTask(task.title, day)) syncNow().catch(() => undefined);
     };
     window.addEventListener("sasshy-task-completed", onDone);
