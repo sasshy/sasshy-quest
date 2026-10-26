@@ -6,6 +6,7 @@ import { DEFAULT_BUDGET, getBudget, isShoppingExpense, setBudget } from "./budge
 import { amountOf, moneySummary, periodAt, recordIncome, removeIncome, spendCategory, type SpendCategory } from "./money";
 import { localDateKey } from "./meals";
 import { RecordEditSheet } from "./RecordEditSheet";
+import { BudgetSheet } from "./BudgetPanel";
 import { syncNow } from "./sync";
 import type { Memo } from "./types";
 
@@ -98,6 +99,7 @@ export function MoneyPanel() {
   const [keepMonthly, setKeepMonthly] = useState(true);
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState("");
+  const [budgetOpen, setBudgetOpen] = useState(false);
 
   const { start, end } = periodAt(today, setting.startDay, offset);
   const sum = useMemo(() => moneySummary(memos, setting, start, end), [memos, setting, start, end]);
@@ -257,7 +259,11 @@ export function MoneyPanel() {
           <Download size={15} /> この期間をCSVで書き出す
         </button>
       </section>
+      <button type="button" className="button secondary mo-settings" onClick={() => setBudgetOpen(true)}>
+        予算と給料日の設定{setting.enabled ? "" : "（今日の画面には表示していません）"}
+      </button>
       {editing && <RecordEditSheet memo={editing} onClose={() => setEditing(null)} />}
+      {budgetOpen && <BudgetSheet onClose={() => setBudgetOpen(false)} />}
     </div>
   );
 }

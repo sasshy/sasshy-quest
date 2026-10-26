@@ -5043,9 +5043,9 @@ function App() {
 
 class AppErrorBoundary extends Component<
   { children: ReactNode },
-  { error: boolean }
+  { error: boolean; detail?: string }
 > {
-  state = { error: false };
+  state: { error: boolean; detail?: string } = { error: false };
 
   static getDerivedStateFromError() {
     return { error: true };
@@ -5053,6 +5053,16 @@ class AppErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("SASSHY screen error", error, info);
+    // 原因を後から調べられるように、最後のエラーを端末に残す（中身はエラー文だけ）。
+    try {
+      localStorage.setItem("sasshy-last-error", JSON.stringify({
+        at: new Date().toISOString(),
+        message: String(error?.message || error),
+        stack: String(error?.stack || "").slice(0, 2000),
+        component: String(info?.componentStack || "").slice(0, 1500),
+      }));
+    } catch { /* 保存できなくても画面は出す */ }
+    this.setState({ detail: String(error?.message || error) });
   }
 
   render() {
@@ -5064,6 +5074,7 @@ class AppErrorBoundary extends Component<
             <p>
               端末に保存されたタスクは消えていません。画面だけを安全に読み直します。
             </p>
+            {this.state.detail && <small style={{ color: "var(--faint)", wordBreak: "break-all" }}>{this.state.detail}</small>}
             <button
               className="button primary"
               type="button"

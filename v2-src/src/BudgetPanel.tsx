@@ -58,9 +58,10 @@ function useCountTo(target: number): number {
 export function BudgetCard() {
   const { setting, status, shopping } = useBudget();
   const [open, setOpen] = useState(false);
+  // フックは必ず毎回同じ順で呼ぶ（表示OFFで先に return すると画面ごと落ちる）。
+  const shown = useCountTo(status.todayLeft);
   if (!setting.enabled) return null;
   const over = status.todayLeft < 0;
-  const shown = useCountTo(status.todayLeft);
   return (
     <>
       <button type="button" className={`budget-card${over ? " over" : ""}`} onClick={() => setOpen(true)}>
