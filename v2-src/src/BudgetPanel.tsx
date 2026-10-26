@@ -133,7 +133,7 @@ export function BudgetSheet({ onClose }: { onClose: () => void }) {
             <div><dt>これまでに使った</dt><dd>−{yen(shopping.spent)}</dd></div>
             <div className="total"><dt>給料日までの残り</dt><dd>{yen(shopping.left)}</dd></div>
           </dl>
-          <p className="settings-hint">Amazon・楽天・ドラッグストアなどの支出は、自動で買い物枠に入ります（毎日の「あと使える」は減りません）。記録を押すと枠を変えられます。</p>
+          <p className="settings-hint">Amazon・楽天・ドラッグストアなどは買い物枠、病院・調剤薬局は「予算の外」に自動で入ります（どちらも毎日の「あと使える」は減りません）。記録を押すと変えられます。</p>
 
           <h3 className="budget-h">使う予定のお金</h3>
           <p className="settings-hint">決まっている出費を先に入れておくと、予算から引いて考えます。使ったら ✓ を押すと支出の記録になります。</p>

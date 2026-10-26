@@ -17,15 +17,25 @@ import type { AppSetting, Memo } from './types';
 export interface BudgetSetting { id: 'budget'; enabled: boolean; amount: number; startDay: number; shoppingAmount: number; /** 毎月の手取り（見込み）。0 = 未設定。 */ incomeMonthly: number }
 export const DEFAULT_BUDGET: BudgetSetting = { id: 'budget', enabled: true, amount: 30000, startDay: 25, shoppingAmount: 20000, incomeMonthly: 0 };
 
-const SHOPPING = /amazon|アマゾン|楽天|rakuten|ドラッグ|drug|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ|ダイソー|ニトリ|無印|ヨドバシ|ビックカメラ|ケーズ|カインズ|コーナン|ロフト|ドン・?キホーテ|ドンキ|アスクル|lohaco|yahoo|ヤフー|zozo|メルカリ|ユニクロ|コストコ|ホームセンター|日用品/i;
+const SHOPPING = /amazon|アマゾン|楽天|rakuten|ドラッグ|drug|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ|ダイソー|ニトリ|無印|ヨドバシ|ビックカメラ|ケーズ|カインズ|コーナン|ロフト|ドン・?キホーテ|ドンキ|アスクル|lohaco|yahoo|ヤフー|zozo|メルカリ|ユニクロ|コストコ|ホームセンター/i;
 
-/** 買い物枠の支出か（指定があればそれ、なければ品名から）。食事は毎日のお金。 */
-export function isShoppingExpense(memo: Memo): boolean {
+// 病院・薬局（処方）など、日々の予算とは別に考えるお金。合計には数えるが、どちらの枠からも引かない。
+const OUTSIDE = /病院|クリニック|医院|診療|歯科|調剤|処方|医療|薬局/i;
+
+export type Bucket = 'daily' | 'shopping' | 'outside';
+export const BUCKET_LABEL: Record<Bucket, string> = { daily: '毎日のお金', shopping: '買い物枠', outside: '予算の外' };
+
+/** どの枠の支出か（指定があればそれ、なければ品名と分類から）。食事は毎日のお金。 */
+export function expenseBucket(memo: Memo): Bucket {
   const e = memo.expense;
-  if (!e) return false;
-  if (e.bucket) return e.bucket === 'shopping';
-  return SHOPPING.test(`${e.item} ${e.category || ''}`);
+  if (!e) return 'daily';
+  if (e.bucket) return e.bucket;
+  const text = `${e.item} ${e.category || ''}`;
+  if (OUTSIDE.test(text) && !/ドラッグストア|drugstore/i.test(text)) return 'outside';
+  return SHOPPING.test(text) ? 'shopping' : 'daily';
 }
+
+export const isShoppingExpense = (memo: Memo): boolean => expenseBucket(memo) === 'shopping';
 export const PLANNED_CATEGORY = '支出予定';
 
 export interface PlannedSpend { item: string; amount: number; date?: string | null }
@@ -56,7 +66,7 @@ export function budgetPeriod(today: string, startDay: number): { start: string; 
 }
 
 const spentOn = (memos: Memo[], key: string) =>
-  spendOn(memos, key) + expensesOn(memos, key).filter((m) => !isShoppingExpense(m)).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
+  spendOn(memos, key) + expensesOn(memos, key).filter((m) => expenseBucket(m) === 'daily').reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
 
 /** 買い物枠：今の給料日期間に使った額と残り。 */
 export function shoppingStatus(memos: Memo[], setting: BudgetSetting, today: string): { budget: number; spent: number; left: number } {

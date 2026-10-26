@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Download, Plus, Trash2 } from "lucide-react";
 import { db } from "./db";
-import { DEFAULT_BUDGET, getBudget, isShoppingExpense, setBudget } from "./budget";
+import { BUCKET_LABEL, DEFAULT_BUDGET, expenseBucket, getBudget, setBudget } from "./budget";
 import { amountOf, moneySummary, periodAt, recordIncome, removeIncome, spendCategory, type SpendCategory } from "./money";
 import { localDateKey } from "./meals";
 import { RecordEditSheet } from "./RecordEditSheet";
@@ -22,6 +22,7 @@ const md = (key: string) => {
 };
 const COLORS: Record<SpendCategory, string> = {
   食費: "#7F77DD",
+  医療: "#E24B4A",
   ドラッグストア: "#EF9F27",
   ネット通販: "#D4537E",
   日用品: "#1D9E75",
@@ -59,7 +60,7 @@ function csvOf(records: Memo[]): string {
   };
   const rows = records.map((m) => {
     const at = new Date(m.meal?.at || m.expense!.at);
-    return [localDateKey(at), m.meal ? "食事" : "支出", m.meal?.item || m.expense?.item, amountOf(m), m.expense && isShoppingExpense(m) ? "買い物枠" : "毎日のお金", spendCategory(m)].map(cell).join(",");
+    return [localDateKey(at), m.meal ? "食事" : "支出", m.meal?.item || m.expense?.item, amountOf(m), BUCKET_LABEL[m.expense ? expenseBucket(m) : "daily"], spendCategory(m)].map(cell).join(",");
   });
   return ["日付,種類,内容,金額,枠,使い道", ...rows].join("\n");
 }
@@ -111,7 +112,7 @@ export function MoneyPanel() {
   }), [memos, setting, offset, today]);
   const last = months[4]?.total ?? 0;
   const maxMonth = Math.max(1, ...months.map((m) => m.total));
-  const maxDay = Math.max(1, ...sum.byDay.map((d) => d.daily + d.shopping));
+  const maxDay = Math.max(1, ...sum.byDay.map((d) => d.daily + d.shopping + d.outside));
   const current = offset === 0;
   const expected = sum.incomes.length === 0 && setting.incomeMonthly > 0;
   const income = sum.income || (expected ? setting.incomeMonthly : 0);
@@ -149,6 +150,11 @@ export function MoneyPanel() {
           <div><span><i style={{ background: "#EF9F27" }} />買い物枠</span><b>{yen(sum.shopping)} / {yen(setting.shoppingAmount)}</b></div>
           <em><i style={{ width: `${Math.min(100, (sum.shopping / Math.max(1, setting.shoppingAmount)) * 100)}%`, background: "#EF9F27" }} /></em>
         </div>
+        {sum.outside > 0 && (
+          <div className="mo-meter">
+            <div><span><i style={{ background: "#E24B4A" }} />予算の外（病院・薬など）</span><b>{yen(sum.outside)}</b></div>
+          </div>
+        )}
       </section>
 
       <section className="rec-card mo-balance">
@@ -213,7 +219,8 @@ export function MoneyPanel() {
         <header><h2>日ごと</h2><small><i className="mo-key" style={{ background: "#7F77DD" }} />毎日 <i className="mo-key" style={{ background: "#EF9F27" }} />買い物枠</small></header>
         <div className="mo-days">
           {sum.byDay.map((d) => (
-            <span key={d.key} title={`${md(d.key)} ${yen(d.daily + d.shopping)}`} className={d.key === today ? "today" : ""}>
+            <span key={d.key} title={`${md(d.key)} ${yen(d.daily + d.shopping + d.outside)}`} className={d.key === today ? "today" : ""}>
+              <i style={{ height: `${(d.outside / maxDay) * 100}%`, background: "#E24B4A" }} />
               <i style={{ height: `${(d.shopping / maxDay) * 100}%`, background: "#EF9F27" }} />
               <i style={{ height: `${(d.daily / maxDay) * 100}%`, background: "#7F77DD" }} />
             </span>
@@ -250,7 +257,7 @@ export function MoneyPanel() {
               <button type="button" onClick={() => setEditing(m)}>
                 <time>{md(localDateKey(new Date(m.meal?.at || m.expense!.at)))}</time>
                 <b className="mo-cat" style={{ background: COLORS[spendCategory(m)] }}>{spendCategory(m)}</b>
-                <span className="ml-item">{m.meal?.item || m.expense?.item}{m.expense && isShoppingExpense(m) && <small>買い物枠</small>}</span>
+                <span className="ml-item">{m.meal?.item || m.expense?.item}{m.expense && expenseBucket(m) !== "daily" && <small>{BUCKET_LABEL[expenseBucket(m)]}</small>}</span>
                 <span className="ml-yen">{yen(amountOf(m))}</span>
               </button>
             </li>

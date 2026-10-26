@@ -65,6 +65,8 @@ export const PAYMENT_LABEL: Record<MealPayment, string> = {
 
 /** The amount that left the user's wallet (falls back to price). */
 export function paidAmount(meal: MealInfo): number {
+  // レシートの支出（receiptExpenseId）にまとめて記録済みの食事は、二重に数えない。
+  if (typeof meal.receiptExpenseId === 'string' && meal.receiptExpenseId) return 0;
   if (meal.paid !== undefined && meal.paid !== null) return meal.paid;
   if (meal.payment === 'treated' || meal.payment === 'home') return 0;
   return meal.price || 0;
@@ -363,7 +365,7 @@ export async function updateMeal(id: string, edit: MealEdit): Promise<Memo | nul
   return updateMemo(id, { meal, title: mealTitle(meal), body: mealBody(meal) }, '食事の記録を修正');
 }
 
-export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string; bucket?: 'daily' | 'shopping' }): Promise<Memo | null> {
+export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string; bucket?: 'daily' | 'shopping' | 'outside' }): Promise<Memo | null> {
   const memo = await db.memos.get(id);
   if (!memo?.expense) return null;
   const item = edit.item.trim();

@@ -1,4 +1,4 @@
-import { budgetPeriod, isShoppingExpense, type BudgetSetting } from './budget';
+import { budgetPeriod, expenseBucket, type BudgetSetting } from './budget';
 import { expensesOn, localDateKey, mealsOn, paidAmount, shiftDateKey } from './meals';
 import { createMemo, updateMemo } from './store';
 import type { Memo } from './types';
@@ -35,10 +35,14 @@ export function periodAt(today: string, startDay: number, offset: number): { sta
   return { start, end };
 }
 
-export const CATEGORIES = ['食費', 'ドラッグストア', 'ネット通販', '日用品', '交通', 'カフェ・間食', 'その他'] as const;
+export const CATEGORIES = ['食費', '医療', 'ドラッグストア', 'ネット通販', '日用品', '交通', 'カフェ・間食', 'その他'] as const;
 export type SpendCategory = (typeof CATEGORIES)[number];
 
 const RULES: [SpendCategory, RegExp][] = [
+  // 先に当てはまったものが優先。ネットの薬屋（アイドラッグストアー）はネット通販、病院・調剤薬局は医療。
+  ['ネット通販', /アイドラッグ|idrug/i],
+  ['医療', /病院|クリニック|医院|診療|歯科|調剤|処方|医療|薬局/i],
+  ['食費', /^\s*(食費|食料|飲食|酒)/],
   ['ドラッグストア', /ドラッグ|drug|薬局|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ/i],
   ['ネット通販', /amazon|アマゾン|楽天|rakuten|yahoo|ヤフー|zozo|メルカリ|lohaco|アスクル|通販/i],
   ['日用品', /ダイソー|ニトリ|無印|ホームセンター|カインズ|コーナン|ロフト|ドンキ|ドン・?キホーテ|日用品|コストコ|ユニクロ/i],
@@ -64,7 +68,8 @@ export interface MoneySummary {
   total: number;
   daily: number;
   shopping: number;
-  byDay: { key: string; daily: number; shopping: number }[];
+  outside: number;
+  byDay: { key: string; daily: number; shopping: number; outside: number }[];
   byCategory: { name: SpendCategory; amount: number }[];
   top: { item: string; amount: number; count: number }[];
   records: Memo[];
@@ -79,12 +84,14 @@ export function moneySummary(memos: Memo[], setting: BudgetSetting, start: strin
     const list = [...mealsOn(memos, key), ...expensesOn(memos, key)];
     let daily = 0;
     let shopping = 0;
+    let outside = 0;
     for (const m of list) {
       const a = amountOf(m);
-      if (m.expense && isShoppingExpense(m)) shopping += a; else daily += a;
+      const bucket = m.expense ? expenseBucket(m) : 'daily';
+      if (bucket === 'shopping') shopping += a; else if (bucket === 'outside') outside += a; else daily += a;
       if (a > 0) records.push(m);
     }
-    byDay.push({ key, daily, shopping });
+    byDay.push({ key, daily, shopping, outside });
   }
   const cats = new Map<SpendCategory, number>();
   const items = new Map<string, { item: string; amount: number; count: number }>();
@@ -104,12 +111,14 @@ export function moneySummary(memos: Memo[], setting: BudgetSetting, start: strin
   });
   const daily = byDay.reduce((s, d) => s + d.daily, 0);
   const shopping = byDay.reduce((s, d) => s + d.shopping, 0);
+  const outside = byDay.reduce((s, d) => s + d.outside, 0);
   return {
     start,
     end,
-    total: daily + shopping,
+    total: daily + shopping + outside,
     daily,
     shopping,
+    outside,
     byDay,
     byCategory: CATEGORIES.map((name) => ({ name, amount: cats.get(name) || 0 })).filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount),
     top: [...items.values()].sort((a, b) => b.amount - a.amount).slice(0, 5),

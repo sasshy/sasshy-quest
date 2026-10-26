@@ -30,7 +30,34 @@ describe('記録 › お金', () => {
     expect(s.shopping).toBe(10771);
     expect(s.daily).toBe(1200);
     expect(s.income).toBe(250000);
-    expect(s.byCategory[0]).toEqual({ name: 'ドラッグストア', amount: 10771 });
+    expect(s.byCategory[0]).toEqual({ name: 'ネット通販', amount: 10771 });
     expect(spendCategory(memos.find((m) => m.expense?.item === '電車')!)).toBe('交通');
+  });
+});
+
+describe('枠と使い道の振り分け', () => {
+  it('病院・調剤薬局は予算の外、アイドラッグストアーはネット通販（買い物枠）', async () => {
+    const day = '2026-10-26';
+    await recordExpense({ item: 'JMC自由が丘メディカルクリニック 内科診療', amount: 1110, at: at(day) });
+    await recordExpense({ item: '安藤薬局 処方薬・調剤', amount: 2860, at: at(day) });
+    await recordExpense({ item: 'アイドラッグストアー 医薬品3点', amount: 10771, at: at(day) });
+    await recordExpense({ item: 'ドーナツ', amount: 300, at: at(day) });
+    const memos = await db.memos.toArray();
+    const s = moneySummary(memos, DEFAULT_BUDGET, '2026-10-25', '2026-11-24');
+    expect(s.outside).toBe(3970);
+    expect(s.shopping).toBe(10771);
+    expect(s.daily).toBe(300);
+    const cat = (name: string) => spendCategory(memos.find((m) => m.expense?.item.startsWith(name))!);
+    expect(cat('JMC')).toBe('医療');
+    expect(cat('安藤薬局')).toBe('医療');
+    expect(cat('アイドラッグ')).toBe('ネット通販');
+  });
+  it('レシートの支出にまとめた食事は二重に数えない', async () => {
+    const day = '2026-10-23';
+    const receipt = await recordExpense({ item: 'ファミリーマート', amount: 785, at: at(day) });
+    const meal = await recordMeal({ kind: 'lunch', item: 'うどん', price: 213, at: at(day) });
+    await db.memos.update(meal.id, { meal: { ...meal.meal!, receiptExpenseId: receipt.id } });
+    const s = moneySummary(await db.memos.toArray(), DEFAULT_BUDGET, '2026-09-25', '2026-10-24');
+    expect(s.total).toBe(785);
   });
 });

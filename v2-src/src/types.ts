@@ -188,6 +188,8 @@ export interface MealInfo {
   carbs?: number | null;
   /** When it was eaten (ISO). */
   at: string;
+  /** ChatGPTがレシート単位の支出にまとめたとき、その支出のID（食事側では数えない）。 */
+  receiptExpenseId?: string;
 }
 
 /**
@@ -209,7 +211,7 @@ export interface ExpenseInfo {
   at: string;
   category?: string | null;
   /** どちらの予算から引くか。未指定なら品名から自動（Amazon・ドラッグストアなど→買い物枠）。 */
-  bucket?: 'daily' | 'shopping';
+  bucket?: 'daily' | 'shopping' | 'outside';
   [key: string]: unknown;
 }
 
