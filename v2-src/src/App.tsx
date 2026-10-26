@@ -1580,6 +1580,18 @@ function TodayPage({
             )}
             {!activeSession && (
               <div className="now-actions idle">
+                {/* 開始し忘れたけどやった：いつもの長さで「今終わった」実績を残して完了。
+                    時刻はあとでカレンダーのドラッグで直せる。 */}
+                <button type="button" className="done" onClick={async () => {
+                  const minutes = Math.max(5, focusUsual.minutes || focus.estimateMin || 15);
+                  const end = new Date();
+                  const added = await createManualFocusSession(focus, new Date(end.getTime() - minutes * 60_000).toISOString(), end.toISOString());
+                  await completeTaskFromActual(focus.id, added.endedAt!, added.id);
+                  announceCompletion().catch(() => undefined);
+                  syncNow().catch(() => undefined);
+                }}>
+                  <Check size={14} /> 完了
+                </button>
                 <button type="button" onClick={() => onEdit(focus)}>
                   <Pencil size={14} /> 編集
                 </button>
@@ -2476,6 +2488,7 @@ function CalendarPage({
       ) : mobile && (mode === "three" || (mode === "day" && !dayList)) ? (
         <TimeGrid
           tasks={tasks}
+          sessions={sessions}
           dates={mode === "three" ? threeDays(activeDate) : [activeDate]}
           onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
           onOpen={openScheduleMove}

@@ -986,3 +986,24 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .now-back > strong small { font-size: 14px; font-weight: 600; color: var(--hero-sub); margin-left: 4px; }
 .now-back-main { min-height: 58px; border: 0; border-radius: 16px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; cursor: pointer; }
 .now-back-sub { min-height: 40px; border: 1px solid var(--hero-line); border-radius: 12px; background: transparent; color: var(--hero-sub); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+/* ---- 時間の枠：上の棚・やった記録 ---- */
+.tg-tray { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; touch-action: pan-x; }
+.tg-tray::-webkit-scrollbar { display: none; }
+.tg-tray-label { flex: none; font-size: 11px; font-weight: 700; color: var(--muted); }
+.tg-chip { flex: none; display: inline-flex; align-items: baseline; gap: 4px; max-width: 180px; padding: 7px 10px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--paper); font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x; cursor: grab; }
+.tg-chip small { font-weight: 500; color: var(--faint); font-size: 10px; }
+.tg-chip.late { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.tg-chip.held { opacity: .35; }
+.tg-ghost { position: fixed; z-index: 90; pointer-events: none; transform: translate(-50%, -130%) rotate(-3deg); border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent-text); box-shadow: 0 10px 24px rgba(0,0,0,.2); }
+.tg.tray-dragging .tg-scroll { touch-action: none; }
+.tg-past { position: absolute; left: 0; right: 0; background: color-mix(in srgb, var(--good) 5%, transparent); pointer-events: none; }
+.tg-block.done { background: color-mix(in srgb, var(--good) 14%, var(--paper)); border-left-color: var(--good); color: var(--ink); }
+.tg-block.done strong { color: var(--good); }
+.now-actions.idle button { font-size: 12px; padding: 0 4px; }
+.now-actions button.done { color: var(--hero-ink); border-color: color-mix(in srgb, var(--good) 70%, transparent); }
+/* 予定と重なるやった記録は右半分に並べる（隠れないように） */
+.tg-block.done { z-index: 2; }
+.tg-block.done.beside { left: 50%; }
+/* 棚のタスクが多くても画面が横にずれないように */
+.tg, .tg-tray { min-width: 0; max-width: 100%; }
