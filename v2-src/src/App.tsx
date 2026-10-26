@@ -2899,6 +2899,24 @@ function InboxPage({
     await updateTask(task.id, changes, label);
     syncNow().catch(() => undefined);
   };
+  // 消すは2回押し（1回目で赤くなる）。ゴミ箱から戻せる。
+  const [armed, setArmed] = useState<string | null>(null);
+  const remove = async (task: Task) => {
+    if (armed !== task.id) {
+      setArmed(task.id);
+      window.setTimeout(() => setArmed((id) => (id === task.id ? null : id)), 3000);
+      return;
+    }
+    setArmed(null);
+    await softDeleteTask(task.id);
+    toast(`「${task.title}」を消しました（ゴミ箱から戻せます）`);
+    syncNow().catch(() => undefined);
+  };
+  const trash = (task: Task) => (
+    <button type="button" className={`todo-trash${armed === task.id ? " armed" : ""}`} aria-label={armed === task.id ? "もう一度押すと消す" : `${task.title}を消す`} onClick={() => remove(task)}>
+      {armed === task.id ? "消す" : <Trash2 size={14} />}
+    </button>
+  );
   return (
     <div className="page-content todo-page">
       <QuickAdd />
@@ -2920,6 +2938,7 @@ function InboxPage({
                   <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: "now" }, "今日やる")}>今日</button>
                   <button type="button" onClick={() => place(task, { scheduledDate: shiftDate(todayKey(), 1), horizon: "now" }, "明日やる")}>明日</button>
                   <button type="button" onClick={() => place(task, { horizon: "someday" }, "いつかへ")}>いつか</button>
+                  {trash(task)}
                   <button type="button" className="todo-play" aria-label={`${task.title}を開始`} onClick={() => onStart(task)}>
                     <Play size={15} />
                   </button>
@@ -2954,6 +2973,7 @@ function InboxPage({
                     <div className="todo-actions">
                       <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: "now" }, "今日やる")}>今日</button>
                       <button type="button" onClick={() => place(task, { horizon: "now", scheduledDate: null }, "日付なしへ戻す")}>戻す</button>
+                      {trash(task)}
                     </div>
                   </li>
                 ))}
