@@ -5,7 +5,7 @@ import { Download, Plus, Trash2 } from "lucide-react";
 import { db } from "./db";
 import { BUCKET_LABEL, DEFAULT_BUDGET, expenseBucket, getBudget, setBudget } from "./budget";
 import { amountOf, moneySummary, periodAt, recordIncome, removeIncome, spendCategory, type SpendCategory } from "./money";
-import { localDateKey } from "./meals";
+import { expenseDetail, localDateKey } from "./meals";
 import { RecordEditSheet } from "./RecordEditSheet";
 import { BudgetSheet } from "./BudgetPanel";
 import { syncNow } from "./sync";
@@ -257,7 +257,7 @@ export function MoneyPanel() {
               <button type="button" onClick={() => setEditing(m)}>
                 <time>{md(localDateKey(new Date(m.meal?.at || m.expense!.at)))}</time>
                 <b className="mo-cat" style={{ background: COLORS[spendCategory(m)] }}>{spendCategory(m)}</b>
-                <span className="ml-item">{m.meal?.item || m.expense?.item}{m.expense && expenseBucket(m) !== "daily" && <small>{BUCKET_LABEL[expenseBucket(m)]}</small>}</span>
+                <span className="ml-item">{m.meal?.item || m.expense?.item}{m.expense && expenseBucket(m) !== "daily" && <small>{BUCKET_LABEL[expenseBucket(m)]}</small>}{expenseDetail(m.expense) && <em className="mo-detail">{expenseDetail(m.expense)}</em>}</span>
                 <span className="ml-yen">{yen(amountOf(m))}</span>
               </button>
             </li>

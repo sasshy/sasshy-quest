@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Home, Sparkles, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import {
+  expenseDetail,
   DEFAULT_MEAL_REMINDER,
   MEAL_AI_PROMPT,
   MEAL_LABEL,
@@ -579,6 +580,7 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
                           {(m.meal?.place || m.meal?.kcal) && (
                             <small>{[m.meal?.place, m.meal?.kcal ? kcalText(m.meal.kcal) : ""].filter(Boolean).join("・")}</small>
                           )}
+                          {expenseDetail(m.expense) && <small>{expenseDetail(m.expense)}</small>}
                         </span>
                         <span className="ms-amount">
                           {amount !== null && amount !== undefined ? yen(amount) : "—"}

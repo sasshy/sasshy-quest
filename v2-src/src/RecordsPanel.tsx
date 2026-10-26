@@ -58,7 +58,7 @@ export function buildDayRows(memos: Memo[], sessions: FocusSession[], tasks: Tas
   }
   const done = new Map<string, number>();
   for (const task of tasks) {
-    if (task.deletedAt || task.status !== "done" || !task.completedAt) continue;
+    if (task.deletedAt || task.log || task.status !== "done" || !task.completedAt) continue;
     const key = localDateKey(task.completedAt);
     done.set(key, (done.get(key) || 0) + 1);
   }
@@ -154,30 +154,11 @@ export function RecordsPanel() {
   // 今日と比べる用（昨日・直近1週間の平均）
   const week = useMemo(() => buildDayRows(memos, sessions, tasks, 8, today), [memos, sessions, tasks, today]);
 
-  const spend = rows.reduce((sum, r) => sum + r.meal + r.other, 0);
   const workMin = rows.reduce((sum, r) => sum + r.workMin, 0);
   const doneCount = rows.reduce((sum, r) => sum + r.done, 0);
-  const hasKcal = rows.some((r) => r.kcal > 0);
-
-  // よく使ったもの（期間内、支払った額の多い順）
-  const top = useMemo(() => {
-    const sums = new Map<string, { name: string; amount: number; count: number }>();
-    for (const row of rows) {
-      for (const m of ledgerOn(memos, row.key)) {
-        const name = m.meal ? m.meal.item : m.expense!.item;
-        const amount = m.meal ? paidAmount(m.meal) : Number(m.expense!.amount || 0);
-        const current = sums.get(name) || { name, amount: 0, count: 0 };
-        current.amount += amount;
-        current.count += 1;
-        sums.set(name, current);
-      }
-    }
-    return [...sums.values()].filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5);
-  }, [rows, memos]);
 
   const day = rows.find((r) => r.key === selected) || rows[rows.length - 1];
-  const dayRecords = ledgerOn(memos, day.key);
-  const dayDone = tasks.filter((t) => !t.deletedAt && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === day.key);
+  const dayDone = tasks.filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === day.key);
 
   return (
     <div className="page-content records-page">
@@ -201,36 +182,15 @@ export function RecordsPanel() {
 
       <section className="rec-tiles">
         <div>
-          <span>支払い</span>
-          <strong>{yen(spend)}</strong>
-          <small>1日平均 {yen(spend / range)}</small>
-        </div>
-        <div>
           <span>作業した時間</span>
           <strong>{hoursText(workMin)}</strong>
-          <small>完了 {doneCount}件</small>
+          <small>1日平均 {hoursText(Math.round(workMin / range))}</small>
         </div>
-      </section>
-
-      <section className="rec-card">
-        <header>
-          <h2>1日の支払い</h2>
-          <div className="rec-legend">
-            <span><i className="seg-meal" />食事</span>
-            <span><i className="seg-other" />その他</span>
-          </div>
-        </header>
-        <BarChart
-          rows={rows}
-          label="1日の支払い"
-          segments={[
-            { key: "meal", name: "食事", className: "seg-meal" },
-            { key: "other", name: "その他", className: "seg-other" },
-          ]}
-          selected={day.key}
-          onSelect={setSelected}
-          format={(v) => (v >= 1000 ? `¥${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : `¥${Math.round(v)}`)}
-        />
+        <div>
+          <span>完了したこと</span>
+          <strong>{doneCount}件</strong>
+          <small>1日平均 {Math.round((doneCount / range) * 10) / 10}件</small>
+        </div>
       </section>
 
       <section className="rec-card">
@@ -247,22 +207,6 @@ export function RecordsPanel() {
         />
       </section>
 
-      {hasKcal && (
-        <section className="rec-card">
-          <header>
-            <h2>カロリー</h2>
-          </header>
-          <BarChart
-            rows={rows}
-            label="カロリー"
-            segments={[{ key: "kcal", name: "カロリー", className: "seg-kcal" }]}
-            selected={day.key}
-            onSelect={setSelected}
-            format={(v) => `${Math.round(v).toLocaleString("ja-JP")}`}
-          />
-        </section>
-      )}
-
       <section className="rec-card rec-day">
         <header>
           <h2>
@@ -271,21 +215,9 @@ export function RecordsPanel() {
           <small>グラフの棒を押すとその日を表示</small>
         </header>
         <dl className="rec-day-sum">
-          <div><dt>支払い</dt><dd>{yen(day.meal + day.other)}</dd></div>
           <div><dt>作業</dt><dd>{hoursText(day.workMin)}</dd></div>
           <div><dt>完了</dt><dd>{day.done}件</dd></div>
-          {day.kcal > 0 && <div><dt>カロリー</dt><dd>{day.kcal.toLocaleString("ja-JP")}kcal</dd></div>}
         </dl>
-        {dayRecords.length > 0 && (
-          <>
-            <h3>食事・支出</h3>
-            <ul className="rec-list">
-              {dayRecords.map((m) => {
-                return <RecordRow key={m.id} memo={m} />;
-              })}
-            </ul>
-          </>
-        )}
         {dayDone.length > 0 && (
           <>
             <h3>完了したこと</h3>
@@ -299,84 +231,49 @@ export function RecordsPanel() {
             </ul>
           </>
         )}
-        {dayRecords.length === 0 && dayDone.length === 0 && <p className="rec-empty">この日の記録はありません</p>}
+        {dayDone.length === 0 && <p className="rec-empty">この日に完了したことはまだありません</p>}
       </section>
 
-      {top.length > 0 && (
-        <section className="rec-card">
-          <header>
-            <h2>お金を使ったもの（{range === 7 ? "1週間" : "1ヶ月"}）</h2>
-          </header>
-          <ul className="rec-top">
-            {top.map((item) => (
-              <li key={item.name}>
-                <span className="rec-name">{item.name}</span>
-                <small>{item.count}回</small>
-                <span className="rec-top-bar"><i style={{ width: `${(item.amount / top[0].amount) * 100}%` }} /></span>
-                <span className="rec-amount">{yen(item.amount)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
       </>)}
-      {mealsOn(memos, today).length === 0 && expensesOn(memos, today).length === 0 && (
-        <p className="rec-hint">食事・支出は「今日」の「食事・支出を記録」から追加できます。</p>
-      )}
       </>)}
     </div>
   );
 }
 
-/** 今日：いくら使ったかを一番大きく。昨日・1週間平均と並べる。 */
-function TodaySummary({ memos, tasks, sessions, week, today }: { memos: Memo[]; tasks: Task[]; sessions: FocusSession[]; week: DayRow[]; today: string }) {
+/** 今日：作業した時間と、できたこと。お金は「お金」、カロリーは「食事」のタブへ。 */
+function TodaySummary({ tasks, sessions, week, today }: { memos: Memo[]; tasks: Task[]; sessions: FocusSession[]; week: DayRow[]; today: string }) {
   const progress = computeProgress(tasks, sessions);
   const todayRow = week[week.length - 1];
-  const yesterday = week[week.length - 2];
   const past7 = week.slice(0, 7);
-  const avg = past7.reduce((sum, r) => sum + r.meal + r.other, 0) / 7;
-  const total = todayRow.meal + todayRow.other;
-  const records = ledgerOn(memos, today);
-  const done = tasks.filter((t) => !t.deletedAt && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === today);
-  const diff = total - avg;
+  const avg = past7.reduce((sum, r) => sum + r.workMin, 0) / 7;
+  const done = tasks
+    .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && localDateKey(t.completedAt) === today)
+    .sort((a, b) => (a.completedAt || "").localeCompare(b.completedAt || ""));
   return (
     <>
       <section className="rec-hero">
-        <span>今日使ったお金</span>
-        <strong>{yen(total)}</strong>
-        <div className="rec-hero-split">
-          <span><i className="seg-meal" />食事 {yen(todayRow.meal)}</span>
-          <span><i className="seg-other" />その他 {yen(todayRow.other)}</span>
-        </div>
+        <span>今日作業した時間</span>
+        <strong>{hoursText(todayRow.workMin)}</strong>
         <div className="rec-hero-compare">
-          <div><small>昨日</small><b>{yen(yesterday.meal + yesterday.other)}</b></div>
-          <div><small>1週間の平均</small><b>{yen(avg)}</b></div>
-          <div><small>平均との差</small><b className={diff > 0 ? "up" : "down"}>{diff > 0 ? "+" : diff < 0 ? "−" : "±"}{yen(Math.abs(diff))}</b></div>
+          <div><small>完了</small><b>{done.length}件</b></div>
+          <div><small>1週間の平均</small><b>{hoursText(Math.round(avg))}</b></div>
+          <div><small>昨日</small><b>{hoursText(week[week.length - 2].workMin)}</b></div>
         </div>
       </section>
       <section className="rec-card">
-        <header><h2>今日の内訳</h2><small>{records.length}件</small></header>
-        {records.length ? (
+        <header><h2>今日できたこと</h2><small>{done.length}件</small></header>
+        {done.length ? (
           <ul className="rec-list">
-            {records.map((m) => {
-              return <RecordRow key={m.id} memo={m} />;
-            })}
+            {done.map((t) => (
+              <li key={t.id}>
+                <span className="rec-time">{new Date(t.completedAt!).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
+                <span className="rec-name">{t.title}</span>
+              </li>
+            ))}
           </ul>
         ) : (
-          <p className="rec-empty">まだ記録がありません</p>
+          <p className="rec-empty">まだありません。1つ終えたらここに並びます</p>
         )}
-      </section>
-      <section className="rec-tiles">
-        <div>
-          <span>今日作業した時間</span>
-          <strong>{hoursText(todayRow.workMin)}</strong>
-          <small>完了 {done.length}件</small>
-        </div>
-        <div>
-          <span>カロリー</span>
-          <strong>{todayRow.kcal ? `${todayRow.kcal.toLocaleString("ja-JP")}` : "—"}</strong>
-          <small>kcal（記録がある分）</small>
-        </div>
       </section>
       <section className="rec-stack-up">
         <header><h2>積み上がり</h2><small>減らない数字です</small></header>
@@ -394,17 +291,17 @@ function TodaySummary({ memos, tasks, sessions, week, today }: { memos: Memo[]; 
 function WeekDone({ tasks, rows }: { tasks: Task[]; rows: DayRow[] }) {
   const start = rows[0].key;
   const done = tasks
-    .filter((t) => !t.deletedAt && t.status === "done" && t.completedAt && localDateKey(t.completedAt) >= start)
+    .filter((t) => !t.deletedAt && !t.log && t.status === "done" && t.completedAt && localDateKey(t.completedAt) >= start)
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
   const work = rows.reduce((sum, r) => sum + r.workMin, 0);
-  const recordDays = rows.filter((r) => r.meal + r.other > 0).length;
+  const workDays = rows.filter((r) => r.workMin > 0).length;
   return (
     <section className="rec-weekdone">
       <span>この1週間でできたこと</span>
       <div className="rec-weekdone-nums">
         <div><strong>{done.length}</strong><small>件 完了</small></div>
         <div><strong>{minutesText(work)}</strong><small>作業</small></div>
-        <div><strong>{recordDays}</strong><small>日 記録</small></div>
+        <div><strong>{workDays}</strong><small>日 作業した</small></div>
       </div>
       {done.length > 0 && (
         <ul>

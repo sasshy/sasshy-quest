@@ -411,3 +411,14 @@ export function lunchPrompts(memos: Memo[], setting: MealReminderSetting, now = 
   }
   return prompts;
 }
+
+/** レシートの内訳（ChatGPTが itemBreakdown に入れた品名）を短い1行に。なければ空。 */
+export function expenseDetail(expense: ExpenseInfo | undefined, max = 4): string {
+  const list = Array.isArray(expense?.itemBreakdown) ? (expense!.itemBreakdown as unknown[]) : [];
+  const names = list
+    .map((x) => (x && typeof x === 'object' && 'item' in x ? String((x as { item: unknown }).item) : typeof x === 'string' ? x : ''))
+    .map((n) => n.trim())
+    .filter((n) => n && n !== 'レジ袋');
+  if (!names.length) return '';
+  return names.slice(0, max).join('・') + (names.length > max ? ` ほか${names.length - max}点` : '');
+}

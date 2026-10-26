@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Trash2, X } from "lucide-react";
-import { MEAL_LABEL, PAYMENT_LABEL, removeMeal, updateExpense, updateMeal } from "./meals";
+import { expenseDetail, MEAL_LABEL, PAYMENT_LABEL, removeMeal, updateExpense, updateMeal } from "./meals";
 import { syncNow } from "./sync";
 import { BUCKET_LABEL, expenseBucket, type Bucket } from "./budget";
 import { estimateMeal } from "./meal-estimate";
@@ -105,6 +105,9 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
                 <button key={value} type="button" className={kind === value ? "active" : ""} onClick={() => setKind(value)}>{MEAL_LABEL[value]}</button>
               ))}
             </div>
+          )}
+          {expense && expenseDetail(expense, 20) && (
+            <p className="re-detail"><strong>買ったもの</strong>{expenseDetail(expense, 20)}</p>
           )}
           <label className="re-field">
             <span>{meal ? "食べたもの" : "何に使った"}</span>

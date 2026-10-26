@@ -7,7 +7,7 @@ const fail = (message: string): never => {
 export interface ExpenseMemoDraft {
   title: string;
   category: '支出';
-  expense: { item: string; amount: number; at: string; source: 'chatgpt'; category?: string };
+  expense: { item: string; amount: number; at: string; source: 'chatgpt'; category?: string; itemBreakdown?: { item: string; amount?: number }[] };
 }
 
 export function parseExpenses(raw: unknown, now = new Date()): ExpenseMemoDraft[] {
@@ -30,6 +30,20 @@ export function parseExpenses(raw: unknown, now = new Date()): ExpenseMemoDraft[
     }
     const expense: ExpenseMemoDraft['expense'] = { item, amount, at: at.toISOString(), source: 'chatgpt' };
     if (typeof input.category === 'string' && input.category.trim()) expense.category = input.category.trim().slice(0, 30);
+    // 何を買ったか（レシートの品名）。アプリの一覧に「サンド・カフェラテ」のように出る。
+    if (Array.isArray(input.items)) {
+      const items = (input.items as unknown[]).slice(0, 30).flatMap((x) => {
+        if (typeof x === 'string' && x.trim()) return [{ item: x.trim().slice(0, 80) }];
+        if (x && typeof x === 'object' && typeof (x as { item?: unknown }).item === 'string') {
+          const o = x as { item: string; amount?: unknown };
+          const row: { item: string; amount?: number } = { item: o.item.trim().slice(0, 80) };
+          if (typeof o.amount === 'number' && Number.isFinite(o.amount) && o.amount >= 0) row.amount = Math.round(o.amount);
+          return row.item ? [row] : [];
+        }
+        return [];
+      });
+      if (items.length) expense.itemBreakdown = items;
+    }
     return { title: `支出：${item} ¥${amount.toLocaleString('ja-JP')}`, category: '支出', expense };
   });
 }
