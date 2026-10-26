@@ -1020,3 +1020,10 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
   .calendar-toolbar-actions::-webkit-scrollbar { display: none; }
   .calendar-toolbar-actions > * { flex: none; }
 }
+.tg-scroll { touch-action: pan-y; }
+.tg-zoom button { display: grid; place-items: center; }
+.tg-scroll.slide-next .tg-grid { animation: tgSlideNext .26s ease-out; }
+.tg-scroll.slide-prev .tg-grid { animation: tgSlidePrev .26s ease-out; }
+@keyframes tgSlideNext { from { transform: translateX(28px); opacity: .4; } to { transform: none; opacity: 1; } }
+@keyframes tgSlidePrev { from { transform: translateX(-28px); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tg-scroll .tg-grid { animation: none !important; } }

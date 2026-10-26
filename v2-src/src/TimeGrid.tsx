@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Play } from "lucide-react";
+import { Play, ZoomIn, ZoomOut } from "lucide-react";
 import { byFlow, dayTasksFor, isFixed, planDay } from "./MobilePlanner";
 import { shiftDateKey } from "./meals";
 import { completeTaskFromActual, createManualFocusSession, updateSession, updateTask } from "./store";
@@ -18,6 +18,7 @@ import type { FocusSession, Task } from "./types";
  * その時間の予定になり、今より前に置くと「その時間にやった」記録（完了）になる。
  * やった記録（緑）も同じように長押しで動かし、下の端で長さを変えられる。
  * つかんだまま左右の端で少し待つと前の日・次の日へめくれる（表示外の日へも運べる）。
+ * 何もつかんでいないときは、横にスワイプで前後の日（3日なら3日ずつ）へ。
  */
 const FROM = 6 * 60;
 const TO = 24 * 60;
@@ -53,11 +54,14 @@ export function TimeGrid({
   onOpen,
   onStart,
   onPage,
+  onSwipe,
 }: {
   tasks: Task[];
   sessions?: FocusSession[];
   /** つかんだまま端に寄せたとき、表示する日を前後にずらす。 */
   onPage?: (delta: number) => void;
+  /** 横スワイプ：-1 = 前へ、1 = 次へ。 */
+  onSwipe?: (dir: -1 | 1) => void;
   dates: string[];
   onCreateAt: (date: string, startMinute: number) => void;
   onOpen: (task: Task) => void;
@@ -396,6 +400,33 @@ export function TimeGrid({
     syncNow().catch(() => undefined);
   };
 
+  // ---- 横スワイプで日をめくる（つかんでいないときだけ） ----
+  const swipe = useRef<{ x: number; y: number; at: number } | null>(null);
+  const [slide, setSlide] = useState<0 | -1 | 1>(0);
+  const swipeDown = (event: ReactPointerEvent) => {
+    swipe.current = { x: event.clientX, y: event.clientY, at: Date.now() };
+  };
+  const swipeUp = (event: ReactPointerEvent) => {
+    const sw = swipe.current;
+    swipe.current = null;
+    if (!sw || !onSwipe || dragRef.current?.active || trayRef.current?.active) return;
+    const dx = event.clientX - sw.x;
+    const dy = event.clientY - sw.y;
+    if (Math.abs(dx) < 55 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - sw.at > 700) return;
+    // 画面の左端から右へのスワイプはメニューを開く操作なので、日はめくらない。
+    if (sw.x < 28 && dx > 0) return;
+    const dir = dx < 0 ? 1 : -1;
+    cancelHold();
+    setSlide(dir);
+    onSwipe(dir);
+    haptic("tick");
+  };
+  useEffect(() => {
+    if (!slide) return;
+    const t = window.setTimeout(() => setSlide(0), 260);
+    return () => window.clearTimeout(t);
+  }, [slide, dates.join()]);
+
   const hours = Array.from({ length: (TO - FROM) / 60 + 1 }, (_, i) => FROM + i * 60);
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
@@ -424,8 +455,8 @@ export function TimeGrid({
       )}
       <div className="tg-head" style={{ gridTemplateColumns: `40px repeat(${dates.length}, minmax(0, 1fr))` }}>
         <span className="tg-zoom">
-          <button type="button" aria-label="縮小" disabled={PX === ZOOMS[0]} onClick={() => zoom(-1)}>−</button>
-          <button type="button" aria-label="拡大" disabled={PX === ZOOMS[ZOOMS.length - 1]} onClick={() => zoom(1)}>＋</button>
+          <button type="button" aria-label="時間の目盛りを縮める（1日を広く見る）" title="縮める" disabled={PX === ZOOMS[0]} onClick={() => zoom(-1)}><ZoomOut size={15} /></button>
+          <button type="button" aria-label="時間の目盛りを広げる（細かく見る）" title="広げる" disabled={PX === ZOOMS[ZOOMS.length - 1]} onClick={() => zoom(1)}><ZoomIn size={15} /></button>
         </span>
         {columns.map((c) => {
           const d = new Date(`${c.date}T12:00:00`);
@@ -443,7 +474,7 @@ export function TimeGrid({
           <span className={`tg-edge right${edgeArmed > 0 ? " armed" : ""}`}>{Number(shiftDateKey(dates[dates.length - 1], 1).slice(8))}日 ›</span>
         </>
       )}
-      <div className="tg-scroll" ref={scrollRef}>
+      <div className={`tg-scroll${slide ? ` slide-${slide > 0 ? "next" : "prev"}` : ""}`} ref={scrollRef} onPointerDown={swipeDown} onPointerUp={swipeUp} onPointerCancel={() => { swipe.current = null; }}>
         <div
           className={`tg-grid${drag?.active ? " dragging" : ""}`}
           ref={gridRef}

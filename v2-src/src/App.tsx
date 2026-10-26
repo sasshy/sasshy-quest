@@ -2490,6 +2490,7 @@ function CalendarPage({
           tasks={tasks}
           sessions={sessions}
           onPage={(delta) => setActiveDate((current) => shiftDate(current, delta))}
+          onSwipe={(dir) => setActiveDate((current) => shiftDate(current, dir * (mode === "three" ? 3 : 1)))}
           dates={mode === "three" ? threeDays(activeDate) : [activeDate]}
           onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
           onOpen={openScheduleMove}
