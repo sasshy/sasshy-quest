@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
-import { completeTask, updateSession } from "./store";
+import { completeTask, discardFocusSession, updateSession } from "./store";
 import { syncNow } from "./sync";
 import type { FocusSession } from "./types";
 
@@ -37,6 +37,11 @@ export async function autoCutForgotten(now = Date.now()): Promise<FocusSession[]
   const cut: FocusSession[] = [];
   for (const s of running) {
     if (s.deletedAt) continue;
+    // 寄り道の記録（タスク）を手で始めてしまったタイマーは、なかったことにする。
+    if (!s.interrupt && (await db.tasks.get(s.taskId))?.log) {
+      await discardFocusSession(s.id);
+      continue;
+    }
     if (s.interrupt?.auto) {
       if (now - Date.parse(s.startedAt) < AUTO_DETOUR_MAX_MS) continue;
       const closed = await updateSession(s.id, {

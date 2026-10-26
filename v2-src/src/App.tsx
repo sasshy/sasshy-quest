@@ -50,6 +50,7 @@ import {
   Maximize2,
   Pause,
   Pencil,
+  CalendarX,
   Play,
   Plus,
   Redo2,
@@ -1422,6 +1423,7 @@ function TodayPage({
     .filter(
       (task) =>
         !task.deletedAt &&
+        !task.log &&
         task.status !== "done" &&
         task.scheduledDate &&
         task.scheduledDate < today,
@@ -1431,6 +1433,7 @@ function TodayPage({
     .filter(
       (task) =>
         !task.deletedAt &&
+        !task.log &&
         task.status !== "done" &&
         !task.scheduledDate &&
         task.horizon === "now",
@@ -1572,6 +1575,33 @@ function TodayPage({
                   <Play size={16} fill="currentColor" />
                   {usesRounds(focus) ? `15分ずつ（${Math.ceil(focus.estimateMin / 15)}回）` : `${focusUsual.minutes}分やる`}
                   {focusUsual.fromHistory && !usesRounds(focus) && <small>いつもの実績</small>}
+                </button>
+              </div>
+            )}
+            {!activeSession && (
+              <div className="now-actions idle">
+                <button type="button" onClick={() => onEdit(focus)}>
+                  <Pencil size={14} /> 編集
+                </button>
+                <button type="button" onClick={async () => {
+                  await updateTask(focus.id, { scheduledDate: null, startMinute: null, isFixed: false, status: "inbox" }, "今日から外す");
+                  toast(`「${focus.title}」を今日から外しました（やることに残っています）`);
+                  syncNow().catch(() => undefined);
+                }}>
+                  <CalendarX size={14} /> 外す
+                </button>
+                <button type="button" className={`danger${armedDelete ? " armed" : ""}`} onClick={async () => {
+                  if (!armedDelete) {
+                    setArmedDelete(true);
+                    window.setTimeout(() => setArmedDelete(false), 3000);
+                    return;
+                  }
+                  setArmedDelete(false);
+                  await softDeleteTask(focus.id);
+                  toast(`「${focus.title}」を消しました（ゴミ箱から戻せます）`);
+                  syncNow().catch(() => undefined);
+                }}>
+                  <Trash2 size={14} /> {armedDelete ? "もう一度で消す" : "消す"}
                 </button>
               </div>
             )}
@@ -2838,7 +2868,8 @@ function InboxPage({
   onEdit: (task: Task) => void;
   onStart: (task: Task) => void;
 }) {
-  const open = (task: Task) => !task.deletedAt && task.status !== "done";
+  // 寄り道・割り込みの記録はやることではないので出さない。
+  const open = (task: Task) => !task.deletedAt && !task.log && task.status !== "done";
   const inbox = tasks
     .filter((task) => open(task) && !task.scheduledDate && task.horizon === "now")
     .sort((a, b) => taskScore(b) - taskScore(a));
@@ -4618,6 +4649,8 @@ function App() {
       });
   }, [memos]);
   const startTimer = async (task: Task, opts: StartOptions = {}) => {
+    // 寄り道・割り込みの記録は自分で始めるものではない（自動の記録専用）。
+    if (task.log && !opts.interrupt) return;
     haptic("start");
     companionStart();
     playStart();
