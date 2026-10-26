@@ -182,6 +182,8 @@ import { MonthGrid } from "./MonthGrid";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
 import { restoreBudgetCardOnce } from "./budget";
+import { dailyTidy, inboxTasks, pickTop, shouldNudgeTriage } from "./triage";
+import { TriageSheet } from "./TriageSheet";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
@@ -1499,6 +1501,15 @@ function TodayPage({
     <div className="page-content today-page today-v3">
       <LeaveBanner />
       <RoundBreakBanner />
+      {shouldNudgeTriage(inboxTasks(tasks).length) && (
+        <button type="button" className="triage-nudge" onClick={() => {
+          try { sessionStorage.setItem("sasshy-open-triage", "1"); } catch { /* 開けなくても一覧は出る */ }
+          window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "inbox" }));
+        }}>
+          <span>やることが{inboxTasks(tasks).length}件たまっています。片付けよう</span>
+          <span>›</span>
+        </button>
+      )}
       <section className={`now-card${activeSession ? " running" : ""}`}>
         <span className="now-label">{autoDetour ? "おかえり" : activeSession ? "いま" : "次はこれ"}</span>
         {autoDetour && activeSession?.interrupt ? (
@@ -2889,6 +2900,17 @@ function InboxPage({
   const inbox = tasks
     .filter((task) => open(task) && !task.scheduledDate && task.horizon === "now")
     .sort((a, b) => taskScore(b) - taskScore(a));
+  // 一度に目に入るのは3件だけ。残りはたたむ（件数は見える）。
+  const top = pickTop(inbox);
+  const topIds = new Set(top.map((t) => t.id));
+  const rest = inbox.filter((t) => !topIds.has(t.id));
+  const [showAll, setShowAll] = useState(false);
+  const [triage, setTriage] = useState(() => {
+    try { return sessionStorage.getItem("sasshy-open-triage") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.removeItem("sasshy-open-triage"); } catch { /* なくても動く */ }
+  }, []);
   const groups: { key: TaskHorizon; label: string; hint: string }[] = [
     { key: "waiting", label: "待ち", hint: "返事や到着を待っている" },
     { key: "someday", label: "いつか", hint: "今週ではないけれど残しておく" },
@@ -2917,19 +2939,8 @@ function InboxPage({
       {armed === task.id ? "消す" : <Trash2 size={14} />}
     </button>
   );
-  return (
-    <div className="page-content todo-page">
-      <QuickAdd />
-      <section className="todo-section">
-        <header>
-          <h2>まだ日付のないこと</h2>
-          <span>{inbox.length}件</span>
-        </header>
-        <p className="todo-hint">思いついたら上に入れておくだけでOK。決まったら「今日」「明日」へ。</p>
-        {inbox.length ? (
-          <ul className="todo-list">
-            {inbox.map((task) => (
-              <li key={task.id}>
+  const renderItem = (task: Task, pick: boolean) => (
+              <li key={task.id} className={pick ? "todo-pick" : ""}>
                 <button type="button" className="todo-title" onClick={() => onEdit(task)}>
                   <strong>{task.title}</strong>
                   <small>{task.estimateMin}分{task.doneWhen ? `・ゴール：${task.doneWhen}` : ""}</small>
@@ -2944,12 +2955,37 @@ function InboxPage({
                   </button>
                 </div>
               </li>
-            ))}
+  );
+  return (
+    <div className="page-content todo-page">
+      <QuickAdd />
+      <section className="todo-section">
+        <header>
+          <h2>まだ日付のないこと</h2>
+          <span>{inbox.length}件</span>
+        </header>
+        <p className="todo-hint">思いついたら上に入れておくだけでOK。決まったら「今日」「明日」へ。</p>
+        {inbox.length >= 4 && (
+          <button type="button" className="todo-triage" onClick={() => setTriage(true)}>
+            <span>1件ずつ片付ける</span>
+            <small>{inbox.length}件・1件10秒くらい ›</small>
+          </button>
+        )}
+        {inbox.length ? (<>
+          <ul className="todo-list">
+            {top.map((task) => renderItem(task, true))}
+            {showAll && rest.map((task) => renderItem(task, false))}
           </ul>
-        ) : (
+          {rest.length > 0 && (
+            <button type="button" className="todo-more" onClick={() => setShowAll(!showAll)}>
+              {showAll ? "たたむ" : `ほか ${rest.length}件（押すと全部）`}
+            </button>
+          )}
+        </>) : (
           <EmptyState title="日付のないことはありません" detail="気になることを上からそのまま入力できます" />
         )}
       </section>
+      {triage && <TriageSheet tasks={inbox} onClose={() => setTriage(false)} />}
       {groups.map((group) => {
         const items = tasks.filter((task) => open(task) && task.horizon === group.key);
         const expanded = openGroup === group.key;
@@ -4524,6 +4560,15 @@ function App() {
   });
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => { restoreBudgetCardOnce().catch(() => undefined); }, []);
+  // 1日1回：30日さわらなかった日付なしのやることを「いつか」へ（消さない）。
+  useEffect(() => {
+    dailyTidy().then((moved) => {
+      if (moved > 0) {
+        toast(`30日さわらなかった${moved}件を「いつか」へ移しました（やること › いつか）`);
+        syncNow().catch(() => undefined);
+      }
+    }).catch(() => undefined);
+  }, []);
   // 画面の左端から右へスワイプでメニュー、メニューを左へスワイプで閉じる。
   useEffect(() => {
     let start: { x: number; y: number } | null = null;
