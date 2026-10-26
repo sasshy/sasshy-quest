@@ -184,7 +184,7 @@ import { announceCompletion } from "./progress";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
-import { companionStart } from "./Companion";
+import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel, TimeLeftStrip } from "./TimeLeftPanel";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -4979,6 +4979,7 @@ function App() {
         />
       )}
       <Celebrate />
+      <CompanionPopup />
       <TwoMinutePrompt />
       <StaleSessionPrompt />
       <RoundEndPrompt />

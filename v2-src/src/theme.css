@@ -1027,3 +1027,10 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 @keyframes tgSlideNext { from { transform: translateX(28px); opacity: .4; } to { transform: none; opacity: 1; } }
 @keyframes tgSlidePrev { from { transform: translateX(-28px); opacity: .4; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tg-scroll .tg-grid { animation: none !important; } }
+/* 記録した瞬間のねこ（今日の画面の外でも見える） */
+.companion-pop { position: fixed; z-index: 125; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); color: var(--ink); box-shadow: 0 12px 30px rgba(0,0,0,.18); font: inherit; cursor: pointer; animation: catpop .45s cubic-bezier(.2,1.4,.4,1); }
+.companion-pop-cat { width: 72px; height: 72px; border-radius: 16px; overflow: hidden; background: #F2F2EF; flex: none; }
+.companion-pop-cat video, .companion-pop-cat img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.25); transform-origin: 50% 60%; display: block; }
+.companion-pop-say { font-size: 15px; font-weight: 800; white-space: nowrap; }
+@keyframes catpop { from { opacity: 0; transform: translate(-50%, 24px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .companion-pop { animation: none; } }

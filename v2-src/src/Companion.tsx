@@ -8,6 +8,7 @@ import tilt from "./assets/companion/cat-5.png?inline";
 import walk from "./assets/companion/cat-6.png?inline";
 import { db } from "./db";
 import { haptic } from "./feedback";
+import { appearanceNow } from "./appearance";
 
 /**
  * 相棒のねこ. Sits next to today's progress. It only moves at moments:
@@ -50,6 +51,51 @@ const LINES: Partial<Record<Pose, string>> = {
   habit: "えらい",
   rest: "ひと休み",
 };
+
+// 今日の画面のねこ（見えているかどうかの判定に使う）。
+let inlineEl: HTMLElement | null = null;
+function inlineVisible(): boolean {
+  if (!inlineEl || !document.body.contains(inlineEl)) return false;
+  // シートやタイマーが上に重なっていたら見えていない。
+  if (document.querySelector(".modal-backdrop, .timer-dock, .two-min")) return false;
+  const r = inlineEl.getBoundingClientRect();
+  return r.width > 0 && r.bottom > 40 && r.top < window.innerHeight - 80;
+}
+
+/** 記録した瞬間のねこ：今日の画面のねこが見えないときだけ、画面の下に小さく出る。 */
+const POPUP_POSES: Pose[] = ["meal", "diary", "habit", "rest"];
+export function CompanionPopup() {
+  const [shown, setShown] = useState<{ pose: Pose; key: number } | null>(null);
+  const timer = useRef<number | null>(null);
+  const hide = () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    setShown(null);
+  };
+  useEffect(() => {
+    const on = (e: Event) => {
+      const pose = (e as CustomEvent<Pose>).detail;
+      if (!POPUP_POSES.includes(pose) || appearanceNow().companion === false || inlineVisible()) return;
+      if (timer.current) window.clearTimeout(timer.current);
+      setShown({ pose, key: Date.now() });
+      timer.current = window.setTimeout(() => setShown(null), 6500);
+    };
+    window.addEventListener("sasshy-companion", on);
+    return () => { window.removeEventListener("sasshy-companion", on); if (timer.current) window.clearTimeout(timer.current); };
+  }, []);
+  if (!shown) return null;
+  return (
+    <button type="button" className="companion-pop" key={shown.key} aria-label="相棒のねこ（押すと閉じる）" onClick={hide}>
+      <span className="companion-pop-cat">
+        {VIDEOS[shown.pose] ? (
+          <video src={VIDEOS[shown.pose]} autoPlay muted playsInline disablePictureInPicture aria-hidden="true" onEnded={() => { timer.current = window.setTimeout(() => setShown(null), 900); }} />
+        ) : (
+          <img src={IMAGES[shown.pose]} alt="" />
+        )}
+      </span>
+      {LINES[shown.pose] && <span className="companion-pop-say">{LINES[shown.pose]}</span>}
+    </button>
+  );
+}
 
 export function companionStart(): void {
   window.dispatchEvent(new CustomEvent("sasshy-companion", { detail: "stretch" }));
@@ -94,6 +140,7 @@ export function Companion() {
   return (
     <button
       type="button"
+      ref={(el) => { inlineEl = el; }}
       className={`companion pose-${pose}${moment && !VIDEOS[moment.pose] ? " moment" : ""}${Object.keys(VIDEOS).length ? " tile" : ""}`}
       data-moment={moment?.key ?? 0}
       aria-label="相棒のねこ"
