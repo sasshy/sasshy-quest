@@ -16,6 +16,7 @@ export const SERVER_INSTRUCTIONS = [
   '登録後は、入れた内容を短く1行で伝えてください。責めたり急かしたりしない言葉で。',
   '食事の話が出たら record_meals で記録します。カロリー・P/F/Cはあなたが推定して入れてください（量・枚数・薄切りなどを反映）。家で食べたものは payment を "home"、price は空に。',
   '記録済みの食事のカロリーを直すときは list_meals で memo_id と revision を取り、fix_meal_nutrition を使います。',
+  '食事以外にお金を使った話（買い物・交通費・日用品など）が出たら record_expenses で記録します。食事の代金は record_meals の price に入れ、支出には重ねて入れません。',
 ].join('\n');
 
 const dateProp = { type: 'string', description: 'YYYY-MM-DD（日本時間）' };
@@ -182,5 +183,45 @@ export const TOOLS = [
       additionalProperties: false,
     },
     annotations: { title: 'カロリーを直す', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'record_expenses',
+    title: 'SASSHYに支出を記録',
+    description: '食事以外にお金を使ったもの（買い物・交通費・日用品など）を記録します。1件ずつ expenses に入れます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        expenses: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: 'object',
+            properties: {
+              item: { type: 'string', description: '何に使ったか（例：電車 新宿→渋谷、ティッシュ5箱）' },
+              amount: { type: 'integer', minimum: 0, description: '金額（円）' },
+              paid_at: { type: 'string', description: '払った日時 ISO 8601（例：2026-10-26T12:30:00+09:00）。省略で今' },
+              category: { type: 'string', description: '分類（交通・日用品・趣味など）。省略可' },
+            },
+            required: ['item', 'amount'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['expenses'],
+      additionalProperties: false,
+    },
+    annotations: { title: '支出を記録', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: 'list_expenses',
+    title: 'SASSHYの支出記録を見る',
+    description: '期間の支出（食事以外）と合計を見ます。省略で直近7日。',
+    inputSchema: {
+      type: 'object',
+      properties: { from_date: dateProp, to_date: dateProp },
+      additionalProperties: false,
+    },
+    annotations: { title: '支出を見る', readOnlyHint: true, openWorldHint: false },
   },
 ];

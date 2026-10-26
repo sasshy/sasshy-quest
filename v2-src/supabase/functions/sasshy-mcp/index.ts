@@ -3,12 +3,13 @@ import { resolveWorkspace } from '../_shared/workspace-auth.ts';
 import { parseTaskRequest } from '../sasshy-add-task/validation.ts';
 import { parseTaskMutationRequest, parseTaskSearchRequest, type TaskMutationOperation } from '../sasshy-add-task/management.ts';
 import { TOOLS, SERVER_INSTRUCTIONS, tokyoDate, addDays } from './tools.ts';
+import { parseExpenses } from './expense.ts';
 import { applyNutrition, parseMealRequest, parseMealSearchRequest, parseNutritionRequest } from '../sasshy-add-task/meal.ts';
 
 /**
  * SASSHY as a remote MCP server (Streamable HTTP, stateless JSON responses) so
  * Claude and ChatGPT can add / look up / complete tasks directly in a chat.
- * Tasks and meal records (the user approved meals on 2026-10-24). The secret is the last path
+ * Tasks, meal records (approved 2026-10-24) and expenses (asked for 2026-10-26). The secret is the last path
  * segment: /functions/v1/sasshy-mcp/<token>; only its SHA-256 is stored.
  */
 
@@ -80,6 +81,24 @@ async function callTool(client: any, syncKey: string, name: string, args: Record
     const kcal = memos.reduce((sum: number, m: any) => sum + (typeof m.meal?.kcal === 'number' ? m.meal.kcal : 0), 0);
     // deno-lint-ignore no-explicit-any
     return text({ ok: true, count: memos.length, meals: memos.map((m: any) => ({ memo_id: m.id, item: m.meal?.item, kind: m.meal?.kind, kcal: m.meal?.kcal ?? null })), message: `SASSHYに${memos.length}品記録しました${kcal ? `（計${kcal}kcal）` : ''}` });
+  }
+  if (name === 'record_expenses') {
+    const memos = parseExpenses(args.expenses);
+    const { data, error } = await client.rpc('sasshy_v2_ingest_expenses', { p_sync_key: syncKey, p_idempotency_key: `mcp-${crypto.randomUUID()}`, p_memos: memos });
+    if (error) throw error;
+    const saved = Array.isArray(data?.memos) ? data.memos : [];
+    // deno-lint-ignore no-explicit-any
+    const total = saved.reduce((sum: number, m: any) => sum + (typeof m.expense?.amount === 'number' ? m.expense.amount : 0), 0);
+    // deno-lint-ignore no-explicit-any
+    return text({ ok: true, count: saved.length, expenses: saved.map((m: any) => ({ memo_id: m.id, item: m.expense?.item, amount: m.expense?.amount })), message: `SASSHYに支出を${saved.length}件記録しました（計¥${total.toLocaleString('ja-JP')}）` });
+  }
+  if (name === 'list_expenses') {
+    const today = tokyoDate();
+    const from = typeof args.from_date === 'string' && args.from_date ? args.from_date : addDays(today, -6);
+    const to = typeof args.to_date === 'string' && args.to_date ? args.to_date : today;
+    const { data, error } = await client.rpc('sasshy_v2_action_search_expenses', { p_sync_key: syncKey, p_from_date: from, p_to_date: to, p_limit: 100 });
+    if (error) throw error;
+    return text(data);
   }
   if (name === 'list_meals') {
     const input = parseMealSearchRequest({ from_date: args.from_date, to_date: args.to_date, missing_nutrition: args.missing_nutrition ?? false, limit: 50 });
