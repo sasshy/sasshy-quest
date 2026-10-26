@@ -9,8 +9,23 @@ import type { AppSetting, Memo } from './types';
  * Planned spends ("使う予定のお金") are memos (category 支出予定) so they sync;
  * pressing 使った turns one into a normal spend record, so nothing is counted twice.
  */
-export interface BudgetSetting { id: 'budget'; enabled: boolean; amount: number; startDay: number }
-export const DEFAULT_BUDGET: BudgetSetting = { id: 'budget', enabled: true, amount: 30000, startDay: 25 };
+/**
+ * amount = 毎日のお金（お昼・間食・コンビニ）。今日の「あと使える」はここから。
+ * shoppingAmount = 買い物枠（ドラッグストア・Amazonなど月に数回の大きめの買い物）。
+ * 大きな買い物で毎日の数字が崩れないよう、別の枠で数える。
+ */
+export interface BudgetSetting { id: 'budget'; enabled: boolean; amount: number; startDay: number; shoppingAmount: number }
+export const DEFAULT_BUDGET: BudgetSetting = { id: 'budget', enabled: true, amount: 30000, startDay: 25, shoppingAmount: 20000 };
+
+const SHOPPING = /amazon|アマゾン|楽天|rakuten|ドラッグ|drug|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ|ダイソー|ニトリ|無印|ヨドバシ|ビックカメラ|ケーズ|カインズ|コーナン|ロフト|ドン・?キホーテ|ドンキ|アスクル|lohaco|yahoo|ヤフー|zozo|メルカリ|ユニクロ|コストコ|ホームセンター|日用品/i;
+
+/** 買い物枠の支出か（指定があればそれ、なければ品名から）。食事は毎日のお金。 */
+export function isShoppingExpense(memo: Memo): boolean {
+  const e = memo.expense;
+  if (!e) return false;
+  if (e.bucket) return e.bucket === 'shopping';
+  return SHOPPING.test(`${e.item} ${e.category || ''}`);
+}
 export const PLANNED_CATEGORY = '支出予定';
 
 export interface PlannedSpend { item: string; amount: number; date?: string | null }
@@ -41,7 +56,18 @@ export function budgetPeriod(today: string, startDay: number): { start: string; 
 }
 
 const spentOn = (memos: Memo[], key: string) =>
-  spendOn(memos, key) + expensesOn(memos, key).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
+  spendOn(memos, key) + expensesOn(memos, key).filter((m) => !isShoppingExpense(m)).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
+
+/** 買い物枠：今の給料日期間に使った額と残り。 */
+export function shoppingStatus(memos: Memo[], setting: BudgetSetting, today: string): { budget: number; spent: number; left: number } {
+  const { start, end } = budgetPeriod(today, setting.startDay);
+  let spent = 0;
+  for (let key = start; key <= end && key <= today; key = shiftDateKey(key, 1)) {
+    spent += expensesOn(memos, key).filter(isShoppingExpense).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
+  }
+  const budget = setting.shoppingAmount ?? DEFAULT_BUDGET.shoppingAmount;
+  return { budget, spent, left: budget - spent };
+}
 
 export interface BudgetStatus {
   budget: number;

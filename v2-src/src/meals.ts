@@ -363,14 +363,14 @@ export async function updateMeal(id: string, edit: MealEdit): Promise<Memo | nul
   return updateMemo(id, { meal, title: mealTitle(meal), body: mealBody(meal) }, '食事の記録を修正');
 }
 
-export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string }): Promise<Memo | null> {
+export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string; bucket?: 'daily' | 'shopping' }): Promise<Memo | null> {
   const memo = await db.memos.get(id);
   if (!memo?.expense) return null;
   const item = edit.item.trim();
   if (!item) throw new Error('何に使ったかを入力してください');
   const amount = cleanNumber(edit.amount);
   if (amount === null) throw new Error('金額を入力してください');
-  const expense: ExpenseInfo = { ...memo.expense, item, amount, at: edit.at };
+  const expense: ExpenseInfo = { ...memo.expense, item, amount, at: edit.at, ...(edit.bucket ? { bucket: edit.bucket } : {}) };
   return updateMemo(id, { expense, title: `支出：${item} ¥${amount.toLocaleString('ja-JP')}` }, '支出の記録を修正');
 }
 

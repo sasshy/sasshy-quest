@@ -1042,3 +1042,5 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .ai-voice-options button strong { font-size: 13px; }
 .ai-voice-options button small { font-size: 10px; color: var(--muted); }
 .ai-voice-options button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.budget-shop { display: block; font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+.budget-shop.over { color: var(--danger); }

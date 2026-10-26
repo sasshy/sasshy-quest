@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Trash2, X } from "lucide-react";
 import { MEAL_LABEL, PAYMENT_LABEL, removeMeal, updateExpense, updateMeal } from "./meals";
 import { syncNow } from "./sync";
+import { isShoppingExpense } from "./budget";
 import { estimateMeal } from "./meal-estimate";
 import type { MealKind, MealPayment, Memo } from "./types";
 
@@ -23,6 +24,7 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
   const [kind, setKind] = useState<MealKind>(meal?.kind || "snack");
   const [payment, setPayment] = useState<MealPayment>(meal?.payment || "self");
   const [error, setError] = useState("");
+  const [bucket, setBucket] = useState<"daily" | "shopping">(isShoppingExpense(memo) ? "shopping" : "daily");
   const num = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
   const [nut, setNut] = useState({ kcal: num(meal?.kcal), protein: num(meal?.protein), fat: num(meal?.fat), carbs: num(meal?.carbs) });
   // 量を変えたら、カロリーと栄養をまとめて同じ割合で直す。
@@ -71,7 +73,7 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
           carbs: toNum(String(form.get("carbs") ?? nut.carbs)),
         });
       } else {
-        await updateExpense(memo.id, { item: String(form.get("item") || ""), amount: toYen(String(form.get("price") || "")), at });
+        await updateExpense(memo.id, { item: String(form.get("item") || ""), amount: toYen(String(form.get("price") || "")), at, bucket });
       }
       syncNow().catch(() => undefined);
       onClose();
@@ -90,6 +92,12 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
           <button className="icon-button" type="button" aria-label="閉じる" onClick={onClose}><X size={20} /></button>
         </header>
         <form className="form-stack" onSubmit={(event) => { event.preventDefault(); submit(new FormData(event.currentTarget)); }}>
+          {expense && (
+            <div className="ms-kinds" role="group" aria-label="どちらの予算から引くか">
+              <button type="button" className={bucket === "daily" ? "active" : ""} onClick={() => setBucket("daily")}>毎日のお金</button>
+              <button type="button" className={bucket === "shopping" ? "active" : ""} onClick={() => setBucket("shopping")}>買い物枠</button>
+            </div>
+          )}
           {meal && (
             <div className="ms-kinds" role="group" aria-label="いつの食事">
               {KINDS.map((value) => (

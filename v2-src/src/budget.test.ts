@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ensureDefaults } from './db';
-import { addPlannedSpend, budgetPeriod, budgetStatus, DEFAULT_BUDGET, isPlannedMemo, markPlannedSpent } from './budget';
+import { addPlannedSpend, budgetPeriod, budgetStatus, DEFAULT_BUDGET, isPlannedMemo, isShoppingExpense, markPlannedSpent, shoppingStatus } from './budget';
+import { updateExpense } from './meals';
 import { isLedgerMemo, recordExpense, recordMeal } from './meals';
 
 beforeEach(async () => {
@@ -53,5 +54,26 @@ describe('今日あと使える', () => {
     await addPlannedSpend({ item: '旅行', amount: 20000, date: '2026-12-01' });
     const s = budgetStatus(await db.memos.toArray(), { ...DEFAULT_BUDGET, startDay: 1 }, '2026-10-22');
     expect(s.planned).toBe(0);
+  });
+});
+
+describe('買い物枠', () => {
+  it('Amazon・ドラッグストアは買い物枠に入り、今日の「あと使える」を減らさない', async () => {
+    const today = '2026-10-26';
+    await recordExpense({ item: 'アイドラッグストアー まとめ買い', amount: 10771, at: at(today) });
+    await recordExpense({ item: 'idrugstore', amount: 500, at: at(today) });
+    await recordExpense({ item: 'コンビニ コーヒー', amount: 150, at: at(today) });
+    const memos = await db.memos.toArray();
+    const daily = budgetStatus(memos, DEFAULT_BUDGET, today);
+    expect(daily.spentToday).toBe(150);
+    const shop = shoppingStatus(memos, DEFAULT_BUDGET, today);
+    expect(shop.spent).toBe(11271);
+    expect(shop.left).toBe(20000 - 11271);
+  });
+  it('記録ごとに枠を変えられる', async () => {
+    const m = await recordExpense({ item: 'Amazon 本', amount: 1200, at: at('2026-10-26') });
+    expect(isShoppingExpense(m)).toBe(true);
+    const changed = await updateExpense(m.id, { item: 'Amazon 本', amount: 1200, at: m.expense!.at, bucket: 'daily' });
+    expect(isShoppingExpense(changed!)).toBe(false);
   });
 });

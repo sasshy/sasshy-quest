@@ -11,6 +11,7 @@ import {
   markPlannedSpent,
   removePlannedSpend,
   setBudget,
+  shoppingStatus,
 } from "./budget";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
@@ -28,7 +29,7 @@ function useBudget() {
     return getBudget();
   }, [], DEFAULT_BUDGET) || DEFAULT_BUDGET;
   const today = localDateKey(Date.now());
-  return { memos, setting, status: budgetStatus(memos, setting, today) };
+  return { memos, setting, status: budgetStatus(memos, setting, today), shopping: shoppingStatus(memos, setting, today) };
 }
 
 /** Counts to the new value (e.g. after recording a spend), so the change is felt. */
@@ -55,7 +56,7 @@ function useCountTo(target: number): number {
 
 /** Today: how much is left to spend today (the reason to open before buying). */
 export function BudgetCard() {
-  const { setting, status } = useBudget();
+  const { setting, status, shopping } = useBudget();
   const [open, setOpen] = useState(false);
   if (!setting.enabled) return null;
   const over = status.todayLeft < 0;
@@ -67,6 +68,7 @@ export function BudgetCard() {
         <div>
           <span>{over ? "今日の目安を超えています" : "今日あと使える"}</span>
           <strong>{yen(Math.abs(shown))}{over ? " オーバー" : ""}</strong>
+          <em className={`budget-shop${shopping.left < 0 ? " over" : ""}`}>買い物枠 あと{yen(shopping.left)}</em>
         </div>
         <small>
           給料日まで{status.daysLeft}日
@@ -81,7 +83,7 @@ export function BudgetCard() {
 }
 
 export function BudgetSheet({ onClose }: { onClose: () => void }) {
-  const { memos, setting, status } = useBudget();
+  const { memos, setting, status, shopping } = useBudget();
   const planned = memos.filter(isPlannedMemo).sort((a, b) => (a.planned!.date || "9").localeCompare(b.planned!.date || "9"));
   const [item, setItem] = useState("");
   const [amount, setAmount] = useState("");
@@ -125,6 +127,12 @@ export function BudgetSheet({ onClose }: { onClose: () => void }) {
             <div className="total"><dt>給料日までに使える</dt><dd>{yen(status.periodLeft)}</dd></div>
             <div><dt>1日あたり（残り{status.daysLeft}日）</dt><dd>{yen(status.todayAllowance)}</dd></div>
           </dl>
+          <dl className="budget-calc">
+            <div><dt>買い物枠（ドラッグストア・Amazonなど）</dt><dd>{yen(shopping.budget)}</dd></div>
+            <div><dt>これまでに使った</dt><dd>−{yen(shopping.spent)}</dd></div>
+            <div className="total"><dt>給料日までの残り</dt><dd>{yen(shopping.left)}</dd></div>
+          </dl>
+          <p className="settings-hint">Amazon・楽天・ドラッグストアなどの支出は、自動で買い物枠に入ります（毎日の「あと使える」は減りません）。記録を押すと枠を変えられます。</p>
 
           <h3 className="budget-h">使う予定のお金</h3>
           <p className="settings-hint">決まっている出費を先に入れておくと、予算から引いて考えます。使ったら ✓ を押すと支出の記録になります。</p>
@@ -163,13 +171,24 @@ export function BudgetSheet({ onClose }: { onClose: () => void }) {
 
           <h3 className="budget-h">設定</h3>
           <label className="budget-setting">
-            <span>1か月の予算（生活費・自由に使うお金）</span>
+            <span>毎日のお金（1か月：お昼・間食・コンビニなど）</span>
             <input
               inputMode="numeric"
               defaultValue={String(setting.amount)}
               onBlur={(e) => {
                 const value = Number(e.currentTarget.value.replace(/[^0-9]/g, ""));
                 if (value > 0) setBudget({ amount: value });
+              }}
+            />
+          </label>
+          <label className="budget-setting">
+            <span>買い物枠（1か月：ドラッグストア・Amazonなど）</span>
+            <input
+              inputMode="numeric"
+              defaultValue={String(setting.shoppingAmount ?? 20000)}
+              onBlur={(e) => {
+                const value = Number(e.currentTarget.value.replace(/[^0-9]/g, ""));
+                if (value >= 0) setBudget({ shoppingAmount: value });
               }}
             />
           </label>

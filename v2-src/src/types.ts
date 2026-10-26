@@ -199,6 +199,8 @@ export interface ExpenseInfo {
   /** When it was paid (ISO). */
   at: string;
   category?: string | null;
+  /** どちらの予算から引くか。未指定なら品名から自動（Amazon・ドラッグストアなど→買い物枠）。 */
+  bucket?: 'daily' | 'shopping';
   [key: string]: unknown;
 }
 
