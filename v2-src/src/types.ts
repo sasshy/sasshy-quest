@@ -324,6 +324,8 @@ export interface VoiceConfig {
   coachEnabled?: boolean;
   /** iPhone app: natural AI voice (each sentence made once, about 0.1 yen). */
   aiVoice?: boolean;
+  /** AIの声の種類（marin / cedar はChatGPTの音声会話と同じ系統）。 */
+  aiVoiceName?: string;
   defaultPreparationMin?: number;
   rate: number;
   volume: number;

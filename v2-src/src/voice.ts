@@ -71,7 +71,9 @@ export function speakVoice(text: string, config: VoiceConfig): boolean {
       text,
       rate: config.rate,
       volume: config.volume,
-      ai: Boolean(config.aiVoice),
+      // AIの自然な声は、設定で切っていない限り使う。
+      ai: config.aiVoice !== false,
+      voiceName: config.aiVoiceName || 'marin',
     });
     return true;
   }

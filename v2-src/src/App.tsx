@@ -3605,7 +3605,7 @@ function SettingsPage({
             </span>
             <input
               type="checkbox"
-              checked={Boolean(voiceConfig.aiVoice)}
+              checked={voiceConfig.aiVoice !== false}
               onChange={(event) =>
                 setVoiceConfig({
                   ...voiceConfig,
@@ -3614,6 +3614,29 @@ function SettingsPage({
               }
             />
           </label>
+          {voiceConfig.aiVoice !== false && (
+            <div className="ai-voice-pick">
+              <span>声の種類</span>
+              <div className="ai-voice-options">
+                {AI_VOICES.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className={(voiceConfig.aiVoiceName || "marin") === v.id ? "active" : ""}
+                    onClick={() => {
+                      const next = { ...voiceConfig, aiVoiceName: v.id };
+                      setVoiceConfig(next);
+                      speakVoice("おつかれさま。あと5分、いっしょにやろう。", { ...next, enabled: true, aiVoice: true });
+                    }}
+                  >
+                    <strong>{v.label}</strong>
+                    <small>{v.note}</small>
+                  </button>
+                ))}
+              </div>
+              <small>押すと、その声で試しに話します（iPhoneアプリ）。</small>
+            </div>
+          )}
           <label>
             <span>通常の予定で準備を始める時間（分前）</span>
             <input
@@ -3914,6 +3937,13 @@ function SettingsPage({
     </div>
   );
 }
+
+const AI_VOICES = [
+  { id: "marin", label: "マリン", note: "ChatGPTの声・やわらかい" },
+  { id: "cedar", label: "シダー", note: "ChatGPTの声・落ち着いた" },
+  { id: "coral", label: "コーラル", note: "明るい（今までの声）" },
+  { id: "shimmer", label: "シマー", note: "さわやか" },
+];
 
 const toast = (text: string) => window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: text }));
 

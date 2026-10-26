@@ -1034,3 +1034,11 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .companion-pop-say { font-size: 15px; font-weight: 800; white-space: nowrap; }
 @keyframes catpop { from { opacity: 0; transform: translate(-50%, 24px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .companion-pop { animation: none; } }
+.ai-voice-pick { display: grid; gap: 6px; margin: 4px 0 8px; }
+.ai-voice-pick > span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.ai-voice-pick > small { font-size: 11px; color: var(--faint); }
+.ai-voice-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ai-voice-options button { display: grid; gap: 2px; text-align: left; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; }
+.ai-voice-options button strong { font-size: 13px; }
+.ai-voice-options button small { font-size: 10px; color: var(--muted); }
+.ai-voice-options button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
