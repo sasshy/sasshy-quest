@@ -4481,6 +4481,8 @@ function App() {
     const up = (e: TouchEvent) => {
       const t = e.changedTouches[0];
       if (!start || !t) return;
+      // カレンダーでタスクをつかんでいる間は、メニューのスワイプにしない。
+      if (document.body.classList.contains("sasshy-dragging")) { start = null; return; }
       const dx = t.clientX - start.x;
       const dy = Math.abs(t.clientY - start.y);
       if (start.x < 28 && dx > 60 && dy < 50) setMenuOpen(true);

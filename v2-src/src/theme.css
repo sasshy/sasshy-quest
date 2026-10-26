@@ -1007,3 +1007,16 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .tg-block.done.beside { left: 50%; }
 /* 棚のタスクが多くても画面が横にずれないように */
 .tg, .tg-tray { min-width: 0; max-width: 100%; }
+/* つかんでいる間：端に「前の日／次の日」 */
+.tg { position: relative; }
+.tg-edge { position: absolute; top: 50%; z-index: 20; padding: 10px 6px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 10%, var(--paper)); color: var(--muted); font-size: 11px; font-weight: 800; pointer-events: none; writing-mode: vertical-rl; letter-spacing: .1em; transition: background .15s ease, color .15s ease, transform .15s ease; }
+.tg-edge.left { left: 0; }
+.tg-edge.right { right: 0; }
+.tg-edge.armed { background: var(--accent); color: var(--accent-ink); transform: scale(1.08); }
+body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-select: none; }
+/* スマホ幅でカレンダー上のボタンが折り返して棚に重ならないように、1行で横にずらせる */
+@media (max-width: 760px) {
+  .calendar-toolbar-actions { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .calendar-toolbar-actions::-webkit-scrollbar { display: none; }
+  .calendar-toolbar-actions > * { flex: none; }
+}

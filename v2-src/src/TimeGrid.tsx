@@ -43,7 +43,7 @@ const toast = (text: string) => window.dispatchEvent(new CustomEvent("sasshy-toa
 interface TrayDrag { task: Task; startX: number; startY: number; x: number; y: number; active: boolean; date: string | null; start: number }
 
 interface Placed { task: Task; date: string; start: number; end: number; fixed: boolean; session?: FocusSession }
-interface Drag { id: string; kind: "move" | "resize"; startY: number; startX: number; orig: Placed; start: number; end: number; date: string; active: boolean }
+interface Drag { id: string; kind: "move" | "resize"; startY: number; startX: number; grabY: number; orig: Placed; start: number; end: number; date: string; active: boolean }
 
 export function TimeGrid({
   tasks,
@@ -83,12 +83,18 @@ export function TimeGrid({
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const holdTimer = useRef<number | null>(null);
+  const [trayDrag, setTrayDrag] = useState<TrayDrag | null>(null);
+  const trayRef = useRef<TrayDrag | null>(null);
+  const trayHold = useRef<number | null>(null);
+  const setTray = (v: TrayDrag | null) => { trayRef.current = v; setTrayDrag(v); };
 
   // 最初は「今」か朝8時あたりが見えるように。
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const focus = dates.includes(today) ? now.getHours() * 60 + now.getMinutes() - 90 : 8 * 60;
+    // つかんだまま日をめくったときは、時間の位置をそのままにする。
+    if (dragRef.current?.active || trayRef.current?.active) return;
     el.scrollTop = Math.max(0, top(focus));
   }, [dates.join()]);
 
@@ -159,44 +165,38 @@ export function TimeGrid({
     if (edgeTimer.current) window.clearTimeout(edgeTimer.current);
     edgeTimer.current = null;
     edgeDir.current = 0;
+    setEdgeArmed(0);
   };
+  const [edgeArmed, setEdgeArmed] = useState(0);
   const checkEdge = (x: number) => {
     const grid = gridRef.current;
     if (!grid || !onPage) return;
     const r = grid.getBoundingClientRect();
-    const dir = x < r.left + 40 + 22 ? -1 : x > r.right - 22 ? 1 : 0;
+    const dir = x < r.left + 40 + 30 ? -1 : x > r.right - 44 ? 1 : 0;
     if (dir === edgeDir.current) return;
     stopEdge();
     edgeDir.current = dir;
+    setEdgeArmed(dir);
     if (!dir) return;
     const flip = () => {
       onPage(dir);
       haptic("tick");
-      edgeTimer.current = window.setTimeout(flip, 900);
+      edgeTimer.current = window.setTimeout(flip, 800);
     };
-    edgeTimer.current = window.setTimeout(flip, 650);
+    edgeTimer.current = window.setTimeout(flip, 420);
   };
   useEffect(() => stopEdge, []);
   // めくった後は、指が止まっていても置き先の日を新しい表示に合わせる。
-  useEffect(() => {
-    const pos = lastPointer.current;
-    if (!pos) return;
-    const d = dragRef.current;
-    if (d?.active && d.kind === "move") {
-      const next = { ...d, date: columnAt(pos.x) };
-      dragRef.current = next;
-      setDrag(next);
-    }
-    const t = trayRef.current;
-    if (t?.active) setTray({ ...t, ...trayTarget(pos.x, pos.y) });
-  }, [dates.join()]);
+  useEffect(() => { retarget(); }, [dates.join()]);
 
   const begin = (event: ReactPointerEvent, p: Placed, kind: Drag["kind"]) => {
-    const d: Drag = { id: p.session?.id || p.task.id, kind, startY: event.clientY, startX: event.clientX, orig: p, start: p.start, end: p.end, date: p.date, active: kind === "resize" };
+    const gridTop = gridRef.current?.getBoundingClientRect().top ?? 0;
+    const grabY = event.clientY - gridTop - top(p.start);
+    const d: Drag = { id: p.session?.id || p.task.id, kind, startY: event.clientY, startX: event.clientX, grabY, orig: p, start: p.start, end: p.end, date: p.date, active: kind === "resize" };
     dragRef.current = d;
     if (kind === "resize") {
       setDrag(d);
-      try { (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId); } catch { /* 同上 */ }
+      try { (gridRef.current || (event.currentTarget as HTMLElement)).setPointerCapture?.(event.pointerId); } catch { /* 同上 */ }
       haptic("tick");
       return;
     }
@@ -224,18 +224,72 @@ export function TimeGrid({
     event.preventDefault();
     lastPointer.current = { x: event.clientX, y: event.clientY };
     if (d.kind === "move") checkEdge(event.clientX);
-    let next: Drag;
-    if (d.kind === "resize") {
-      next = { ...d, end: Math.max(d.orig.start + 5, snap(minuteAt(top(d.orig.end) + dy), 5)) };
-    } else {
-      const length = d.orig.end - d.orig.start;
-      const start = Math.min(TO - length, Math.max(FROM, snap(minuteAt(top(d.orig.start) + dy), d.orig.session ? 5 : SNAP)));
-      next = { ...d, start, end: start + length, date: columnAt(event.clientX) };
-    }
-    if (next.start !== d.start || next.end !== d.end || next.date !== d.date) haptic("tick");
-    dragRef.current = next;
-    setDrag(next);
+    retarget();
   };
+
+  /** 指の位置（画面上）から置き先を決め直す。スクロール中・日をめくった後も呼ぶ。 */
+  const retarget = () => {
+    const pos = lastPointer.current;
+    const grid = gridRef.current;
+    if (!pos || !grid) return;
+    const gridTop = grid.getBoundingClientRect().top;
+    const d = dragRef.current;
+    if (d?.active) {
+      let next: Drag;
+      if (d.kind === "resize") {
+        next = { ...d, end: Math.max(d.orig.start + 5, snap(minuteAt(pos.y - gridTop), 5)) };
+      } else {
+        const length = d.orig.end - d.orig.start;
+        const start = Math.min(TO - length, Math.max(FROM, snap(minuteAt(pos.y - gridTop - d.grabY), d.orig.session ? 5 : SNAP)));
+        next = { ...d, start, end: start + length, date: columnAt(pos.x) };
+      }
+      if (next.start !== d.start || next.end !== d.end || next.date !== d.date) {
+        haptic("tick");
+        dragRef.current = next;
+        setDrag(next);
+      }
+      return;
+    }
+    const t = trayRef.current;
+    if (t?.active) {
+      const target = trayTarget(pos.x, pos.y);
+      if (target.date !== t.date || target.start !== t.start) haptic("tick");
+      setTray({ ...t, x: pos.x, y: pos.y, ...target });
+    }
+  };
+
+  // つかんでいる間：画面のスクロールを止め、上下の端に来たら自動でスクロールする。
+  const dragging = Boolean(drag?.active || trayDrag?.active);
+  useEffect(() => {
+    if (!dragging) return;
+    const stopScroll = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", stopScroll, { passive: false });
+    document.body.classList.add("sasshy-dragging");
+    let frame = 0;
+    const tick = () => {
+      const el = scrollRef.current;
+      const pos = lastPointer.current;
+      if (el && pos) {
+        const box = el.getBoundingClientRect();
+        const zone = 70;
+        let speed = 0;
+        if (pos.y > box.bottom - zone) speed = Math.min(1, (pos.y - (box.bottom - zone)) / zone);
+        else if (pos.y < box.top + zone) speed = -Math.min(1, ((box.top + zone) - pos.y) / zone);
+        if (speed) {
+          const before = el.scrollTop;
+          el.scrollTop += speed * 16;
+          if (el.scrollTop !== before) retarget();
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("touchmove", stopScroll);
+      document.body.classList.remove("sasshy-dragging");
+    };
+  }, [dragging]);
 
   const cancelHold = () => {
     if (holdTimer.current) window.clearTimeout(holdTimer.current);
@@ -282,10 +336,6 @@ export function TimeGrid({
     .filter((t) => !t.deletedAt && !t.log && t.status !== "done" && t.status !== "archived" && t.status !== "active"
       && ((!t.scheduledDate && t.horizon === "now") || (t.scheduledDate !== null && t.scheduledDate < today)))
     .sort((a, b) => (a.scheduledDate || "9").localeCompare(b.scheduledDate || "9"));
-  const [trayDrag, setTrayDrag] = useState<TrayDrag | null>(null);
-  const trayRef = useRef<TrayDrag | null>(null);
-  const trayHold = useRef<number | null>(null);
-  const setTray = (v: TrayDrag | null) => { trayRef.current = v; setTrayDrag(v); };
   const trayTarget = (x: number, y: number): { date: string | null; start: number } => {
     const grid = gridRef.current;
     if (!grid) return { date: null, start: 0 };
@@ -320,15 +370,7 @@ export function TimeGrid({
     event.preventDefault();
     lastPointer.current = { x: event.clientX, y: event.clientY };
     checkEdge(event.clientX);
-    const target = trayTarget(event.clientX, event.clientY);
-    // 端に来たら時間の枠を自動でスクロール。
-    const box = scrollRef.current?.getBoundingClientRect();
-    if (box && scrollRef.current) {
-      if (event.clientY > box.bottom - 40) scrollRef.current.scrollTop += 12;
-      else if (event.clientY < box.top + 30 && event.clientY > box.top - 60) scrollRef.current.scrollTop -= 12;
-    }
-    if (target.date !== t.date || target.start !== t.start) haptic("tick");
-    setTray({ ...t, x: event.clientX, y: event.clientY, ...target });
+    retarget();
   };
   const trayUp = async () => {
     if (trayHold.current) window.clearTimeout(trayHold.current);
@@ -395,6 +437,12 @@ export function TimeGrid({
           );
         })}
       </div>
+      {dragging && onPage && (
+        <>
+          <span className={`tg-edge left${edgeArmed < 0 ? " armed" : ""}`}>‹ {Number(shiftDateKey(dates[0], -1).slice(8))}日</span>
+          <span className={`tg-edge right${edgeArmed > 0 ? " armed" : ""}`}>{Number(shiftDateKey(dates[dates.length - 1], 1).slice(8))}日 ›</span>
+        </>
+      )}
       <div className="tg-scroll" ref={scrollRef}>
         <div
           className={`tg-grid${drag?.active ? " dragging" : ""}`}
