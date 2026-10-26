@@ -17,6 +17,7 @@ import type { FocusSession, Task } from "./types";
  * 上の棚には時間未定のタスクと前の日の残りが並ぶ。長押しでつかんで枠に置くと
  * その時間の予定になり、今より前に置くと「その時間にやった」記録（完了）になる。
  * やった記録（緑）も同じように長押しで動かし、下の端で長さを変えられる。
+ * つかんだまま左右の端で少し待つと前の日・次の日へめくれる（表示外の日へも運べる）。
  */
 const FROM = 6 * 60;
 const TO = 24 * 60;
@@ -51,9 +52,12 @@ export function TimeGrid({
   onCreateAt,
   onOpen,
   onStart,
+  onPage,
 }: {
   tasks: Task[];
   sessions?: FocusSession[];
+  /** つかんだまま端に寄せたとき、表示する日を前後にずらす。 */
+  onPage?: (delta: number) => void;
   dates: string[];
   onCreateAt: (date: string, startMinute: number) => void;
   onOpen: (task: Task) => void;
@@ -141,6 +145,52 @@ export function TimeGrid({
     return (grid.getBoundingClientRect().width - 40) / dates.length;
   };
 
+  const columnAt = (x: number) => {
+    const grid = gridRef.current;
+    if (!grid) return dates[0];
+    const r = grid.getBoundingClientRect();
+    return dates[Math.min(dates.length - 1, Math.max(0, Math.floor((x - r.left - 40) / colWidth())))];
+  };
+  // ---- 端で待つと日をめくる ----
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  const edgeTimer = useRef<number | null>(null);
+  const edgeDir = useRef(0);
+  const stopEdge = () => {
+    if (edgeTimer.current) window.clearTimeout(edgeTimer.current);
+    edgeTimer.current = null;
+    edgeDir.current = 0;
+  };
+  const checkEdge = (x: number) => {
+    const grid = gridRef.current;
+    if (!grid || !onPage) return;
+    const r = grid.getBoundingClientRect();
+    const dir = x < r.left + 40 + 22 ? -1 : x > r.right - 22 ? 1 : 0;
+    if (dir === edgeDir.current) return;
+    stopEdge();
+    edgeDir.current = dir;
+    if (!dir) return;
+    const flip = () => {
+      onPage(dir);
+      haptic("tick");
+      edgeTimer.current = window.setTimeout(flip, 900);
+    };
+    edgeTimer.current = window.setTimeout(flip, 650);
+  };
+  useEffect(() => stopEdge, []);
+  // めくった後は、指が止まっていても置き先の日を新しい表示に合わせる。
+  useEffect(() => {
+    const pos = lastPointer.current;
+    if (!pos) return;
+    const d = dragRef.current;
+    if (d?.active && d.kind === "move") {
+      const next = { ...d, date: columnAt(pos.x) };
+      dragRef.current = next;
+      setDrag(next);
+    }
+    const t = trayRef.current;
+    if (t?.active) setTray({ ...t, ...trayTarget(pos.x, pos.y) });
+  }, [dates.join()]);
+
   const begin = (event: ReactPointerEvent, p: Placed, kind: Drag["kind"]) => {
     const d: Drag = { id: p.session?.id || p.task.id, kind, startY: event.clientY, startX: event.clientX, orig: p, start: p.start, end: p.end, date: p.date, active: kind === "resize" };
     dragRef.current = d;
@@ -150,7 +200,8 @@ export function TimeGrid({
       haptic("tick");
       return;
     }
-    const target = event.currentTarget as HTMLElement;
+    // つかんだブロックは日をめくると消えるので、ずっと残る枠のほうで指を追う。
+    const target = gridRef.current || (event.currentTarget as HTMLElement);
     const pointerId = event.pointerId;
     holdTimer.current = window.setTimeout(() => {
       if (!dragRef.current) return;
@@ -171,15 +222,15 @@ export function TimeGrid({
       return;
     }
     event.preventDefault();
+    lastPointer.current = { x: event.clientX, y: event.clientY };
+    if (d.kind === "move") checkEdge(event.clientX);
     let next: Drag;
     if (d.kind === "resize") {
       next = { ...d, end: Math.max(d.orig.start + 5, snap(minuteAt(top(d.orig.end) + dy), 5)) };
     } else {
       const length = d.orig.end - d.orig.start;
       const start = Math.min(TO - length, Math.max(FROM, snap(minuteAt(top(d.orig.start) + dy), d.orig.session ? 5 : SNAP)));
-      const shift = Math.round((event.clientX - d.startX) / colWidth());
-      const index = Math.min(dates.length - 1, Math.max(0, dates.indexOf(d.orig.date) + shift));
-      next = { ...d, start, end: start + length, date: dates[index] };
+      next = { ...d, start, end: start + length, date: columnAt(event.clientX) };
     }
     if (next.start !== d.start || next.end !== d.end || next.date !== d.date) haptic("tick");
     dragRef.current = next;
@@ -194,6 +245,8 @@ export function TimeGrid({
 
   const end = async () => {
     cancelHold();
+    stopEdge();
+    lastPointer.current = null;
     const d = dragRef.current;
     dragRef.current = null;
     setDrag(null);
@@ -238,7 +291,7 @@ export function TimeGrid({
     if (!grid) return { date: null, start: 0 };
     const r = grid.getBoundingClientRect();
     const scrollBox = scrollRef.current?.getBoundingClientRect();
-    if (x < r.left + 40 || x > r.right || (scrollBox && (y < scrollBox.top || y > scrollBox.bottom))) return { date: null, start: 0 };
+    if (x < r.left || x > r.right || (scrollBox && (y < scrollBox.top || y > scrollBox.bottom))) return { date: null, start: 0 };
     const index = Math.min(dates.length - 1, Math.max(0, Math.floor((x - r.left - 40) / colWidth())));
     return { date: dates[index], start: Math.min(TO - 15, Math.max(FROM, snap(minuteAt(y - r.top)))) };
   };
@@ -265,6 +318,8 @@ export function TimeGrid({
       return;
     }
     event.preventDefault();
+    lastPointer.current = { x: event.clientX, y: event.clientY };
+    checkEdge(event.clientX);
     const target = trayTarget(event.clientX, event.clientY);
     // 端に来たら時間の枠を自動でスクロール。
     const box = scrollRef.current?.getBoundingClientRect();
@@ -277,6 +332,8 @@ export function TimeGrid({
   };
   const trayUp = async () => {
     if (trayHold.current) window.clearTimeout(trayHold.current);
+    stopEdge();
+    lastPointer.current = null;
     const t = trayRef.current;
     setTray(null);
     if (!t?.active || !t.date) return;
