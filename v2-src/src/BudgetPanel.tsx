@@ -201,9 +201,14 @@ export function BudgetSheet({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </label>
-          <button type="button" className="button secondary" onClick={() => setBudget({ enabled: !setting.enabled })}>
-            今日の画面に表示：{setting.enabled ? "ON" : "OFF"}
-          </button>
+          {/* 押し間違えで消えないよう、ボタンではなくチェックで切り替える。 */}
+          <label className="toggle-row">
+            <span>
+              <strong>今日の画面に「今日あと使える」を出す</strong>
+              <small>外すと今日の画面から消えます（記録 › お金 からいつでも戻せます）</small>
+            </span>
+            <input type="checkbox" checked={setting.enabled} onChange={(e) => setBudget({ enabled: e.currentTarget.checked })} />
+          </label>
         </div>
       </section>
     </div>

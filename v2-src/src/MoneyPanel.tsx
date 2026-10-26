@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Download, Plus, Trash2 } from "lucide-react";
 import { db } from "./db";
@@ -263,7 +264,8 @@ export function MoneyPanel() {
         予算と給料日の設定{setting.enabled ? "" : "（今日の画面には表示していません）"}
       </button>
       {editing && <RecordEditSheet memo={editing} onClose={() => setEditing(null)} />}
-      {budgetOpen && <BudgetSheet onClose={() => setBudgetOpen(false)} />}
+      {/* 記録の画面は動きのある枠の中なので、シートは画面全体（body）に出す。 */}
+      {budgetOpen && createPortal(<BudgetSheet onClose={() => setBudgetOpen(false)} />, document.body)}
     </div>
   );
 }

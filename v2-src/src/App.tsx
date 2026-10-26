@@ -181,6 +181,7 @@ import { TimeGrid, threeDays } from "./TimeGrid";
 import { MonthGrid } from "./MonthGrid";
 import { BudgetCard } from "./BudgetPanel";
 import { announceCompletion } from "./progress";
+import { restoreBudgetCardOnce } from "./budget";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
@@ -4502,6 +4503,7 @@ function App() {
     return requested && requested in PAGE_LABEL ? (requested as Page) : "today";
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => { restoreBudgetCardOnce().catch(() => undefined); }, []);
   // 画面の左端から右へスワイプでメニュー、メニューを左へスワイプで閉じる。
   useEffect(() => {
     let start: { x: number; y: number } | null = null;

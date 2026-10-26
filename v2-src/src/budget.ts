@@ -134,3 +134,15 @@ export async function markPlannedSpent(memo: Memo, amount?: number): Promise<voi
   await recordExpense({ item: memo.planned.item, amount: amount ?? memo.planned.amount });
   await updateMemo(memo.id, { archived: true }, '支出予定を使った');
 }
+
+/** 押し間違いでOFFになっていた「今日あと使える」を、一度だけONに戻す（2026-10-26の不具合対応）。 */
+export async function restoreBudgetCardOnce(): Promise<void> {
+  const KEY = 'sasshy-budget-card-restored';
+  try {
+    if (localStorage.getItem(KEY)) return;
+    localStorage.setItem(KEY, '1');
+  } catch {
+    return;
+  }
+  if (!(await getBudget()).enabled) await setBudget({ enabled: true });
+}
