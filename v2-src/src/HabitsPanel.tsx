@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Check, MoreHorizontal, Plus } from "lucide-react";
 import { db } from "./db";
 import { archiveHabit, countIn, createHabit, habits, renameHabit, setHabitDay } from "./habits";
+import { getRoutines, saveRoutines } from "./routines";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
 import { haptic } from "./feedback";
@@ -15,6 +16,8 @@ export function HabitsPanel() {
   const today = localDateKey(Date.now());
   const [month, setMonth] = useState(today.slice(0, 7));
   const [draft, setDraft] = useState("");
+  const routines = useLiveQuery(async () => { await db.settings.get("routines"); return getRoutines(); }, [], []) || [];
+  const [stepOf, setStepOf] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
   const [y, m] = month.split("-").map(Number);
   const days = new Date(y, m, 0).getDate();
@@ -55,12 +58,27 @@ export function HabitsPanel() {
           e.preventDefault();
           const typed = String(new FormData(e.currentTarget).get("habit") || "").trim();
           if (!typed) return;
-          await createHabit(typed);
+          // ルーティンを選んだら、そのルーティンの最後のステップにも入れる（終えると習慣に✓）。
+          const routine = routines.find((r) => r.id === stepOf);
+          await createHabit(typed, null, routine?.name || null);
+          if (routine && !routine.steps.some((s) => s.title === typed)) {
+            await saveRoutines(routines.map((r) => (r.id === routine.id ? { ...r, steps: [...r.steps, { title: typed, minutes: 3 }] } : r)));
+          }
           setDraft("");
+          setStepOf("");
           syncNow().catch(() => undefined);
         }}>
           <input name="habit" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="習慣を足す（例：0時までに寝る・筋トレ1分）" />
           <button className="button primary" type="submit" aria-label="習慣を足す"><Plus size={18} /></button>
+          {draft.trim() && routines.length > 0 && (
+            <label className="hb-step">
+              <span>ルーティンの最後にも入れる</span>
+              <select value={stepOf} onChange={(e) => setStepOf(e.currentTarget.value)}>
+                <option value="">入れない</option>
+                {routines.map((r) => <option key={r.id} value={r.id}>{r.name}の最後</option>)}
+              </select>
+            </label>
+          )}
         </form>
       </section>
 

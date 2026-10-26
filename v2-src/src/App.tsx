@@ -189,7 +189,7 @@ import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel, TimeLeftStrip } from "./TimeLeftPanel";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
-import { checkRoutineHabit, isHabitMemo } from "./habits";
+import { checkHabitForTask, checkRoutineHabit, isHabitMemo } from "./habits";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
 import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
@@ -4666,6 +4666,18 @@ function App() {
     window.addEventListener("sasshy-task-completed", onCompleted);
     return () => window.removeEventListener("sasshy-task-completed", onCompleted);
   }, [tasks, voice]);
+  // ルーティンのステップなど、習慣と同じ名前のタスクを終えたら習慣に✓。
+  useEffect(() => {
+    const onDone = async (event: Event) => {
+      const taskId = (event as CustomEvent<{ taskId?: string }>).detail?.taskId;
+      const task = taskId ? await db.tasks.get(taskId) : undefined;
+      if (!task) return;
+      const day = task.completedAt ? compactDate(new Date(task.completedAt)) : todayKey();
+      if (await checkHabitForTask(task.title, day)) syncNow().catch(() => undefined);
+    };
+    window.addEventListener("sasshy-task-completed", onDone);
+    return () => window.removeEventListener("sasshy-task-completed", onDone);
+  }, []);
   useEffect(() => {
     if (!taskLink.hasTask) return;
     clearTaskLinkFromUrl();

@@ -155,6 +155,8 @@ export interface HabitInfo {
   days: string[];
   /** When this routine is finished, the day is checked automatically. */
   routineName?: string | null;
+  /** このルーティンの1ステップとして入れた習慣（そのステップを終えると✓）。 */
+  stepOf?: string | null;
 }
 
 export type AreaKey = 'money' | 'work' | 'family' | 'health' | 'fun' | 'people';

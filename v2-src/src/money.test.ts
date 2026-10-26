@@ -61,3 +61,14 @@ describe('枠と使い道の振り分け', () => {
     expect(s.total).toBe(785);
   });
 });
+
+import { checkHabitForTask, createHabit } from './habits';
+describe('ルーティンのステップの習慣', () => {
+  it('同じ名前のタスクを終えると習慣に✓', async () => {
+    await createHabit('水虫の薬を塗る', null, '夜ルーティン');
+    expect(await checkHabitForTask('水虫の薬を塗る', '2026-10-27')).toBe(true);
+    const h = (await db.memos.toArray()).find((m) => m.habit?.name === '水虫の薬を塗る')!;
+    expect(h.habit!.days).toEqual(['2026-10-27']);
+    expect(await checkHabitForTask('シャワー', '2026-10-27')).toBe(false);
+  });
+});

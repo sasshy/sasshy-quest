@@ -19,10 +19,10 @@ export function habits(memos: Memo[]): Memo[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-export async function createHabit(name: string, routineName: string | null = null): Promise<Memo> {
+export async function createHabit(name: string, routineName: string | null = null, stepOf: string | null = null): Promise<Memo> {
   const text = name.trim().slice(0, 40);
   if (!text) throw new Error('習慣の名前を書いてください');
-  const habit: HabitInfo = { name: text, days: [], routineName };
+  const habit: HabitInfo = { name: text, days: [], routineName, ...(stepOf ? { stepOf } : {}) };
   return createMemo({ title: `習慣：${text}`, body: '', category: HABIT_CATEGORY, habit });
 }
 
@@ -52,4 +52,16 @@ export async function checkRoutineHabit(routineName: string, date: string): Prom
   const found = all.find((m) => m.habit!.routineName === routineName) || all.find((m) => m.habit!.name === routineName);
   const memo = found || await createHabit(routineName, routineName);
   await setHabitDay(memo, date, true);
+}
+
+const normalize = (v: string) => v.normalize('NFKC').replace(/[\s　・、。]/g, '').toLowerCase();
+
+/** 同じ名前のタスク（ルーティンのステップなど）を終えたら、その日の習慣に✓。 */
+export async function checkHabitForTask(title: string, date: string): Promise<boolean> {
+  const key = normalize(title);
+  if (!key) return false;
+  const found = habits(await db.memos.toArray()).find((m) => normalize(m.habit!.name) === key);
+  if (!found || found.habit!.days.includes(date)) return false;
+  await setHabitDay(found, date, true);
+  return true;
 }
