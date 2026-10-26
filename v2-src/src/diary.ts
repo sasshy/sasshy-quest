@@ -1,5 +1,6 @@
 import { createMemo, updateMemo } from './store';
 import type { Memo } from './types';
+import { companionMoment } from './companion-events';
 
 /**
  * ひとこと日記: one short entry per day with an optional mood (1..5).
@@ -55,5 +56,7 @@ export async function saveDiary(memos: Memo[], dateKey: string, changes: { text?
     return updateMemo(existing.id, { body: text, title: titleOf(dateKey, text), diary: { date: dateKey, mood } }, '日記を更新');
   }
   if (!text && mood === null) return null;
-  return createMemo({ title: titleOf(dateKey, text), body: text, category: DIARY_CATEGORY, diary: { date: dateKey, mood } });
+  const created = await createMemo({ title: titleOf(dateKey, text), body: text, category: DIARY_CATEGORY, diary: { date: dateKey, mood } });
+  companionMoment('diary');
+  return created;
 }

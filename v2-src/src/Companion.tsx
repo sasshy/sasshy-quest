@@ -15,8 +15,9 @@ import { haptic } from "./feedback";
  * While a timer runs it watches quietly; if SASSHY wasn't used for a while it
  * is just asleep — it never gets sad or weaker.
  */
-type Pose = "sit" | "happy" | "stretch" | "sleep" | "tilt" | "walk";
-const IMAGES: Record<Pose, string> = { sit, happy, stretch, sleep, tilt, walk };
+type Pose = "sit" | "happy" | "stretch" | "sleep" | "tilt" | "walk" | "meal" | "diary" | "habit" | "rest";
+// 動画だけのポーズは、近い静止画を予備にする。
+const IMAGES: Record<Pose, string> = { sit, happy, stretch, sleep, tilt, walk, meal: happy, diary: happy, habit: happy, rest: sleep };
 /**
  * Videos made with ChatGPT (plain #F2F2EF background, same framing). Idle poses
  * loop; moment poses play once and then go back to the idle loop. Poses
@@ -32,12 +33,22 @@ const VIDEOS: Partial<Record<Pose, string>> = {
   stretch: "companion/cat-stretch.mp4",
   // しばらく使っていない・深夜：丸くなって眠る（ループ）
   sleep: "companion/cat-sleep.mp4",
+  // ごはんを記録：口元をぺろっ、満足顔（日記・習慣チェックも同じ顔で喜ぶ）
+  meal: "companion/cat-meal.mp4",
+  diary: "companion/cat-meal.mp4",
+  habit: "companion/cat-meal.mp4",
+  // 休憩・一時停止：あくびしてひと休み
+  rest: "companion/cat-rest.mp4",
 };
 const LINES: Partial<Record<Pose, string>> = {
   happy: "やったね",
   stretch: "いこう",
   walk: "自己ベスト！",
   sleep: "おかえり。2分だけやる？",
+  meal: "おいしかった？",
+  diary: "書けたね",
+  habit: "えらい",
+  rest: "ひと休み",
 };
 
 export function companionStart(): void {

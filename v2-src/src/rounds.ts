@@ -2,6 +2,7 @@ import { db } from './db';
 import { createTask, startFocusSession, updateSession } from './store';
 import { localDateKey } from './meals';
 import type { FocusSession, Task } from './types';
+import { companionMoment } from './companion-events';
 
 /**
  * Long tasks run as 15-minute rounds: each round is its own session (so the
@@ -66,6 +67,7 @@ export async function getRoundBreak(): Promise<RoundBreak | null> {
 }
 
 export async function setRoundBreak(value: Omit<RoundBreak, 'id'> | null): Promise<void> {
+  if (value) companionMoment('rest');
   if (!value) await db.settings.delete('roundBreak');
   else await db.settings.put({ id: 'roundBreak', ...value } as unknown as import('./types').AppSetting);
 }

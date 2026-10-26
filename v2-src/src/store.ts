@@ -9,6 +9,7 @@ import type {
   ScheduleResult, Task, TaskHorizon, TaskUndoAction, UndoRedoSetting, WorkStartDay,
 } from './types';
 import { localDateKey, snoozeTime, validateWorkStartDay } from './work-start';
+import { companionMoment } from './companion-events';
 
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sasshy-v2-state') : null;
 const MAX_UNDO_ACTIONS = 30;
@@ -1048,6 +1049,7 @@ export async function updateSession(id: string, changes: Partial<FocusSession>, 
 export async function pauseFocusSession(id: string, label = 'タイマーを一時停止'): Promise<FocusSession | null> {
   const session = await db.sessions.get(id);
   if (!session || session.status !== 'running') return session || null;
+  companionMoment('rest');
   return updateSession(id, { status: 'paused', pausedAt: nowIso() }, label);
 }
 

@@ -1,6 +1,7 @@
 import { db } from './db';
 import { createMemo, updateMemo } from './store';
 import type { HabitInfo, Memo } from './types';
+import { companionMoment } from './companion-events';
 
 /**
  * 習慣: check the days you did it, see them on a calendar. Deliberately no
@@ -29,6 +30,7 @@ export async function setHabitDay(memo: Memo, date: string, done: boolean): Prom
   if (memo.habit!.days.includes(date) === done) return memo;
   const days = new Set(memo.habit!.days);
   if (done) days.add(date); else days.delete(date);
+  if (done) companionMoment('habit');
   return updateMemo(memo.id, { habit: { ...memo.habit!, days: [...days].sort() } }, done ? `${memo.habit!.name}をやった` : `${memo.habit!.name}のチェックを外す`);
 }
 

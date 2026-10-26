@@ -1,6 +1,7 @@
 import { db } from './db';
 import { createMemo, updateMemo } from './store';
 import type { ExpenseInfo, MealInfo, MealKind, MealPayment, Memo } from './types';
+import { companionMoment } from './companion-events';
 
 /**
  * Quick meal/snack records. Stored as memos (category '食事' + `meal`) so they
@@ -238,7 +239,9 @@ export async function recordMeal(input: MealInput): Promise<Memo> {
   if (payment === 'treated' && paid === null) paid = 0;
   if (payment) meal.payment = payment;
   if (paid !== null && paid !== price) meal.paid = paid;
-  return createMemo({ title: mealTitle(meal), body: mealBody(meal), category: MEAL_CATEGORY, meal });
+  const saved = await createMemo({ title: mealTitle(meal), body: mealBody(meal), category: MEAL_CATEGORY, meal });
+  companionMoment('meal');
+  return saved;
 }
 
 /** Record several items in order (e.g. one pasted AI answer). Items a few ms apart keep their order. */
