@@ -134,6 +134,8 @@ export interface Memo {
   area?: AreaInfo;
   /** 習慣 (category 習慣): the days it was done. No streaks, only counts. */
   habit?: HabitInfo;
+  /** 収入（給料など）。カテゴリ「収入」。 */
+  income?: IncomeInfo;
   sync: SyncMeta;
 }
 
@@ -192,6 +194,13 @@ export interface MealInfo {
  * A small non-meal spend (taxi, drugstore…) on a memo with category '支出'.
  * ChatGPT may add extra keys (paymentMethod, reimbursementStatus…); they are kept as-is.
  */
+export interface IncomeInfo {
+  item: string;
+  amount: number;
+  /** 入った日（ISO）。 */
+  at: string;
+}
+
 export interface ExpenseInfo {
   item: string;
   /** What left the wallet (yen). */

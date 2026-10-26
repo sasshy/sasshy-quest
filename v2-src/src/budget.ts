@@ -14,8 +14,8 @@ import type { AppSetting, Memo } from './types';
  * shoppingAmount = 買い物枠（ドラッグストア・Amazonなど月に数回の大きめの買い物）。
  * 大きな買い物で毎日の数字が崩れないよう、別の枠で数える。
  */
-export interface BudgetSetting { id: 'budget'; enabled: boolean; amount: number; startDay: number; shoppingAmount: number }
-export const DEFAULT_BUDGET: BudgetSetting = { id: 'budget', enabled: true, amount: 30000, startDay: 25, shoppingAmount: 20000 };
+export interface BudgetSetting { id: 'budget'; enabled: boolean; amount: number; startDay: number; shoppingAmount: number; /** 毎月の手取り（見込み）。0 = 未設定。 */ incomeMonthly: number }
+export const DEFAULT_BUDGET: BudgetSetting = { id: 'budget', enabled: true, amount: 30000, startDay: 25, shoppingAmount: 20000, incomeMonthly: 0 };
 
 const SHOPPING = /amazon|アマゾン|楽天|rakuten|ドラッグ|drug|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ|ダイソー|ニトリ|無印|ヨドバシ|ビックカメラ|ケーズ|カインズ|コーナン|ロフト|ドン・?キホーテ|ドンキ|アスクル|lohaco|yahoo|ヤフー|zozo|メルカリ|ユニクロ|コストコ|ホームセンター|日用品/i;
 
