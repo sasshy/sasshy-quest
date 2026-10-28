@@ -147,7 +147,7 @@ export function MealsLog() {
                     {meal.item}
                     <small>{[meal.kcal ? `${n(meal.kcal)}kcal` : "", meal.protein !== undefined && meal.protein !== null ? `P${meal.protein}` : "", meal.fat !== undefined && meal.fat !== null ? `F${meal.fat}` : "", meal.carbs !== undefined && meal.carbs !== null ? `C${meal.carbs}` : "", meal.place || ""].filter(Boolean).join(" ・ ")}</small>
                   </span>
-                  <span className="ml-yen">{meal.price !== null ? yen(paidAmount(meal)) : "—"}</span>
+                  <span className="ml-yen">{meal.receiptExpenseId && meal.price ? <>{yen(meal.price)}<small>レシートに含む</small></> : meal.price !== null ? yen(paidAmount(meal)) : "—"}</span>
                 </button>
               </li>
             );

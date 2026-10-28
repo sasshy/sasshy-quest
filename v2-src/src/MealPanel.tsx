@@ -587,7 +587,7 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
                         </span>
                         <span className="ms-amount">
                           {amount !== null && amount !== undefined ? yen(amount) : "—"}
-                          {m.meal && paidAmount(m.meal) !== (m.meal.price || 0) && <small>支払{yen(paidAmount(m.meal))}</small>}
+                          {m.meal && (m.meal.receiptExpenseId ? <small>レシートに含む</small> : paidAmount(m.meal) !== (m.meal.price || 0) && <small>支払{yen(paidAmount(m.meal))}</small>)}
                         </span>
                         <ChevronRight size={16} className="ms-go" aria-hidden="true" />
                       </button>

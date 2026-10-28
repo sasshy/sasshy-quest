@@ -1246,3 +1246,4 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .hb-cell.skip, .hb-day.skip { background: var(--soft); border-style: dashed; color: var(--faint); }
 .hb-cell.pending, .hb-day.pending { opacity: .7; }
 .hb-cell:disabled.done, .hb-cell:disabled.over, .hb-cell:disabled.skip { opacity: 1; }
+.ml-yen small { display: block; font-size: 10px; font-weight: 500; color: var(--faint); white-space: nowrap; }
