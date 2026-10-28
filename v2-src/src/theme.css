@@ -1248,3 +1248,15 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .hb-cell:disabled.done, .hb-cell:disabled.over, .hb-cell:disabled.skip { opacity: 1; }
 .ml-yen small { display: block; font-size: 10px; font-weight: 500; color: var(--faint); white-space: nowrap; }
 .glance-over { margin-left: 3px; font-style: normal; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+/* 今日の目安の計算式 */
+.bc-card { display: grid; gap: 2px; padding: 12px 14px; border-radius: 16px; background: var(--soft); }
+.bc-card .budget-h { margin: 0 0 6px; }
+.bc-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 13px; }
+.bc-row span { color: var(--muted); }
+.bc-row b { font-family: var(--font-num); font-weight: 700; white-space: nowrap; }
+.bc-row.minus b { color: var(--muted); }
+.bc-row.sub, .bc-row.total { border-top: 1px solid var(--line-strong); margin-top: 2px; padding-top: 7px; }
+.bc-row.total span { color: var(--ink); font-weight: 700; }
+.bc-row.total b { font-size: 17px; color: var(--accent-text); }
+.bc-row.total.over span, .bc-row.total.over b { color: var(--danger); }
+.bc-card .settings-hint { margin: 6px 0 0; }

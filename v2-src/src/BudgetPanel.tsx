@@ -14,6 +14,7 @@ import {
   shoppingStatus,
 } from "./budget";
 import { localDateKey } from "./meals";
+import { isIncomeMemo } from "./money";
 import { syncNow } from "./sync";
 
 const yen = (value: number) => `${value < 0 ? "−" : ""}¥${Math.abs(Math.round(value)).toLocaleString("ja-JP")}`;
@@ -85,6 +86,12 @@ export function BudgetCard() {
 
 export function BudgetSheet({ onClose }: { onClose: () => void }) {
   const { memos, setting, status, shopping } = useBudget();
+  // この期間に記録した手取り。なければ設定の見込み額。
+  const incomeRecordedSum = memos
+    .filter((m) => isIncomeMemo(m) && localDateKey(m.income!.at) >= status.start && localDateKey(m.income!.at) <= status.end)
+    .reduce((sum, m) => sum + Number(m.income!.amount || 0), 0);
+  const incomeRecorded = incomeRecordedSum > 0;
+  const income = incomeRecorded ? incomeRecordedSum : setting.incomeMonthly || 0;
   const planned = memos.filter(isPlannedMemo).sort((a, b) => (a.planned!.date || "9").localeCompare(b.planned!.date || "9"));
   const [item, setItem] = useState("");
   const [amount, setAmount] = useState("");
@@ -121,13 +128,31 @@ export function BudgetSheet({ onClose }: { onClose: () => void }) {
           </button>
         </header>
         <div className="form-stack">
-          <dl className="budget-calc">
-            <div><dt>予算（{md(status.start)}〜{md(status.end)}）</dt><dd>{yen(status.budget)}</dd></div>
-            <div><dt>これまでに使った</dt><dd>−{yen(status.spentBefore + status.spentToday)}</dd></div>
-            <div><dt>使う予定</dt><dd>−{yen(status.planned)}</dd></div>
-            <div className="total"><dt>給料日までに使える</dt><dd>{yen(status.periodLeft)}</dd></div>
-            <div><dt>1日あたり（残り{status.daysLeft}日）</dt><dd>{yen(status.todayAllowance)}</dd></div>
-          </dl>
+          {/* 今日の目安の出し方を、そのままの式で見せる。 */}
+          <section className="bc-card" aria-label="今日の目安の計算">
+            <h3 className="budget-h">今日の目安の出し方</h3>
+            <div className="bc-row"><span>毎日のお金（{md(status.start)}〜{md(status.end)}）</span><b>{yen(status.budget)}</b></div>
+            <div className="bc-row minus"><span>昨日までに使った</span><b>−{yen(status.spentBefore)}</b></div>
+            {status.planned > 0 && <div className="bc-row minus"><span>使う予定のお金</span><b>−{yen(status.planned)}</b></div>}
+            <div className="bc-row sub"><span>今日から使える</span><b>{yen(status.remaining)}</b></div>
+            <div className="bc-row minus"><span>÷ 給料日までの日数（今日を入れて）</span><b>{status.daysLeft}日</b></div>
+            <div className="bc-row total"><span>今日の目安</span><b>{yen(status.todayAllowance)}</b></div>
+            <div className="bc-row minus"><span>今日使った</span><b>−{yen(status.spentToday)}</b></div>
+            <div className={`bc-row total${status.todayLeft < 0 ? " over" : ""}`}><span>{status.todayLeft < 0 ? "今日オーバー" : "今日あと使える"}</span><b>{yen(Math.abs(status.todayLeft))}</b></div>
+            <p className="settings-hint">昨日までに使いすぎると、残りを残りの日数で割り直すので次の日から目安が下がります。節約すると上がります。買い物枠と病院などの「予算の外」はここに入りません。</p>
+          </section>
+
+          {income > 0 && (
+            <section className="bc-card" aria-label="手取りの分け方">
+              <h3 className="budget-h">手取りの分け方</h3>
+              <div className="bc-row"><span>手取り{incomeRecorded ? "" : "（見込み）"}</span><b>{yen(income)}</b></div>
+              <div className="bc-row minus"><span>毎日のお金</span><b>−{yen(status.budget)}</b></div>
+              <div className="bc-row minus"><span>買い物枠</span><b>−{yen(shopping.budget)}</b></div>
+              <div className={`bc-row total${income - status.budget - shopping.budget < 0 ? " over" : ""}`}><span>それ以外（家賃・固定費・貯金など）</span><b>{yen(income - status.budget - shopping.budget)}</b></div>
+              <p className="settings-hint">手取りは目安の計算には直接使いません。目安を変えたいときは、下の「毎日のお金」の金額を変えます。</p>
+            </section>
+          )}
+
           <dl className="budget-calc">
             <div><dt>買い物枠（ドラッグストア・Amazonなど）</dt><dd>{yen(shopping.budget)}</dd></div>
             <div><dt>これまでに使った</dt><dd>−{yen(shopping.spent)}</dd></div>
