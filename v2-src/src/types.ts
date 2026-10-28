@@ -158,6 +158,18 @@ export interface HabitInfo {
   /** このルーティンの1ステップとして入れた習慣（そのステップを終えると✓）。 */
   stepOf?: string | null;
   auto?: boolean;
+  /** 記録から自動で✓が付く習慣（手では付けない）。 */
+  rule?: HabitRule;
+  /** この日より前は数えない（YYYY-MM-DD）。 */
+  startDate?: string;
+}
+
+/** 決めた時間帯の食費（食事＋食べ物の支出）が上限以内なら✓。 */
+export interface HabitRule {
+  kind: 'daytimeFood';
+  limit: number;
+  fromHour: number;
+  toHour: number;
 }
 
 export type AreaKey = 'money' | 'work' | 'family' | 'health' | 'fun' | 'people';

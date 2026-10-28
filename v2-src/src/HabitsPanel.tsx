@@ -6,6 +6,7 @@ import { archiveHabit, archivedHabits, countIn, createHabit, deleteHabit, habits
 import { getRoutines, saveRoutines } from "./routines";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
+import { isRuleHabit, ruleDay, yenText } from "./habit-rules";
 import { haptic } from "./feedback";
 import type { Memo } from "./types";
 
@@ -40,7 +41,30 @@ export function HabitsPanel() {
     const d = new Date(y, m - 1 + n, 1);
     setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   };
+  // 自動の習慣（お昼と間食◯円以内など）は記録から決まる。手の✓は使わない。
+  const stateOf = (h: Memo, key: string) => {
+    if (!isRuleHabit(h)) {
+      const done = h.habit!.days.includes(key);
+      return { done, over: false, skip: false, pending: false, spent: 0 };
+    }
+    const r = ruleDay(h, memos, key, today);
+    return { done: r.state === "done" || r.state === "pending", over: r.state === "over", skip: r.state === "skip", pending: r.state === "pending", spent: r.spent };
+  };
+  const countOf = (h: Memo, prefix: string) => {
+    if (!isRuleHabit(h)) return countIn(h, prefix);
+    const [py, pm] = prefix.split("-").map(Number);
+    const n = new Date(py, pm, 0).getDate();
+    let c = 0;
+    for (let d = 1; d <= n; d += 1) {
+      const key = `${prefix}-${String(d).padStart(2, "0")}`;
+      if (key > today) break;
+      if (stateOf(h, key).done) c += 1;
+    }
+    return c;
+  };
+  const cellClass = (st: ReturnType<typeof stateOf>) => `${st.done ? " done" : ""}${st.over ? " over" : ""}${st.skip ? " skip" : ""}${st.pending ? " pending" : ""}`;
   const toggle = async (memo: Memo, date: string) => {
+    if (isRuleHabit(memo)) return;
     const done = !memo.habit!.days.includes(date);
     if (done) haptic("success");
     await setHabitDay(memo, date, done);
@@ -106,12 +130,14 @@ export function HabitsPanel() {
         {!editMode && (
         <div className="hb-checks">
           {list.map((h) => {
-            const done = h.habit!.days.includes(today);
+            const st = stateOf(h, today);
+            const done = st.done;
+            const rule = h.habit!.rule;
             return (
-              <button key={h.id} type="button" className={`hb-check${done ? " done" : ""}`} aria-pressed={done} onClick={() => toggle(h, today)}>
-                <span className="hb-box">{done && <Check size={18} strokeWidth={3} />}</span>
-                <span className="hb-name">{h.habit!.name}</span>
-                <small>今月{countIn(h, today.slice(0, 7))}回</small>
+              <button key={h.id} type="button" className={`hb-check${cellClass(st)}${rule ? " auto" : ""}`} aria-pressed={done} onClick={() => toggle(h, today)}>
+                <span className="hb-box">{done && <Check size={18} strokeWidth={3} />}{st.over && "×"}{st.skip && "−"}</span>
+                <span className="hb-name">{h.habit!.name}{rule && <em className="hb-auto">自動</em>}</span>
+                <small>{rule ? (st.skip ? "今日は会食" : `今日 ${yenText(st.spent)} / ${yenText(rule.limit)}`) : `今月${countOf(h, today.slice(0, 7))}回`}</small>
               </button>
             );
           })}
@@ -161,7 +187,7 @@ export function HabitsPanel() {
               ))}
             </div>
             {list.map((h) => {
-              const n = weekKeys.filter((k) => h.habit!.days.includes(k)).length;
+              const n = weekKeys.filter((k) => stateOf(h, k).done).length;
               return (
                 <div key={h.id} className="hb-item">
                   <button type="button" className={`hb-row-name${open === h.id ? " open" : ""}`} onClick={() => { setOpen(open === h.id ? null : h.id); setMenu(null); }}>
@@ -170,18 +196,22 @@ export function HabitsPanel() {
                   </button>
                   <div className="hb-row" role="row">
                   {weekKeys.map((key) => {
-                    const done = h.habit!.days.includes(key);
+                    const st = stateOf(h, key);
+                    const done = st.done;
                     return (
                       <button
                         key={key}
                         type="button"
-                        className={`hb-cell${done ? " done" : ""}${key === today ? " today" : ""}`}
-                        disabled={key > today}
+                        className={`hb-cell${cellClass(st)}${key === today ? " today" : ""}`}
+                        disabled={key > today || isRuleHabit(h)}
                         aria-pressed={done}
-                        aria-label={`${h.habit!.name} ${Number(key.slice(5, 7))}/${Number(key.slice(8))}${done ? "・やった" : ""}`}
+                        title={isRuleHabit(h) && key <= today ? (st.skip ? "会食の日" : yenText(st.spent)) : undefined}
+                        aria-label={`${h.habit!.name} ${Number(key.slice(5, 7))}/${Number(key.slice(8))}${done ? "・できた" : st.over ? "・超えた" : st.skip ? "・数えない日" : ""}`}
                         onClick={() => toggle(h, key)}
                       >
                         {done && <Check size={14} strokeWidth={3} />}
+                        {st.over && "×"}
+                        {st.skip && "−"}
                       </button>
                     );
                   })}
@@ -198,7 +228,7 @@ export function HabitsPanel() {
         <section className="hb-card">
           <header>
             <strong>{openHabit.habit!.name}</strong>
-            <span className="hb-count">{countIn(openHabit, month)}<small>回</small></span>
+            <span className="hb-count">{countOf(openHabit, month)}<small>回</small></span>
             <button type="button" className="hb-more" aria-label={`${openHabit.habit!.name}の設定`} onClick={() => setMenu(menu ? null : openHabit.id)}><MoreHorizontal size={18} /></button>
           </header>
           {menu === openHabit.id && (
@@ -218,13 +248,14 @@ export function HabitsPanel() {
           <div className="dm-grid">
             {Array.from({ length: lead }, (_, i) => <span key={`e${i}`} />)}
             {keys.map((key) => {
-              const done = openHabit.habit!.days.includes(key);
+              const st = stateOf(openHabit, key);
+              const done = st.done;
               return (
                 <button
                   key={key}
                   type="button"
-                  className={`hb-day${done ? " done" : ""}${key === today ? " today" : ""}`}
-                  disabled={key > today}
+                  className={`hb-day${cellClass(st)}${key === today ? " today" : ""}`}
+                  disabled={key > today || isRuleHabit(openHabit)}
                   aria-pressed={done}
                   aria-label={`${Number(key.slice(8))}日${done ? "・やった" : ""}`}
                   onClick={() => toggle(openHabit, key)}

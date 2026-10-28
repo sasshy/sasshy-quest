@@ -9,6 +9,7 @@ import { diaryOn } from "./diary";
 import { countIn, habits, setHabitDay } from "./habits";
 import { expensesOn, localDateKey, mealsOn, walletOn } from "./meals";
 import { syncNow } from "./sync";
+import { isRuleHabit, ruleDay, yenText } from "./habit-rules";
 import { haptic } from "./feedback";
 
 type Sheet = "meal" | "expense" | "habit" | "diary" | null;
@@ -21,7 +22,8 @@ export function QuickRecord() {
   const meals = mealsOn(memos, today).length;
   const spends = expensesOn(memos, today).length;
   const list = habits(memos);
-  const habitsDone = list.filter((h) => h.habit!.days.includes(today)).length;
+  const doneToday = (h: (typeof list)[number]) => (isRuleHabit(h) ? ["done", "pending"].includes(ruleDay(h, memos, today).state) : h.habit!.days.includes(today));
+  const habitsDone = list.filter(doneToday).length;
   const diary = diaryOn(memos, today);
   const yen = walletOn(memos, today);
 
@@ -74,16 +76,19 @@ function HabitSheet({ onClose }: { onClose: () => void }) {
       {list.length === 0 && <p className="hb-empty">まだ習慣がありません。「記録」タブの「習慣」から足せます。</p>}
       <div className="hb-checks">
         {list.map((h) => {
-          const done = h.habit!.days.includes(today);
+          const rule = h.habit!.rule;
+          const r = rule ? ruleDay(h, memos, today) : null;
+          const done = r ? r.state === "done" || r.state === "pending" : h.habit!.days.includes(today);
           return (
             <button key={h.id} type="button" className={`hb-check${done ? " done" : ""}`} aria-pressed={done} onClick={async () => {
+              if (rule) return;
               if (!done) haptic("success");
               await setHabitDay(h, today, !done);
               syncNow().catch(() => undefined);
             }}>
               <span className="hb-box">{done && <Check size={18} strokeWidth={3} />}</span>
               <span className="hb-name">{h.habit!.name}</span>
-              <small>今月{countIn(h, today.slice(0, 7))}回</small>
+              <small>{rule && r ? (r.state === "skip" ? "今日は会食" : `今日 ${yenText(r.spent)} / ${yenText(rule.limit)}`) : `今月${countIn(h, today.slice(0, 7))}回`}</small>
             </button>
           );
         })}

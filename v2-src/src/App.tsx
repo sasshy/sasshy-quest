@@ -193,7 +193,7 @@ import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
-import { checkHabitForTask, checkRoutineHabit, isHabitMemo, setupRequestedHabitsOnce, tidyRoutineHabits } from "./habits";
+import { checkHabitForTask, checkRoutineHabit, isHabitMemo, setupLunchHabitOnce, setupRequestedHabitsOnce, tidyRoutineHabits } from "./habits";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
 import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
@@ -4569,7 +4569,7 @@ function App() {
   // ルーティン丸ごとの習慣は作らない。前に自動でできたもの（夜ルーティン など）はしまう。
   useEffect(() => {
     getRoutines()
-      .then(async (list) => (await tidyRoutineHabits(list.map((r) => r.name))) + (await setupRequestedHabitsOnce(list, saveRoutines) ? 1 : 0))
+      .then(async (list) => (await tidyRoutineHabits(list.map((r) => r.name))) + (await setupRequestedHabitsOnce(list, saveRoutines) ? 1 : 0) + (await setupLunchHabitOnce() ? 1 : 0))
       .then((n) => { if (n) syncNow().catch(() => undefined); })
       .catch(() => undefined);
   }, []);

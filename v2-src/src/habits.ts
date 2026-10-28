@@ -124,3 +124,31 @@ export async function setupRequestedHabitsOnce(
   }
   return changed;
 }
+
+/**
+ * 1回だけ：「お昼と間食 800円以内」を自動の習慣として作る（9〜17時の食費の合計で判定）。
+ * 表がすぐ埋まるように、1週間前から数える。iPhoneアプリでだけ動かす。
+ */
+export async function setupLunchHabitOnce(): Promise<boolean> {
+  const KEY = 'sasshy-habit-setup-lunch800';
+  const native = Boolean((window as unknown as { webkit?: { messageHandlers?: { sasshyAlarm?: unknown } } }).webkit?.messageHandlers?.sasshyAlarm);
+  try {
+    if (!native || localStorage.getItem(KEY)) return false;
+    localStorage.setItem(KEY, '1');
+  } catch {
+    return false;
+  }
+  const all = await db.memos.toArray();
+  if (all.some((m) => isHabitMemo(m) && !m.deletedAt && m.habit!.rule?.kind === 'daytimeFood')) return false;
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  const startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const name = 'お昼と間食 800円以内';
+  await createMemo({
+    title: `習慣：${name}`,
+    body: '',
+    category: HABIT_CATEGORY,
+    habit: { name, days: [], routineName: null, rule: { kind: 'daytimeFood', limit: 800, fromHour: 9, toHour: 17 }, startDate },
+  });
+  return true;
+}

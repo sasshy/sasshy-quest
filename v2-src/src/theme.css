@@ -1238,3 +1238,11 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .hb-edit-row.shelved { opacity: .85; }
 .hb-shelf-name { display: grid; min-width: 0; padding: 0 4px; font-weight: 700; font-size: 14px; color: var(--muted); }
 .hb-shelf-name small { font-size: 11px; font-weight: 500; color: var(--faint); }
+/* 自動の習慣：上限を超えた日は×、会食の日は−（数えない）。 */
+.hb-auto { margin-left: 6px; padding: 1px 6px; border-radius: 99px; background: var(--soft); color: var(--muted); font-style: normal; font-size: 10px; font-weight: 700; vertical-align: 2px; }
+.hb-check.auto { cursor: default; }
+.hb-check.over .hb-box, .hb-cell.over, .hb-day.over { border-color: var(--warn); color: var(--warn-text); font-weight: 700; }
+.hb-cell.over { background: color-mix(in srgb, var(--warn) 14%, var(--paper)); }
+.hb-cell.skip, .hb-day.skip { background: var(--soft); border-style: dashed; color: var(--faint); }
+.hb-cell.pending, .hb-day.pending { opacity: .7; }
+.hb-cell:disabled.done, .hb-cell:disabled.over, .hb-cell:disabled.skip { opacity: 1; }
