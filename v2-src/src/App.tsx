@@ -69,6 +69,7 @@ import {
   X,
   Undo2,
   Mic,
+  SkipForward,
 } from "lucide-react";
 import { db } from "./db";
 import { createBackup, downloadBackup } from "./backup";
@@ -1527,6 +1528,7 @@ function TodayPage({
   const focusUsual = focus ? usualMinutes(focus, sessions) : { minutes: 0, fromHistory: false };
   const autoDetour = Boolean(activeSession?.interrupt?.auto);
   const [armedDelete, setArmedDelete] = useState(false);
+  const [armedUndo, setArmedUndo] = useState(false);
   // 実行中のタスクは上のカードに出ているので、リストには重ねない。
   const queueTasks = flexibleTasks.filter((task) => task.id !== focus?.id);
   const startNext = async () => {
@@ -1591,13 +1593,19 @@ function TodayPage({
                     <Pencil size={14} /> 編集
                   </button>
                 )}
-                <button type="button" onClick={async () => {
+                {/* 1回で消えると触れただけで記録がなくなるので、2回押しにする。 */}
+                <button type="button" className={`danger${armedUndo ? " armed" : ""}`} onClick={async () => {
+                  if (!armedUndo) {
+                    setArmedUndo(true);
+                    window.setTimeout(() => setArmedUndo(false), 3000);
+                    return;
+                  }
                   stopVoice();
                   await discardRunning(activeSession.taskId);
                   toast(`「${activeSession.taskTitle}」の開始を取り消しました`);
                   syncNow().catch(() => undefined);
                 }}>
-                  <Undo2 size={14} /> 取り消す
+                  <Undo2 size={14} /> {armedUndo ? "もう一度で取り消す" : "取り消す"}
                 </button>
                 {/* 確認ダイアログに頼らず、2回押しで消す（iPhoneでも確実に効く）。 */}
                 <button type="button" className={`danger${armedDelete ? " armed" : ""}`} onClick={async () => {
@@ -4087,6 +4095,7 @@ function TimerDock({
   const [durationDraft, setDurationDraft] = useState(String(session.plannedMin));
   const [fixOpen, setFixOpen] = useState(false);
   const [armedDelete, setArmedDelete] = useState(false);
+  const [armedUndo, setArmedUndo] = useState(false);
   const [stopDraft, setStopDraft] = useState("");
   const [fixError, setFixError] = useState("");
   // 始めて最初の2分だけ「何分で・どこまで」を決める欄を出す（開始前には何も聞かない）。
@@ -4385,6 +4394,11 @@ function TimerDock({
     );
     setVoiceNeedsTap(!restored);
   };
+  // 今の時点から n 分足す（時間切れのあとでも、押した時から n 分）。
+  const extend = (n: number) => {
+    const overMin = remainingSec < 0 ? Math.ceil(-remainingSec / 60) : 0;
+    changeDuration(session.plannedMin + overMin + n);
+  };
   const changeDuration = async (nextValue: number) => {
     if (!Number.isFinite(nextValue)) return;
     const nextMinutes = Math.max(1, Math.min(480, Math.round(nextValue)));
@@ -4440,7 +4454,8 @@ function TimerDock({
         </span>
         <small>{paused ? "押して再開" : "押して一時停止"}</small>
       </button>
-      <RoundBar session={session} />
+      {/* ルーティンの手順では「割り込み・気がそれた」は使わないので出さない。 */}
+      {!task?.routine && <RoundBar session={session} />}
       {showSetup && (
         <div className="timer-setup" aria-label="何分で・どこまでやるか">
           <div className="timer-setup-row">
@@ -4483,109 +4498,26 @@ function TimerDock({
           </button>
         </div>
       )}
-      <div className="timer-duration-editor">
-        <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>
-          -1
-        </button>
-        <label>
-          <span>タイマー</span>
-          <input
-            type="number"
-            min="1"
-            max="480"
-            step="1"
-            inputMode="numeric"
-            aria-label="タイマー時間（分）"
-            value={durationDraft}
-            onChange={(event) => setDurationDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") changeDuration(Number(durationDraft));
-            }}
-          />
-          <small>分</small>
-        </label>
-        <button type="button" onClick={() => changeDuration(Number(durationDraft))}>
-          変更
-        </button>
-        <button type="button" onClick={() => changeDuration(session.plannedMin + 1)}>
-          +1
-        </button>
+      {/* 延長は「今から」足す。時間切れのあとに押しても、すぐまた時間切れにならない。 */}
+      <div className="timer-extend">
+        <button type="button" onClick={() => extend(1)}>+1分</button>
+        <button type="button" onClick={() => extend(5)}>+5分</button>
       </div>
-      <button
-        className={`timer-voice-resume${voiceNeedsTap ? " needed" : ""}`}
-        type="button"
-        onClick={restoreVoice}
-      >
-        <Volume2 size={16} />
-        {voiceNeedsTap
-          ? "Safariから戻りました・音声を再開"
-          : "音声が聞こえない時はここを押す"}
-      </button>
-      <button
-        className="timer-fix-toggle"
-        type="button"
-        aria-expanded={fixOpen}
-        onClick={() => {
-          setFixOpen(!fixOpen);
-          setFixError("");
-        }}
-      >
-        <RotateCcw size={15} />
-        止め忘れた・やり直したい
-      </button>
-      {fixOpen && (
-        <div className="timer-fix" aria-label="タイマーの修正">
-          <p>
-            別の作業をしていた時刻から止まっていたことにできます。止まっていた間は作業時間に数えません。
-          </p>
-          <div className="timer-fix-choices">
-            {stopChoices.map(({ min, at }) => (
-              <button key={min} type="button" onClick={() => stopAt(at)}>
-                {min}分前
-                <small>{at.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small>
-              </button>
-            ))}
-            <button type="button" onClick={() => stopAt(new Date(startedMs))}>
-              開始時
-              <small>{new Date(startedMs).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small>
-            </button>
-          </div>
-          <label className="timer-fix-time">
-            <span>時刻を指定</span>
-            <input
-              type="time"
-              value={stopDraft}
-              onChange={(event) => setStopDraft(event.currentTarget.value)}
-            />
-            <button type="button" onClick={stopAtDraft}>
-              ここで止まっていた
-            </button>
-          </label>
-          {fixError && <p className="timer-fix-error">{fixError}</p>}
-          <div className="timer-fix-actions">
-            <button className="button secondary" type="button" onClick={restart}>
-              <Play size={15} />
-              今からやり直す
-            </button>
-            <button className="button secondary" type="button" onClick={() => discard()}>
-              <Trash2 size={15} />
-              記録を取り消す
-            </button>
-          </div>
-        </div>
-      )}
-      <div className="timer-controls">
+      <div className={`timer-controls${task?.routine ? " routine" : ""}`}>
         <IconButton label={paused ? "再開" : "一時停止"} onClick={pauseToggle}>
           {paused ? <Play size={21} /> : <Pause size={21} />}
         </IconButton>
-        <button
-          className="button secondary"
-          type="button"
-          onClick={() => finish(false)}
-        >
-          <Square size={16} />
-          中断
-        </button>
+        {task?.routine ? (
+          <button className="button secondary" type="button" onClick={skipStep}>
+            <SkipForward size={16} />
+            飛ばして次へ
+          </button>
+        ) : (
+          <button className="button secondary" type="button" onClick={() => finish(false)}>
+            <Square size={16} />
+            中断
+          </button>
+        )}
         <button
           className="button complete"
           type="button"
@@ -4595,39 +4527,156 @@ function TimerDock({
           完了
         </button>
       </div>
-      {task?.routine && (
-        <button type="button" className="timer-skip" onClick={skipStep}>
-          今日はこのステップを飛ばす（次へ）
+      {voiceNeedsTap && (
+      <button
+          className={`timer-voice-resume${voiceNeedsTap ? " needed" : ""}`}
+          type="button"
+          onClick={restoreVoice}
+        >
+          <Volume2 size={16} />
+          {voiceNeedsTap
+            ? "Safariから戻りました・音声を再開"
+            : "音声が聞こえない時はここを押す"}
         </button>
       )}
-      {canListen() && (
-        <div className="timer-voice">
-          <button type="button" className={listening ? "on" : ""} onClick={voiceControl} disabled={listening}>
-            <Mic size={16} /> {listening ? "聞いています…（5秒）" : "声で操作（あと5分・止めて・終わった）"}
+      {/* めったに使わないものは「その他」にしまう（押し間違いで消えないように）。 */}
+      <details className="timer-more">
+        <summary>その他</summary>
+        <div className="timer-more-body">
+          {task?.routine && (
+            <button className="button secondary timer-more-wide" type="button" onClick={() => finish(false)}>
+              <Square size={16} /> 中断（ルーティンをここで止める）
+            </button>
+          )}
+          <div className="timer-duration-editor">
+            <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>
+              -1
+            </button>
+            <label>
+              <span>タイマー</span>
+              <input
+                type="number"
+                min="1"
+                max="480"
+                step="1"
+                inputMode="numeric"
+                aria-label="タイマー時間（分）"
+                value={durationDraft}
+                onChange={(event) => setDurationDraft(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") changeDuration(Number(durationDraft));
+                }}
+              />
+              <small>分</small>
+            </label>
+            <button type="button" onClick={() => changeDuration(Number(durationDraft))}>
+              変更
+            </button>
+            <button type="button" onClick={() => changeDuration(session.plannedMin + 1)}>
+              +1
+            </button>
+          </div>
+          <button
+            className="timer-fix-toggle"
+            type="button"
+            aria-expanded={fixOpen}
+            onClick={() => {
+              setFixOpen(!fixOpen);
+              setFixError("");
+            }}
+          >
+            <RotateCcw size={15} />
+            止め忘れた・やり直したい
           </button>
-          {heard && <small>{heard}</small>}
+          {fixOpen && (
+            <div className="timer-fix" aria-label="タイマーの修正">
+              <p>
+                別の作業をしていた時刻から止まっていたことにできます。止まっていた間は作業時間に数えません。
+              </p>
+              <div className="timer-fix-choices">
+                {stopChoices.map(({ min, at }) => (
+                  <button key={min} type="button" onClick={() => stopAt(at)}>
+                    {min}分前
+                    <small>{at.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small>
+                  </button>
+                ))}
+                <button type="button" onClick={() => stopAt(new Date(startedMs))}>
+                  開始時
+                  <small>{new Date(startedMs).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small>
+                </button>
+              </div>
+              <label className="timer-fix-time">
+                <span>時刻を指定</span>
+                <input
+                  type="time"
+                  value={stopDraft}
+                  onChange={(event) => setStopDraft(event.currentTarget.value)}
+                />
+                <button type="button" onClick={stopAtDraft}>
+                  ここで止まっていた
+                </button>
+              </label>
+              {fixError && <p className="timer-fix-error">{fixError}</p>}
+              <div className="timer-fix-actions">
+                <button className="button secondary" type="button" onClick={restart}>
+                  <Play size={15} />
+                  今からやり直す
+                </button>
+                <button className="button secondary" type="button" onClick={() => discard()}>
+                  <Trash2 size={15} />
+                  記録を取り消す
+                </button>
+              </div>
+            </div>
+          )}
+          <button
+            className={`timer-voice-resume${voiceNeedsTap ? " needed" : ""}`}
+            type="button"
+            onClick={restoreVoice}
+          >
+            <Volume2 size={16} />
+            {voiceNeedsTap
+              ? "Safariから戻りました・音声を再開"
+              : "音声が聞こえない時はここを押す"}
+          </button>
+          {canListen() && (
+            <div className="timer-voice">
+              <button type="button" className={listening ? "on" : ""} onClick={voiceControl} disabled={listening}>
+                <Mic size={16} /> {listening ? "聞いています…（5秒）" : "声で操作（あと5分・止めて・終わった）"}
+              </button>
+              {heard && <small>{heard}</small>}
+            </div>
+          )}
+          <div className="timer-undo-row">
+            {/* 1回で消えると、濡れた手などで触れただけで記録が消えてしまう。2回押しにする。 */}
+            <button type="button" className={`danger${armedUndo ? " armed" : ""}`} onClick={() => {
+              if (!armedUndo) {
+                setArmedUndo(true);
+                window.setTimeout(() => setArmedUndo(false), 3000);
+                return;
+              }
+              discard(false);
+            }}>
+              <Undo2 size={15} /> {armedUndo ? "もう一度で取り消す" : "開始を取り消す"}
+            </button>
+            <button type="button" className={`danger${armedDelete ? " armed" : ""}`} onClick={async () => {
+              if (!armedDelete) {
+                setArmedDelete(true);
+                window.setTimeout(() => setArmedDelete(false), 3000);
+                return;
+              }
+              stopVoice();
+              await discardRunning(session.taskId);
+              await softDeleteTask(session.taskId);
+              toast(`「${session.taskTitle}」を消しました（ゴミ箱から戻せます）`);
+              syncNow().catch(() => undefined);
+              onClose();
+            }}>
+              <Trash2 size={15} /> {armedDelete ? "もう一度押すと消す" : "このタスクを消す"}
+            </button>
+          </div>
         </div>
-      )}
-      <div className="timer-undo-row">
-        <button type="button" onClick={() => discard(false)}>
-          <Undo2 size={15} /> 開始を取り消す
-        </button>
-        <button type="button" className={`danger${armedDelete ? " armed" : ""}`} onClick={async () => {
-          if (!armedDelete) {
-            setArmedDelete(true);
-            window.setTimeout(() => setArmedDelete(false), 3000);
-            return;
-          }
-          stopVoice();
-          await discardRunning(session.taskId);
-          await softDeleteTask(session.taskId);
-          toast(`「${session.taskTitle}」を消しました（ゴミ箱から戻せます）`);
-          syncNow().catch(() => undefined);
-          onClose();
-        }}>
-          <Trash2 size={15} /> {armedDelete ? "もう一度押すと消す" : "このタスクを消す"}
-        </button>
-      </div>
+      </details>
     </div>
   );
 }

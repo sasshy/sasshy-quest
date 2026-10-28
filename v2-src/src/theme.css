@@ -1526,3 +1526,19 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 /* 記録の読み込み中：数字の代わりに出す（空のまま ¥0 を出さない） */
 .money-loading { padding: 24px 16px; text-align: center; color: var(--muted, #888); font-size: 14px; }
 .glance-num.glance-wait { opacity: .45; letter-spacing: .1em; }
+
+/* タイマー：延長・主な3つ・その他（めったに使わないものはしまう） */
+.timer-extend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 8px; }
+.timer-extend button { min-height: 44px; border: 1px solid #3a3a3a; border-radius: 12px; background: rgba(255,255,255,.06); color: #eee; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.timer-controls.routine .button.secondary { font-size: 14px; }
+.timer-controls .button { gap: 6px; }
+.timer-more { margin-top: 10px; border-top: 1px solid rgba(255,255,255,.1); padding-top: 6px; }
+.timer-more > summary { list-style: none; min-height: 40px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.6); font-size: 13px; font-weight: 700; cursor: pointer; }
+.timer-more > summary::-webkit-details-marker { display: none; }
+.timer-more > summary::after { content: "▾"; margin-left: 6px; }
+.timer-more[open] > summary::after { content: "▴"; }
+.timer-more-body { display: grid; gap: 8px; padding-top: 6px; }
+.timer-more-body > * { margin: 0 !important; }
+.timer-more-wide { width: 100%; min-height: 42px; }
+.timer-controls.routine { grid-template-columns: 52px minmax(0, 1fr); }
+.timer-controls.routine .complete { grid-column: 1 / -1; }
