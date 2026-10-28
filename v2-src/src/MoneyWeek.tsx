@@ -16,7 +16,7 @@ const label = (key: string) => {
   const d = new Date(`${key}T12:00:00`);
   return `${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`;
 };
-const timeOf = (m: Memo) => {
+export const timeOf = (m: Memo) => {
   const raw = m.meal ? ((m.meal as { purchaseAt?: string }).purchaseAt || m.meal.at) : (m.expense!.purchaseAt as string | undefined) || m.expense!.at;
   const d = new Date(raw);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -30,7 +30,7 @@ interface Day {
   cats: { name: SpendCategory; amount: number }[];
 }
 
-function dayOf(memos: Memo[], key: string): Day {
+export function dayOf(memos: Memo[], key: string): Day {
   const records = [...mealsOn(memos, key), ...expensesOn(memos, key)].filter((m) => amountOf(m) > 0);
   records.sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
   const cats = new Map<SpendCategory, number>();
@@ -163,6 +163,85 @@ export function MoneyWeek({ memos, setting }: { memos: Memo[]; setting: BudgetSe
           </section>
         );
       })}
+      {editing && <RecordEditSheet memo={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+/**
+ * 記録 › お金 › 1日：その日に何にいくら使ったか。‹ › か左右スワイプで1日ずつ。
+ */
+export function MoneyDay({ memos, setting }: { memos: Memo[]; setting: BudgetSetting }) {
+  const today = localDateKey(Date.now());
+  const [date, setDate] = useState(today);
+  const [editing, setEditing] = useState<Memo | null>(null);
+  const touch = useRef<number | null>(null);
+  const d = dayOf(memos, date);
+  const period = budgetPeriod(today, setting.startDay);
+  const target = Math.round(setting.amount / Math.max(1, period.days));
+  const go = (n: number) => {
+    const next = shiftDateKey(date, n);
+    if (next > today) return;
+    setDate(next);
+  };
+  const maxCat = Math.max(1, ...d.cats.map((c) => c.amount));
+  return (
+    <div
+      className="md"
+      onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => {
+        if (touch.current === null) return;
+        const dx = e.changedTouches[0].clientX - touch.current;
+        touch.current = null;
+        if (Math.abs(dx) > 50) go(dx > 0 ? -1 : 1);
+      }}
+    >
+      <section className="rec-card md-head">
+        <div className="dm-nav mw-nav">
+          <button type="button" aria-label="前の日" onClick={() => go(-1)}>‹</button>
+          <strong>{label(date)}{date === today ? " 今日" : ""}</strong>
+          <button type="button" aria-label="次の日" disabled={date >= today} onClick={() => go(1)}>›</button>
+        </div>
+        <div className="md-total">
+          <span>この日に使ったお金</span>
+          <strong className={d.daily > target ? "over" : ""}>{yen(d.total)}</strong>
+          <small>毎日のお金で数える分 {yen(d.daily)}（目安 {yen(target)}{d.daily > target ? `・${yen(d.daily - target)}オーバー` : ""}）</small>
+        </div>
+        {d.cats.length > 0 && (
+          <ul className="md-cats">
+            {d.cats.map((c) => (
+              <li key={c.name}>
+                <span>{c.name}</span>
+                <i><b style={{ width: `${(c.amount / maxCat) * 100}%`, background: COLORS[c.name] }} /></i>
+                <strong>{yen(c.amount)}</strong>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="rec-card">
+        <header><h2>明細</h2><small>{d.records.length}件</small></header>
+        {d.records.length === 0 ? (
+          <p className="mw-empty">この日に使ったお金はありません</p>
+        ) : (
+          <ul className="mw-list md-list">
+            {d.records.map((m) => (
+              <li key={m.id}>
+                <button type="button" onClick={() => setEditing(m)}>
+                  <time>{timeOf(m)}</time>
+                  <i style={{ background: COLORS[spendCategory(m)] }} aria-hidden="true" />
+                  <span>
+                    {m.meal?.item || m.expense?.item}
+                    <small>{spendCategory(m)}{m.expense && expenseBucket(m) !== "daily" ? `・${BUCKET_LABEL[expenseBucket(m)]}` : ""}{expenseDetail(m.expense) ? `・${expenseDetail(m.expense)}` : ""}</small>
+                  </span>
+                  <b>{yen(amountOf(m))}</b>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <p className="md-hint">左右にスワイプで前の日・次の日</p>
       {editing && <RecordEditSheet memo={editing} onClose={() => setEditing(null)} />}
     </div>
   );

@@ -55,7 +55,6 @@ import {
   Plus,
   Redo2,
   RotateCcw,
-  AlarmClock,
   Search,
   Settings,
   SlidersHorizontal,
@@ -194,7 +193,7 @@ import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
 import { SearchSheet } from "./SearchSheet";
 import { dailyCarePick } from "./care";
-import { FirstStepSheet, PromiseSheet, shouldShowFirstStep } from "./Kickstart";
+import { FirstStepSheet, shouldShowFirstStep } from "./Kickstart";
 import { linkMealsToReceipts } from "./meals";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -1355,7 +1354,6 @@ function TodayPage({
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [runwayOpen, setRunwayOpen] = useState(false);
-  const [promiseOpen, setPromiseOpen] = useState(false);
   const [firstStep, setFirstStep] = useState(() => shouldShowFirstStep());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
@@ -1468,7 +1466,8 @@ function TodayPage({
   const activeTask = activeSession
     ? tasks.find((task) => task.id === activeSession.taskId)
     : undefined;
-  const focus = activeTask || flexibleTasks[0] || fixedTasks[0] || overdue[0] || inbox[0];
+  // 日付のないこと（やること）は今日には出さない。今日の予定と、終わっていない前の日の分だけ。
+  const focus = activeTask || flexibleTasks[0] || fixedTasks[0] || overdue[0];
   const nextAnchor = runway.nextAnchor;
   const untilAnchor = nextAnchor ? Math.max(0, nextAnchor.startMinute - nowMinute) : null;
   const activeRemaining = activeSession
@@ -1619,10 +1618,6 @@ function TodayPage({
                 <button type="button" onClick={() => onEdit(focus)}>
                   <Pencil size={14} /> 編集
                 </button>
-                {/* 「◯時までに見せる」と人に言って、その時刻に通知する。 */}
-                <button type="button" onClick={() => setPromiseOpen(true)}>
-                  <AlarmClock size={14} /> 宣言
-                </button>
                 <button type="button" onClick={async () => {
                   await updateTask(focus.id, { scheduledDate: null, startMinute: null, isFixed: false, status: "inbox" }, "今日から外す");
                   toast(`「${focus.title}」を今日から外しました（やることに残っています）`);
@@ -1645,7 +1640,6 @@ function TodayPage({
                 </button>
               </div>
             )}
-            {promiseOpen && <PromiseSheet task={focus} onClose={() => setPromiseOpen(false)} />}
             {firstStep && !activeSession && !autoDetour && (
               <FirstStepSheet task={focus} onStart={() => onStart(focus, { starter: true })} onClose={() => setFirstStep(false)} />
             )}
@@ -1749,17 +1743,6 @@ function TodayPage({
             })}
           </div>
         </details>
-      )}
-      {inbox.length > 0 && (
-        <button
-          className="today-fold-link"
-          type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "inbox" }))}
-        >
-          <span>日付のないこと</span>
-          <b>{inbox.length}件</b>
-          <ChevronRight size={16} />
-        </button>
       )}
       <QuickRecord />
       {runwayOpen && (

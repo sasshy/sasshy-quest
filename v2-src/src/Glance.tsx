@@ -127,7 +127,7 @@ export function TodayHabits() {
   if (!list.length) return null;
   return (
     <section className="today-habits" aria-label="今日の習慣">
-      <span className="today-habits-label">習慣</span>
+      <span className="today-habits-label">今日の習慣<small>{list.filter((h) => (h.habit!.rule ? ["done", "pending"].includes(ruleDay(h, memos, today).state) : h.habit!.days.includes(today))).length}/{list.length}</small></span>
       <div className="today-habits-row">
         {list.map((h) => {
           const rule = h.habit!.rule;

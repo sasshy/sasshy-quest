@@ -9,7 +9,7 @@ import { expenseDetail, localDateKey } from "./meals";
 import { RecordEditSheet } from "./RecordEditSheet";
 import { BudgetSheet } from "./BudgetPanel";
 import { syncNow } from "./sync";
-import { MoneyWeek } from "./MoneyWeek";
+import { MoneyDay, MoneyWeek } from "./MoneyWeek";
 import type { Memo } from "./types";
 
 /**
@@ -88,7 +88,7 @@ export function MoneyPanel() {
   const today = localDateKey(Date.now());
   const [offset, setOffset] = useState(0);
   // 最初は「日ごと」（週ごとの棒と1日ずつの明細）。円グラフや収支は「月のまとめ」。
-  const [view, setView] = useState<"week" | "month">("week");
+  const [view, setView] = useState<"day" | "week" | "month">("day");
   const [editing, setEditing] = useState<Memo | null>(null);
   const [incomeDraft, setIncomeDraft] = useState("");
   const [incomeItem, setIncomeItem] = useState("給料");
@@ -128,10 +128,13 @@ export function MoneyPanel() {
   return (
     <div className="mo">
       <div className="mo-tabs" role="tablist" aria-label="お金の見方">
-        <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>日ごと</button>
+        <button type="button" role="tab" aria-selected={view === "day"} className={view === "day" ? "active" : ""} onClick={() => setView("day")}>1日</button>
+        <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>週</button>
         <button type="button" role="tab" aria-selected={view === "month"} className={view === "month" ? "active" : ""} onClick={() => setView("month")}>月のまとめ</button>
       </div>
-      {view === "week" ? (
+      {view === "day" ? (
+        <MoneyDay memos={memos} setting={setting} />
+      ) : view === "week" ? (
         <MoneyWeek memos={memos} setting={setting} />
       ) : (<>
       <div className="dm-nav">
