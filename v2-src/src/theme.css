@@ -1234,3 +1234,7 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .hb-edit-row button { min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .hb-edit-row button.danger { color: var(--danger); }
 .hb-edit-row button.danger.armed { background: var(--danger); border-color: var(--danger); color: #fff; }
+.hb-shelf-title { margin-top: 10px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.hb-edit-row.shelved { opacity: .85; }
+.hb-shelf-name { display: grid; min-width: 0; padding: 0 4px; font-weight: 700; font-size: 14px; color: var(--muted); }
+.hb-shelf-name small { font-size: 11px; font-weight: 500; color: var(--faint); }

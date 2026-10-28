@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Check, MoreHorizontal, Plus } from "lucide-react";
 import { db } from "./db";
-import { archiveHabit, countIn, createHabit, deleteHabit, habits, renameHabit, setHabitDay } from "./habits";
+import { archiveHabit, archivedHabits, countIn, createHabit, deleteHabit, habits, renameHabit, restoreHabit, setHabitDay } from "./habits";
 import { getRoutines, saveRoutines } from "./routines";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
@@ -13,6 +13,7 @@ import type { Memo } from "./types";
 export function HabitsPanel() {
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const list = habits(memos);
+  const shelved = archivedHabits(memos);
   const today = localDateKey(Date.now());
   const [month, setMonth] = useState(today.slice(0, 7));
   const [draft, setDraft] = useState("");
@@ -51,12 +52,12 @@ export function HabitsPanel() {
       <section className="hb-today">
         <header className="hb-head">
           <h2>今日の習慣</h2>
-          {list.length > 0 && (
+          {(list.length > 0 || shelved.length > 0) && (
             <button type="button" className={`hb-edit-toggle${editMode ? " on" : ""}`} onClick={() => { setEditMode(!editMode); setArmed(null); }}>
               {editMode ? "完了" : "編集"}
             </button>
           )}
-          <small>{editMode && list.length > 0 ? "名前を直す・しまう（記録は残る）・消す" : "押すと✓。続かなくても大丈夫、数えるのは「今月◯回」だけ"}</small>
+          <small>{editMode ? "名前を直す・しまう（記録は残る）・消す" : "押すと✓。続かなくても大丈夫、数えるのは「今月◯回」だけ"}</small>
         </header>
         {list.length === 0 && <p className="hb-empty">まだ習慣がありません。下から足してください。</p>}
         {editMode && (
@@ -83,6 +84,23 @@ export function HabitsPanel() {
                 }}>{armed === h.id ? "もう一度" : "消す"}</button>
               </div>
             ))}
+            {shelved.length > 0 && (
+              <>
+                <span className="hb-shelf-title">しまった習慣（{shelved.length}）</span>
+                {shelved.map((h) => (
+                  <div key={h.id} className="hb-edit-row shelved">
+                    <span className="hb-shelf-name">{h.habit!.name}<small>{h.habit!.days.length}回の記録</small></span>
+                    <button type="button" onClick={async () => { await restoreHabit(h); syncNow().catch(() => undefined); }}>戻す</button>
+                    <button type="button" className={`danger${armed === h.id ? " armed" : ""}`} onClick={async () => {
+                      if (armed !== h.id) { setArmed(h.id); window.setTimeout(() => setArmed((v) => (v === h.id ? null : v)), 3000); return; }
+                      setArmed(null);
+                      await deleteHabit(h);
+                      syncNow().catch(() => undefined);
+                    }}>{armed === h.id ? "もう一度" : "消す"}</button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         )}
         {!editMode && (

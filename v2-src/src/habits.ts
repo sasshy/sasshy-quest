@@ -44,6 +44,17 @@ export async function archiveHabit(memo: Memo): Promise<Memo | null> {
   return updateMemo(memo.id, { archived: true }, `習慣「${memo.habit!.name}」をしまう`);
 }
 
+/** しまった習慣（記録は残っている）。編集画面から戻す・消すができる。 */
+export function archivedHabits(memos: Memo[]): Memo[] {
+  return memos
+    .filter((m) => !m.deletedAt && m.archived && isHabitMemo(m))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function restoreHabit(memo: Memo): Promise<Memo | null> {
+  return updateMemo(memo.id, { archived: false }, `習慣「${memo.habit!.name}」を戻す`);
+}
+
 /** 消す（同期で他の端末からも消える）。記録ごと要らないとき用。 */
 export async function deleteHabit(memo: Memo): Promise<Memo | null> {
   return updateMemo(memo.id, { deletedAt: new Date().toISOString() }, `習慣「${memo.habit!.name}」を消す`);
