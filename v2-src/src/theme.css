@@ -1173,3 +1173,39 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .hb-cell.today { border-color: var(--accent); }
 .hb-cell:disabled { opacity: .3; cursor: default; }
 .hb-hint { font-size: 11px; color: var(--faint); padding: 0 2px; }
+
+/* 今日のひと目：作業・お金・ねこ・寝るまでの残り。見出し＋大きな数字1つずつで迷わせない。 */
+.glance { display: grid; gap: 12px; padding: 14px; margin-bottom: 12px; border-radius: 20px; background: var(--paper); border: 1px solid var(--line); }
+.glance-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
+.glance.with-cat .glance-top { grid-template-columns: 1fr 1fr 76px; }
+.glance.no-money .glance-top { grid-template-columns: 1fr; }
+.glance.no-money.with-cat .glance-top { grid-template-columns: 1fr 76px; }
+.glance-tile { display: grid; align-content: start; gap: 3px; min-width: 0; padding: 10px 11px; border: 0; border-radius: 14px; background: var(--soft); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: transform .12s ease; }
+.glance-tile:active { transform: scale(.97); }
+.glance-label { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.glance-num { font-family: var(--font-num); font-size: 24px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; }
+.glance-tile small { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glance-tile small.over { color: var(--danger); font-weight: 700; }
+.glance-bar { display: block; height: 5px; margin: 2px 0 1px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.glance-bar b { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .6s ease; }
+.glance-tile.full .glance-label { color: var(--accent-text); }
+.glance-tile.money.over .glance-label, .glance-tile.money.over .glance-num { color: var(--danger); }
+.glance-cat { position: relative; display: grid; place-items: center; }
+.glance .companion, .glance .companion.tile { width: 76px; height: 76px; margin: 0; }
+.glance .companion-say { right: 62%; top: -8px; }
+.glance .tl-day { padding: 0; background: transparent; color: var(--ink); gap: 6px; }
+.glance .tl-day-head > span { color: var(--muted); }
+.glance .tl-day-num b { font-size: 22px; }
+.glance .tl-blocks i { height: 14px; border-radius: 4px; background: var(--line); }
+.glance .tl-blocks i.left, .glance .tl-blocks i.now b { background: var(--accent); }
+.glance .tl-day.low .tl-blocks i.left, .glance .tl-day.low .tl-blocks i.now b { background: var(--warn); }
+.glance .tl-day-foot { display: none; }
+.glance-more { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+.glance-more-toggle { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
+.glance-more-toggle span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glance-more-toggle .flip { transform: rotate(180deg); }
+.glance-set { justify-self: start; display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; border: 0; background: transparent; color: var(--faint); font: inherit; font-size: 11px; cursor: pointer; }
+.glance-tile small { white-space: normal; line-height: 1.35; }
+.glance-cat { align-content: start; }
+/* ねこのひとことは、ねこの絵の下の端に重ねる（となりの数字にかぶらない）。 */
+.glance .companion-say { right: auto; left: 50%; top: 80px; bottom: auto; width: 84px; margin-left: -42px; white-space: normal; text-align: center; font-size: 10px; line-height: 1.3; border-radius: 10px; padding: 3px 6px; }

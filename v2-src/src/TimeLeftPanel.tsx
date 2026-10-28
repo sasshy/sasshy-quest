@@ -17,7 +17,7 @@ import {
   type TimeLeftSetting,
 } from "./timeleft";
 
-function useNow(intervalMs = 30_000): Date {
+export function useNow(intervalMs = 30_000): Date {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), intervalMs);
@@ -77,7 +77,7 @@ export function TimeLeftStrip() {
  * 今日の残りを「起きている1時間＝1マス」で見せる。使ったマスは薄く、
  * 今のマスは減っていき、残りのマスが何個あるかで直感的にわかる。
  */
-function DayBlocks({ item, now }: { item: TimeLeftItem; now: number }) {
+export function DayBlocks({ item, now }: { item: TimeLeftItem; now: number }) {
   const HOUR = 3_600_000;
   const start = item.start ?? now;
   const end = item.end ?? now;
@@ -110,7 +110,7 @@ function DayBlocks({ item, now }: { item: TimeLeftItem; now: number }) {
 
 const KEY_LABEL: Record<TimeLeftKey, string> = { day: "今日", week: "今週", month: "今月", year: "今年", birthday: "誕生日まで" };
 
-function TimeLeftEditor({ setting, onClose }: { setting: TimeLeftSetting; onClose: () => void }) {
+export function TimeLeftEditor({ setting, onClose }: { setting: TimeLeftSetting; onClose: () => void }) {
   const [label, setLabel] = useState("");
   const [date, setDate] = useState("");
   const addCountdown = async (form: FormData) => {

@@ -154,7 +154,8 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
   const today = localDateKey(Date.now());
   // 過去の日も見返せるように、表示する日を切り替えられる。
   const [viewDate, setViewDate] = useState(today);
-  const dayRecords = ledgerOn(memos, viewDate);
+  // 食事のタブには食事だけ、支出のタブには支出だけを並べる（同じものが2か所に出ないように）。
+  const dayRecords = tab === "meal" ? mealsOn(memos, viewDate) : expensesOn(memos, viewDate);
   const [expenseItem, setExpenseItem] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const viewLabel = viewDate === today
@@ -554,8 +555,9 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
               <div>
                 <strong>{viewLabel}</strong>
                 <small>
-                  支払 {yen(walletOn(memos, viewDate))}
-                  {kcalOn(memos, viewDate) > 0 && ` ・ ${kcalText(kcalOn(memos, viewDate))}`}
+                  {tab === "meal"
+                    ? `${mealsOn(memos, viewDate).length}回${kcalOn(memos, viewDate) > 0 ? ` ・ ${kcalText(kcalOn(memos, viewDate))}` : ""}`
+                    : `支払 ${yen(walletOn(memos, viewDate))}`}
                 </small>
               </div>
               <button type="button" aria-label="次の日" disabled={viewDate >= today} onClick={() => setViewDate(shiftDateKey(viewDate, 1))}>
@@ -563,7 +565,7 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
               </button>
             </div>
             {dayRecords.length === 0 ? (
-              <p className="meal-empty">記録はありません</p>
+              <p className="meal-empty">{tab === "meal" ? "食事の記録はありません" : "支出の記録はありません"}</p>
             ) : (
               <ul className="ms-list">
                 {editing && <RecordEditSheet memo={editing} onClose={() => setEditing(null)} />}

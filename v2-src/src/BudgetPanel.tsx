@@ -22,7 +22,7 @@ const md = (key: string) => {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
-function useBudget() {
+export function useBudget() {
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const setting = useLiveQuery(async () => {
     await db.settings.get("budget");
@@ -33,7 +33,7 @@ function useBudget() {
 }
 
 /** Counts to the new value (e.g. after recording a spend), so the change is felt. */
-function useCountTo(target: number): number {
+export function useCountTo(target: number): number {
   const [value, setValue] = useState(target);
   const from = useRef(target);
   useEffect(() => {

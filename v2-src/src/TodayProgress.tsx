@@ -57,7 +57,7 @@ function Marbles({ count, max }: { count: number; max: number }) {
 }
 
 /** これまでのビン: the last 8 weeks side by side. */
-function JarShelf({ jars, onClose }: { jars: WeekJar[]; onClose: () => void }) {
+export function JarShelf({ jars, onClose }: { jars: WeekJar[]; onClose: () => void }) {
   const top = Math.max(1, ...jars.map((j) => j.marbles));
   return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>

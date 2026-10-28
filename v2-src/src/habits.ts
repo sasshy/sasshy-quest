@@ -74,3 +74,37 @@ export async function checkHabitForTask(title: string, date: string): Promise<bo
   await setHabitDay(found, date, true);
   return true;
 }
+
+/**
+ * 1回だけ：頼まれていた「水虫の薬を塗る」を習慣にして、夜ルーティンの最後にも入れる。
+ * 動作確認用の「テスト」「テスト2」はしまう。iPhoneアプリでだけ動かす（二重に作らないため）。
+ */
+export async function setupRequestedHabitsOnce(
+  routines: { id: string; name: string; steps: { title: string; minutes: number }[] }[],
+  save: (list: typeof routines) => Promise<void>,
+): Promise<boolean> {
+  const KEY = 'sasshy-habit-setup-mizumushi';
+  const native = Boolean((window as unknown as { webkit?: { messageHandlers?: { sasshyAlarm?: unknown } } }).webkit?.messageHandlers?.sasshyAlarm);
+  try {
+    if (!native || localStorage.getItem(KEY)) return false;
+    localStorage.setItem(KEY, '1');
+  } catch {
+    return false;
+  }
+  const NAME = '水虫の薬を塗る';
+  const all = await db.memos.toArray();
+  let changed = false;
+  if (!all.some((m) => isHabitMemo(m) && !m.deletedAt && m.habit!.name.includes('水虫'))) {
+    await createHabit(NAME, null, '夜ルーティン');
+    changed = true;
+  }
+  const night = routines.find((r) => r.name === '夜ルーティン');
+  if (night && !night.steps.some((s) => s.title.includes('水虫'))) {
+    await save(routines.map((r) => (r.id === night.id ? { ...r, steps: [...r.steps, { title: NAME, minutes: 2 }] } : r)));
+    changed = true;
+  }
+  for (const m of habits(all)) {
+    if (/^テスト\d*$/.test(m.habit!.name)) { await archiveHabit(m); changed = true; }
+  }
+  return changed;
+}
