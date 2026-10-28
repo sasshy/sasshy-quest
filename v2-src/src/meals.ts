@@ -431,3 +431,46 @@ export function expenseTimeText(expense: ExpenseInfo | undefined): string {
   const d = new Date(at);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 }
+
+/**
+ * ChatGPTなどがレシートの支出と、その中身の食事を別々に入れたとき、食事の方に
+ * 値段が残っていると二重に数えてしまう。同じ日のレシートの支出に
+ * 「その値段（◯円）」が書かれている・内訳にある・金額がぴったり同じ、なら
+ * 食事をそのレシートに結びつけて、食事側は0円にする。
+ */
+export function findReceiptLinks(memos: Memo[]): { mealId: string; expenseId: string }[] {
+  const live = memos.filter((m) => !m.deletedAt && !m.archived);
+  const expenses = live.filter(isExpenseMemo);
+  const usedExact = new Set<string>();
+  const links: { mealId: string; expenseId: string }[] = [];
+  for (const m of live) {
+    if (!isMealMemo(m)) continue;
+    const meal = m.meal!;
+    const price = Number(meal.price || 0);
+    if (!price || meal.receiptExpenseId || (meal.paid !== undefined && meal.paid !== null)) continue;
+    if (meal.payment === 'home' || meal.payment === 'treated') continue;
+    const purchase = (meal as { purchaseAt?: unknown }).purchaseAt;
+    const day = localDateKey(typeof purchase === 'string' ? purchase : meal.at);
+    const sameDay = expenses.filter((e) => localDateKey(e.expense!.at) === day);
+    const mentions = sameDay.find((e) => {
+      const ex = e.expense! as { item: string; itemBreakdown?: { amount?: number }[] };
+      return ex.item.includes(`${price}円`) || (Array.isArray(ex.itemBreakdown) && ex.itemBreakdown.some((b) => Number(b?.amount) === price));
+    });
+    const exact = mentions ? null : sameDay.find((e) => Number(e.expense!.amount) === price && !usedExact.has(e.id));
+    const hit = mentions || exact;
+    if (!hit) continue;
+    if (exact) usedExact.add(exact.id);
+    links.push({ mealId: m.id, expenseId: hit.id });
+  }
+  return links;
+}
+
+export async function linkMealsToReceipts(): Promise<number> {
+  const links = findReceiptLinks(await db.memos.toArray());
+  for (const { mealId, expenseId } of links) {
+    const memo = await db.memos.get(mealId);
+    if (!memo?.meal) continue;
+    await updateMemo(mealId, { meal: { ...memo.meal, paid: 0, receiptExpenseId: expenseId } }, '食事をレシートに結びつける');
+  }
+  return links.length;
+}

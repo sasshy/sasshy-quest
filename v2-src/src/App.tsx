@@ -191,6 +191,7 @@ import { TodayGlance } from "./Glance";
 import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
+import { linkMealsToReceipts } from "./meals";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
 import { checkHabitForTask, checkRoutineHabit, isHabitMemo, setupLunchHabitOnce, setupRequestedHabitsOnce, tidyRoutineHabits } from "./habits";
@@ -4565,6 +4566,12 @@ function App() {
   const viewFrame = useRef<HTMLDivElement>(null);
   useEffect(() => kickRepaint(viewFrame.current), [page]);
   useEffect(() => { restoreBudgetCardOnce().catch(() => undefined); }, []);
+  // レシートと食事が別々に届いたら、食事をレシートに結びつけて二重に数えない（同期で記録が増えるたびに）。
+  const memoCount = useLiveQuery(() => db.memos.count(), [], 0);
+  useEffect(() => {
+    if (!memoCount) return;
+    linkMealsToReceipts().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined);
+  }, [memoCount]);
   useEffect(() => { tidyDiaryDuplicates().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined); }, []);
   // ルーティン丸ごとの習慣は作らない。前に自動でできたもの（夜ルーティン など）はしまう。
   useEffect(() => {
