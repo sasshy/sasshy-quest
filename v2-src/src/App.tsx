@@ -194,6 +194,7 @@ import { kickRepaint } from "./repaint";
 import { SearchSheet } from "./SearchSheet";
 import { dailyCarePick } from "./care";
 import { FirstStepSheet, shouldShowFirstStep } from "./Kickstart";
+import { TaskIdeasSheet } from "./TaskIdeas";
 import { linkMealsToReceipts } from "./meals";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -1355,6 +1356,7 @@ function TodayPage({
   const [now, setNow] = useState(() => Date.now());
   const [runwayOpen, setRunwayOpen] = useState(false);
   const [firstStep, setFirstStep] = useState(() => shouldShowFirstStep());
+  const [ideasFor, setIdeasFor] = useState<Task | null>(null);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(timer);
@@ -1618,6 +1620,10 @@ function TodayPage({
                 <button type="button" onClick={() => onEdit(focus)}>
                   <Pencil size={14} /> 編集
                 </button>
+                {/* 好きなこと（AI・アプリ作りなど）につなげたやり方をAIが3案出す。 */}
+                <button type="button" onClick={() => setIdeasFor(focus)}>
+                  <Sparkles size={14} /> 楽しく
+                </button>
                 <button type="button" onClick={async () => {
                   await updateTask(focus.id, { scheduledDate: null, startMinute: null, isFixed: false, status: "inbox" }, "今日から外す");
                   toast(`「${focus.title}」を今日から外しました（やることに残っています）`);
@@ -1640,6 +1646,7 @@ function TodayPage({
                 </button>
               </div>
             )}
+            {ideasFor && <TaskIdeasSheet task={ideasFor} onClose={() => setIdeasFor(null)} />}
             {firstStep && !activeSession && !autoDetour && (
               <FirstStepSheet task={focus} onStart={() => onStart(focus, { starter: true })} onClose={() => setFirstStep(false)} />
             )}
@@ -2920,6 +2927,7 @@ function InboxPage({
     { key: "wish", label: "やりたい", hint: "義務ではないアイデア" },
   ];
   const [openGroup, setOpenGroup] = useState<TaskHorizon | null>(null);
+  const [ideasTask, setIdeasTask] = useState<Task | null>(null);
   const place = async (task: Task, changes: Partial<Task>, label: string) => {
     await updateTask(task.id, changes, label);
     syncNow().catch(() => undefined);
@@ -2989,6 +2997,7 @@ function InboxPage({
         )}
       </section>
       {triage && <TriageSheet tasks={inbox} onClose={() => setTriage(false)} />}
+      {ideasTask && <TaskIdeasSheet task={ideasTask} onClose={() => setIdeasTask(null)} />}
       {groups.map((group) => {
         const items = tasks.filter((task) => open(task) && task.horizon === group.key);
         const expanded = openGroup === group.key;
@@ -3027,6 +3036,7 @@ function InboxPage({
                       {/* 整備は「整備」のまま今日に出す（終われば次の日にまた1つ出る）。 */}
                       <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: group.key === "care" ? "care" : "now" }, "今日やる")}>今日</button>
                       {group.key !== "care" && <button type="button" onClick={() => place(task, { horizon: "now", scheduledDate: null }, "日付なしへ戻す")}>戻す</button>}
+                      {group.key === "care" && <button type="button" className="todo-idea" aria-label={`${task.title}を好きなやり方にする`} onClick={() => setIdeasTask(task)}><Sparkles size={14} /></button>}
                       {trash(task)}
                     </div>
                   </li>
