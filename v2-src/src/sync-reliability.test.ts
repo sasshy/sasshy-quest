@@ -25,7 +25,7 @@ function route(handlers: Record<string, Handler>) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     // Schedule-history Edge Function (web build only): nothing queued, empty list.
     if (String(input).includes('/functions/v1/sasshy-schedule-history/')) return json({ ok: true, history: [] });
-    const name = String(input).split('/rpc/')[1];
+    const name = String(input).split('/rpc/')[1].split('?')[0];
     const body = JSON.parse(String(init?.body || '{}'));
     const handler = handlers[name];
     if (!handler) throw new Error(`unexpected rpc ${name}`);
@@ -118,5 +118,25 @@ describe('sync reliability', () => {
     await syncNow(true);
     expect(legacy).toHaveBeenCalledTimes(1);
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe('pull pages', () => {
+  it('receives records past the 1000-row server limit', async () => {
+    const all = Array.from({ length: 1064 }, (_, i) => row(`p${i}`, new Date(Date.UTC(2026, 9, 1) + i * 1000).toISOString(), { id: `p${i}`, title: `t${i}`, sync: {} }));
+    const seen: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      seen.push(url);
+      const q = new URLSearchParams(url.split('?')[1] || '');
+      const limit = Number(q.get('limit') || 1000);
+      const offset = Number(q.get('offset') || 0);
+      return new Response(JSON.stringify(all.slice(offset, offset + Math.min(limit, 1000))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    const { pullAllForTest } = await import('./sync');
+    const rows = await pullAllForTest({ url: 'https://x.supabase.co', apiKey: 'sb_publishable_x', syncKey: 'k'.repeat(16) } as never);
+    expect(rows.length).toBe(1064);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(1064);
+    expect(seen.length).toBe(2);
   });
 });

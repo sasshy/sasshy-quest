@@ -70,25 +70,46 @@ export function syncLog(stage: string, message: string): void {
   } catch { /* 残せなくても同期は続ける */ }
 }
 
-async function rpc<T>(config: SyncConfig, name: string, body: Record<string, unknown>): Promise<T> {
+async function rpc<T>(config: SyncConfig, name: string, body: Record<string, unknown>, query = ''): Promise<T> {
   try {
-    return await rpcOnce<T>(config, name, body);
+    return await rpcOnce<T>(config, name, body, query);
   } catch (error) {
     // 一瞬の通信切れ（アプリの切り替え直後など）は1回だけやり直す。
     const message = error instanceof Error ? error.message : String(error);
     if (!message.startsWith('通信')) throw error;
     syncLog(`${name}:retry`, message);
     await new Promise((resolve) => window.setTimeout(resolve, 1500));
-    return rpcOnce<T>(config, name, body);
+    return rpcOnce<T>(config, name, body, query);
   }
 }
 
-async function rpcOnce<T>(config: SyncConfig, name: string, body: Record<string, unknown>): Promise<T> {
+/**
+ * サーバーは1回に1000件までしか返さない。少しずつ重ねながら最後まで受け取り、
+ * 同じ記録は新しい方だけ残す（記録が1000件を超えて、新しい分が届かなくなっていた）。
+ */
+const PAGE = 1000;
+const STEP = 900;
+export const pullAllForTest = (config: SyncConfig) => pullAll(config);
+async function pullAll(config: SyncConfig): Promise<CloudRecord[]> {
+  const byKey = new Map<string, CloudRecord>();
+  for (let offset = 0; offset < 100_000; offset += STEP) {
+    const page = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey }, `?limit=${PAGE}&offset=${offset}`) || [];
+    for (const row of page) {
+      const key = `${row.record_type}:${row.id}`;
+      const seen = byKey.get(key);
+      if (!seen || Date.parse(row.updated_at) >= Date.parse(seen.updated_at)) byKey.set(key, row);
+    }
+    if (page.length < PAGE) break;
+  }
+  return [...byKey.values()].sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at));
+}
+
+async function rpcOnce<T>(config: SyncConfig, name: string, body: Record<string, unknown>, query = ''): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15_000);
   let response: Response;
   try {
-    response = await fetch(`${cleanUrl(config.url)}/rest/v1/rpc/${name}`, {
+    response = await fetch(`${cleanUrl(config.url)}/rest/v1/rpc/${name}${query}`, {
       method: 'POST',
       headers: headers(config),
       body: JSON.stringify(body),
@@ -209,7 +230,7 @@ async function performSync(force = false): Promise<void> {
       }
     }
 
-    const remote = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey });
+    const remote = await pullAll(config);
     let applyFailed = 0;
     for (const record of remote || []) {
       // 1件が読めなくても、残りは必ず反映する。
@@ -354,7 +375,7 @@ export function syncNow(force = false): Promise<void> {
 export async function testSyncConnection(configInput?: Partial<SyncConfig>): Promise<number> {
   const config = configInput ? await saveSyncConfig(configInput) : await getSyncConfig();
   validate(config);
-  const rows = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey });
+  const rows = await pullAll(config);
   // First-time setup: a verified connection should not silently stay in manual mode
   // (unsent edits piled up unnoticed before). A user who later turns it off keeps that choice.
   if (!config.enabled && !config.lastSyncAt) await saveSyncConfig({ enabled: true });
