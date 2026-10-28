@@ -383,6 +383,10 @@ export interface GoogleCalendarEvent {
   allDay: boolean;
   calendarName: string;
   color: string;
+  /** 繰り返しの予定（SASSHYからは動かさない）。 */
+  recurring?: boolean;
+  /** 自分のカレンダーで、動かせる。 */
+  editable?: boolean;
 }
 
 export interface GoogleCalendarConfig {

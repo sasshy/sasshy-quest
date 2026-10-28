@@ -129,6 +129,7 @@ import {
   getGoogleCalendarConfig,
   refreshGoogleCalendar,
   saveGoogleCalendarConfig,
+  moveGoogleEvent,
 } from "./google-calendar";
 import type {
   FocusSession,
@@ -187,7 +188,7 @@ import { workDayKey } from "./dayline";
 import { tidyDiaryDuplicates } from "./diary";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
-import { TodayGlance, TodayHabits } from "./Glance";
+import { TodayEvents, TodayGlance, TodayHabits } from "./Glance";
 import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
@@ -1523,6 +1524,7 @@ function TodayPage({
       )}
       {/* 思いついたらすぐ入れられるように、追加は一番上に。 */}
       <div className="today-add-top"><QuickAdd defaultDate={today} /></div>
+      <TodayEvents />
       <section className={`now-card${activeSession ? " running" : ""}`}>
         <span className="now-label">{autoDetour ? "おかえり" : activeSession ? "いま" : "次はこれ"}</span>
         {autoDetour && activeSession?.interrupt ? (
@@ -2505,6 +2507,7 @@ function CalendarPage({
           onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
           onOpen={openScheduleMove}
           onStart={onStart}
+          events={googleCalendar.enabled ? googleCalendar.events : []}
         />
       ) : mobile && (mode === "three" || (mode === "day" && !dayList)) ? (
         <TimeGrid
@@ -2513,6 +2516,8 @@ function CalendarPage({
           onPage={(delta) => setActiveDate((current) => shiftDate(current, delta))}
           onSwipe={(dir) => setActiveDate((current) => shiftDate(current, dir * (mode === "three" ? 3 : 1)))}
           dates={mode === "three" ? threeDays(activeDate) : [activeDate]}
+          events={googleCalendar.enabled ? googleCalendar.events : []}
+          onMoveEvent={moveGoogleEvent}
           onCreateAt={(day, minute) => openScheduleDraft(day, minute, 15)}
           onOpen={openScheduleMove}
           onStart={onStart}

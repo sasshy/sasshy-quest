@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { emptyGoogleCalendar, getGoogleCalendarConfig } from "./google-calendar";
 import { DEFAULT_APPEARANCE, getAppearance } from "./appearance";
 import { db } from "./db";
 import { computeProgress, minutesText, weeklyJars } from "./progress";
@@ -194,5 +195,41 @@ export function TodayHabits() {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * 今日の予定（Googleカレンダー）：これからの予定だけを、今日の画面の上に1行で。
+ * 次の予定は「あと◯分」も出す。終わった予定は出さない。
+ */
+export function TodayEvents() {
+  const config = useLiveQuery(() => getGoogleCalendarConfig(), [], emptyGoogleCalendar) || emptyGoogleCalendar;
+  const now = useNow();
+  if (!config.enabled) return null;
+  const today = localDateKey(now.getTime());
+  const list = config.events
+    .filter((e) => (e.allDay ? e.start <= today && (e.end ? e.end > today : e.start === today) : localDateKey(Date.parse(e.start)) === today))
+    .filter((e) => e.allDay || Date.parse(e.end || e.start) > now.getTime())
+    .sort((a, b) => (a.allDay === b.allDay ? a.start.localeCompare(b.start) : a.allDay ? -1 : 1));
+  if (!list.length) return null;
+  const hmOf = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  const next = list.find((e) => !e.allDay);
+  const until = next ? Math.round((Date.parse(next.start) - now.getTime()) / 60_000) : null;
+  return (
+    <button type="button" className="today-events" onClick={() => window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "calendar" }))} aria-label="今日の予定（カレンダーを開く）">
+      <CalendarDays size={16} aria-hidden="true" />
+      <span className="te-list">
+        {list.slice(0, 3).map((e) => (
+          <span key={e.id} className={e === next ? "next" : ""}>
+            <b>{e.allDay ? "終日" : hmOf(e.start)}</b>{e.title}
+          </span>
+        ))}
+        {list.length > 3 && <small>ほか{list.length - 3}件</small>}
+      </span>
+      {next && until !== null && <em>{until <= 0 ? "今" : until < 60 ? `あと${until}分` : `あと${Math.floor(until / 60)}時間${until % 60 ? `${until % 60}分` : ""}`}</em>}
+    </button>
   );
 }

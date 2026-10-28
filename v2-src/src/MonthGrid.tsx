@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Play, Plus } from "lucide-react";
 import { byFlow, isFixed } from "./MobilePlanner";
 import { localDateKey } from "./work-start";
-import type { Task } from "./types";
+import type { Task, GoogleCalendarEvent } from "./types";
 
 /**
  * スマホの月表示: each day only shows how full it is (thin bars) and
@@ -17,8 +17,11 @@ export function MonthGrid({
   onCreateAt,
   onOpen,
   onStart,
+  events = [],
 }: {
   tasks: Task[];
+  /** Googleカレンダーの予定（月の中は点、下の一覧には時刻つきで出す）。 */
+  events?: GoogleCalendarEvent[];
   date: string;
   onSelect: (date: string) => void;
   onCreateAt: (date: string, startMinute: number) => void;
@@ -37,6 +40,8 @@ export function MonthGrid({
   const dueOn = (key: string) => live.filter((t) => t.dueDate === key && t.status !== "done");
   const selectedTasks = onDay(selected).sort((a, b) => (a.startMinute ?? 9999) - (b.startMinute ?? 9999) || byFlow(a, b));
   const sel = new Date(`${selected}T12:00:00`);
+  const gOn = (key: string) => events.filter((e) => (e.allDay ? e.start <= key && (e.end ? e.end > key : e.start === key) : localDateKey(new Date(e.start)) === key));
+  const gTime = (e: GoogleCalendarEvent) => (e.allDay ? "終日" : hm(new Date(e.start).getHours() * 60 + new Date(e.start).getMinutes()));
 
   return (
     <div className="mg">
@@ -65,18 +70,25 @@ export function MonthGrid({
               </span>
               {list.length > 0 && <small>{open.length ? open.length : "✓"}</small>}
               {dueOn(key).length > 0 && <b className="mg-due" />}
+              {gOn(key).length > 0 && <em className="mg-g" aria-hidden="true">{gOn(key).length > 1 ? gOn(key).length : ""}</em>}
             </button>
           );
         })}
       </div>
-      <div className="mg-legend"><span><i /> 1本＝約1時間の予定</span><span><b className="mg-due" /> 締め切り</span></div>
+      <div className="mg-legend"><span><i /> 1本＝約1時間の予定</span><span><b className="mg-due" /> 締め切り</span><span><em className="mg-g" /> Googleの予定</span></div>
 
       <section className="mg-list">
         <header>
           <strong>{sel.getMonth() + 1}/{sel.getDate()}（{sel.toLocaleDateString("ja-JP", { weekday: "short" })}）</strong>
           <button type="button" onClick={() => onCreateAt(selected, 9 * 60)}><Plus size={15} /> この日に追加</button>
         </header>
-        {selectedTasks.length === 0 && <p>予定はありません</p>}
+        {gOn(selected).map((e) => (
+          <div key={`g-${e.id}`} className="mg-row gcal">
+            <span className="mg-time">{gTime(e)}</span>
+            <span className="mg-title"><strong>{e.title}</strong><small>Googleカレンダー{e.calendarName ? `・${e.calendarName}` : ""}</small></span>
+          </div>
+        ))}
+        {selectedTasks.length === 0 && gOn(selected).length === 0 && <p>予定はありません</p>}
         {selectedTasks.map((t) => (
           <div key={t.id} className={`mg-row${t.status === "done" ? " done" : ""}`}>
             <span className="mg-time">{isFixed(t) && t.startMinute !== null ? hm(t.startMinute) : "—"}</span>

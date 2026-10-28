@@ -64,6 +64,8 @@ function normalizeEvents(payload: unknown): GoogleCalendarEvent[] {
       allDay,
       calendarName: String(event.calendarName ?? event.calendar_name ?? event.calendarTitle ?? ''),
       color: String(event.calendarColor ?? event.calendar_color ?? event.color ?? ''),
+      recurring: Boolean(event.recurring),
+      editable: event.editable === undefined ? undefined : Boolean(event.editable),
     }];
   }).sort((a, b) => a.start.localeCompare(b.start));
 }
@@ -113,4 +115,59 @@ export async function refreshGoogleCalendar(config?: GoogleCalendarConfig): Prom
     await saveGoogleCalendarConfig({ ...current, lastError: message });
     throw new Error(`Googleカレンダーを読み込めませんでした: ${message}`);
   }
+}
+
+/**
+ * 予定を動かす（Googleカレンダー側も書き換える）。Apps Script が action=move に
+ * 対応している必要がある（docs/google-calendar-apps-script.gs）。成功したら手元の一覧も直す。
+ */
+export async function moveGoogleEvent(event: GoogleCalendarEvent, start: Date, end: Date): Promise<void> {
+  const config = await getGoogleCalendarConfig();
+  if (!config.feedUrl.trim()) throw new Error('Googleカレンダーの設定がありません');
+  if (event.recurring) throw new Error('繰り返しの予定はGoogleカレンダーで動かしてください');
+  const url = new URL(config.feedUrl);
+  url.searchParams.set('action', 'move');
+  url.searchParams.set('id', event.id);
+  if (event.allDay) {
+    url.searchParams.set('allDay', '1');
+    url.searchParams.set('start', localDateKey(start));
+    url.searchParams.set('end', localDateKey(end));
+  } else {
+    url.searchParams.set('start', start.toISOString());
+    url.searchParams.set('end', end.toISOString());
+  }
+  const data = await jsonpRaw(url.toString()) as { ok?: boolean; error?: string; events?: unknown } | unknown[];
+  const result = Array.isArray(data) ? null : data;
+  if (!result || result.ok !== true || 'events' in result) {
+    // 古いスクリプト（読むだけ）は予定の一覧を返してくる。
+    const message = result && typeof result.error === 'string' ? result.error : 'Apps Scriptが「動かす」に対応していません（設定の説明を見てください）';
+    throw new Error(message);
+  }
+  const latest = await getGoogleCalendarConfig();
+  const moved: GoogleCalendarEvent = {
+    ...event,
+    start: event.allDay ? localDateKey(start) : start.toISOString(),
+    end: event.allDay ? localDateKey(end) : end.toISOString(),
+  };
+  await saveGoogleCalendarConfig({ ...latest, events: latest.events.map((e) => (e.id === event.id ? moved : e)) });
+}
+
+function jsonpRaw(url: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const callback = `sasshyV2GoogleMove_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement('script');
+    const timer = window.setTimeout(() => finish(new Error('Googleカレンダーから応答がありませんでした')), 18_000);
+    const finish = (error?: Error, data?: unknown) => {
+      window.clearTimeout(timer);
+      script.remove();
+      delete (window as unknown as Record<string, unknown>)[callback];
+      if (error) reject(error); else resolve(data);
+    };
+    (window as unknown as Record<string, unknown>)[callback] = (data: unknown) => finish(undefined, data);
+    script.onerror = () => finish(new Error('Apps Script URLを読み込めませんでした'));
+    const u = new URL(url);
+    u.searchParams.set('callback', callback);
+    script.src = u.toString();
+    document.body.appendChild(script);
+  });
 }

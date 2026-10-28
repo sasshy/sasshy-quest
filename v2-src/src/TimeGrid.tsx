@@ -6,7 +6,7 @@ import { completeTaskFromActual, createManualFocusSession, updateSession, update
 import { syncNow } from "./sync";
 import { haptic } from "./feedback";
 import { localDateKey } from "./work-start";
-import type { FocusSession, Task } from "./types";
+import type { GoogleCalendarEvent, FocusSession, Task } from "./types";
 import { minuteFrom, workDayKey } from "./dayline";
 
 /**
@@ -45,7 +45,7 @@ const MIN_SHOWN = 15;
 const toast = (text: string) => window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: text }));
 interface TrayDrag { task: Task; startX: number; startY: number; x: number; y: number; active: boolean; date: string | null; start: number }
 
-interface Placed { task: Task; date: string; start: number; end: number; fixed: boolean; session?: FocusSession }
+interface Placed { task: Task; date: string; start: number; end: number; fixed: boolean; session?: FocusSession; gevent?: GoogleCalendarEvent }
 interface Drag { id: string; kind: "move" | "resize"; startY: number; startX: number; grabY: number; orig: Placed; start: number; end: number; date: string; active: boolean }
 
 export function TimeGrid({
@@ -57,8 +57,13 @@ export function TimeGrid({
   onStart,
   onPage,
   onSwipe,
+  events = [],
+  onMoveEvent,
 }: {
   tasks: Task[];
+  /** Googleカレンダーの予定。長押しで動かすとGoogle側も書き換える。 */
+  events?: GoogleCalendarEvent[];
+  onMoveEvent?: (event: GoogleCalendarEvent, start: Date, end: Date) => Promise<void>;
   sessions?: FocusSession[];
   /** つかんだまま端に寄せたとき、表示する日を前後にずらす。 */
   onPage?: (delta: number) => void;
@@ -130,7 +135,19 @@ export function TimeGrid({
         const end = Math.min(TO, Math.max(FROM + 15, minuteFrom(date, t.completedAt!)));
         return { task: t, end, start: end - 15 };
       });
-    return { date, placed, actual, checked, gaps, busy: plan.busy, free: plan.free };
+    // Googleカレンダーの予定（時刻あり）。SASSHYのタスクと同じ高さのブロックで横に並べる。
+    const gcal: Placed[] = events
+      .filter((e) => !e.allDay && localDateKey(new Date(e.start)) === date)
+      .map((e) => {
+        const s = new Date(e.start);
+        const startMin = s.getHours() * 60 + s.getMinutes();
+        const endD = e.end ? new Date(e.end) : new Date(s.getTime() + 30 * 60_000);
+        const len = Math.max(15, Math.round((endD.getTime() - s.getTime()) / 60_000));
+        const pseudo = { id: `gcal:${e.id}`, title: e.title, status: "planned" } as unknown as Task;
+        return { task: pseudo, date, start: Math.max(FROM, startMin), end: Math.min(TO, startMin + len), fixed: true, gevent: e };
+      });
+    const allDay = events.filter((e) => e.allDay && e.start <= date && (e.end ? e.end > date : e.start === date));
+    return { date, placed, actual, checked, gaps, busy: plan.busy, free: plan.free, gcal, allDay };
   });
 
   // 細かいタスクがある時間だけ、自動で縦に広げる（1時間ごとに高さを決める）。
@@ -319,6 +336,20 @@ export function TimeGrid({
     dragRef.current = null;
     setDrag(null);
     if (!d || !d.active) return;
+    const ge = d.orig.gevent;
+    if (ge) {
+      if (d.start === d.orig.start && d.end === d.orig.end && d.date === d.orig.date) return;
+      if (ge.recurring || ge.editable === false) { toast("この予定はGoogleカレンダーで動かしてください（繰り返し・共有の予定）"); return; }
+      const len = d.kind === "resize" ? Math.max(15, d.end - d.start) : d.orig.end - d.orig.start;
+      const startAt = new Date(dateAt(d.date, d.start));
+      try {
+        await onMoveEvent?.(ge, startAt, new Date(startAt.getTime() + len * 60_000));
+        toast(`「${ge.title}」を${hm(d.start)}〜${hm(d.start + len)}に動かしました（Googleカレンダーも）`);
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
     const s = d.orig.session;
     if (s) {
       // やった記録を動かす・長さを変える（完了の時刻も合わせる）。
@@ -499,6 +530,9 @@ export function TimeGrid({
           {columns.map((c) => (
             <div key={c.date} className="tg-col">
               {hours.map((h) => <i key={h} className="tg-line" style={{ top: top(h) }} />)}
+              {c.allDay.length > 0 && (
+                <div className="tg-allday">{c.allDay.map((e) => <span key={e.id} style={e.color ? { background: e.color } : undefined}>{e.title}</span>)}</div>
+              )}
               {/* 過ぎた時間：ここに置くと「やった」記録になる */}
               {(c.date < today || c.date === today) && (
                 <i className="tg-past" style={{ top: 0, height: c.date < today ? totalHeight : top(Math.max(FROM, nowMin)) }} />
@@ -544,6 +578,26 @@ export function TimeGrid({
                   空き {durationText(g.end - g.start)}
                 </button>
               ))}
+              {c.gcal.map((p) => {
+                const live = drag?.active && drag.id === p.task.id ? drag : null;
+                if (live && live.date !== c.date) return null;
+                const start = live ? live.start : p.start;
+                const endMin = live ? live.end : p.end;
+                return (
+                  <div
+                    key={p.task.id}
+                    className={`tg-block gcal${live ? " lifted" : ""}${top(endMin) - top(start) < 34 ? " short" : ""}${c.placed.some((pl) => pl.start < endMin && pl.end > start) ? " beside" : ""}`}
+                    style={{ top: top(start), height: Math.max(22, top(endMin) - top(start) - 2), ...(p.gevent?.color ? { borderLeftColor: p.gevent.color } : {}) }}
+                    onPointerDown={(e) => begin(e, p, "move")}
+                  >
+                    <span className="tg-title">
+                      <strong>{p.task.title}</strong>
+                      <small>{hm(start)}〜{hm(endMin)}・Google</small>
+                    </span>
+                    <span className="tg-resize" aria-label="下を引っぱって長さを変える" onPointerDown={(e) => { e.stopPropagation(); begin(e, p, "resize"); }} />
+                  </div>
+                );
+              })}
               {c.placed.map((p) => {
                 const live = drag?.active && drag.id === p.task.id ? drag : null;
                 if (live && live.date !== c.date) return null;
