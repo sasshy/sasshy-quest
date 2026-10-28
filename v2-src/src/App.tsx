@@ -191,6 +191,7 @@ import { TodayGlance } from "./Glance";
 import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
+import { SearchSheet } from "./SearchSheet";
 import { linkMealsToReceipts } from "./meals";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -4615,6 +4616,7 @@ function App() {
     };
   }, []);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [timerVisible, setTimerVisible] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
@@ -4965,6 +4967,9 @@ function App() {
             )}
           </div>
           <div className="topbar-actions">
+            <button type="button" className="topbar-more" aria-label="さがす" onClick={() => setSearchOpen(true)}>
+              <Search size={19} />
+            </button>
             <button type="button" className="topbar-more" aria-label="設定を開く" onClick={() => { setMenuOpen(false); setPage("settings"); }}>
               <Settings size={19} />
             </button>
@@ -5008,6 +5013,7 @@ function App() {
             </button>
           </div>
         </header>
+        {searchOpen && <SearchSheet onClose={() => setSearchOpen(false)} onEditTask={(t) => setEditing(t)} />}
         <div key={page} ref={viewFrame} className={`view-frame page-enter${activeSession && !timerVisible && page !== "today" ? " has-timer-reopen" : ""}`}>
           {page === "today" && (
             <TodayPage
