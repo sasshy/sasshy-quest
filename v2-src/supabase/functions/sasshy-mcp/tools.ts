@@ -18,6 +18,7 @@ export const SERVER_INSTRUCTIONS = [
   '記録済みの食事のカロリーを直すときは list_meals で memo_id と revision を取り、fix_meal_nutrition を使います。',
   '食事以外にお金を使った話（買い物・交通費・日用品など）が出たら record_expenses で記録します。食事の代金は record_meals の price に入れ、支出には重ねて入れません。',
   'レシートなどで何を買ったか分かるときは、record_expenses の item をお店の名前にし、items に品名（と値段）を入れてください。',
+  '人の分を立て替えて払ったもの（あとで返してもらうお金）は、record_expenses の advance_for にだれの分か（例：景司さん、母）を入れます。自分の分と人の分が混ざるときは2件に分けます。',
 ].join('\n');
 
 const dateProp = { type: 'string', description: 'YYYY-MM-DD（日本時間）' };
@@ -203,6 +204,7 @@ export const TOOLS = [
               amount: { type: 'integer', minimum: 0, description: '金額（円）' },
               paid_at: { type: 'string', description: '払った日時 ISO 8601（例：2026-10-26T12:30:00+09:00）。省略で今' },
               category: { type: 'string', description: '分類（交通・日用品・趣味など）。省略可' },
+              advance_for: { type: 'string', description: '立て替え（あとで返してもらう）のときだけ、だれの分か（例：景司さん、母）。自分の支出・予算には数えない' },
               items: {
                 type: 'array',
                 maxItems: 30,

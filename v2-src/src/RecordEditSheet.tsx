@@ -25,6 +25,7 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
   const [payment, setPayment] = useState<MealPayment>(meal?.payment || "self");
   const [error, setError] = useState("");
   const [bucket, setBucket] = useState<Bucket>(expenseBucket(memo));
+  const [advanceWho, setAdvanceWho] = useState(expense?.advance?.who || "");
   const num = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
   const [nut, setNut] = useState({ kcal: num(meal?.kcal), protein: num(meal?.protein), fat: num(meal?.fat), carbs: num(meal?.carbs) });
   // 量を変えたら、カロリーと栄養をまとめて同じ割合で直す。
@@ -73,7 +74,7 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
           carbs: toNum(String(form.get("carbs") ?? nut.carbs)),
         });
       } else {
-        await updateExpense(memo.id, { item: String(form.get("item") || ""), amount: toYen(String(form.get("price") || "")), at, bucket });
+        await updateExpense(memo.id, { item: String(form.get("item") || ""), amount: toYen(String(form.get("price") || "")), at, bucket, advanceFor: advanceWho });
       }
       syncNow().catch(() => undefined);
       onClose();
@@ -94,10 +95,16 @@ export function RecordEditSheet({ memo, onClose }: { memo: Memo; onClose: () => 
         <form className="form-stack" onSubmit={(event) => { event.preventDefault(); submit(new FormData(event.currentTarget)); }}>
           {expense && (
             <div className="ms-kinds" role="group" aria-label="どちらの予算から引くか">
-              {(["daily", "shopping", "outside"] as Bucket[]).map((b) => (
+              {(["daily", "shopping", "outside", "advance"] as Bucket[]).map((b) => (
                 <button key={b} type="button" className={bucket === b ? "active" : ""} onClick={() => setBucket(b)}>{BUCKET_LABEL[b]}</button>
               ))}
             </div>
+          )}
+          {expense && bucket === "advance" && (
+            <label className="adv-who">
+              <span>だれの分（返してもらう相手）</span>
+              <input value={advanceWho} onChange={(e) => setAdvanceWho(e.currentTarget.value)} placeholder="例：景司さん・母" maxLength={30} />
+            </label>
           )}
           {meal && (
             <div className="ms-kinds" role="group" aria-label="いつの食事">

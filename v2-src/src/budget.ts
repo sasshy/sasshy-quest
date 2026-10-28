@@ -22,13 +22,14 @@ const SHOPPING = /amazon|アマゾン|楽天|rakuten|ドラッグ|drug|マツキ
 // 病院・薬局（処方）など、日々の予算とは別に考えるお金。合計には数えるが、どちらの枠からも引かない。
 const OUTSIDE = /病院|クリニック|医院|診療|歯科|調剤|処方|医療|薬局/i;
 
-export type Bucket = 'daily' | 'shopping' | 'outside';
-export const BUCKET_LABEL: Record<Bucket, string> = { daily: '毎日のお金', shopping: '買い物枠', outside: '予算の外' };
+export type Bucket = 'daily' | 'shopping' | 'outside' | 'advance';
+export const BUCKET_LABEL: Record<Bucket, string> = { daily: '毎日のお金', shopping: '買い物枠', outside: '予算の外', advance: '立て替え' };
 
 /** どの枠の支出か（指定があればそれ、なければ品名と分類から）。食事は毎日のお金。 */
 export function expenseBucket(memo: Memo): Bucket {
   const e = memo.expense;
   if (!e) return 'daily';
+  if (e.advance || e.bucket === 'advance') return 'advance';
   if (e.bucket) return e.bucket;
   const text = `${e.item} ${e.category || ''}`;
   if (OUTSIDE.test(text) && !/ドラッグストア|drugstore/i.test(text)) return 'outside';

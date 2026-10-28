@@ -158,6 +158,9 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
   const dayRecords = tab === "meal" ? mealsOn(memos, viewDate) : expensesOn(memos, viewDate);
   const [expenseItem, setExpenseItem] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
+  // 立て替え（人の分を払っただけ）。だれの分かを入れると自分の支出に数えない。
+  const [advanceOn, setAdvanceOn] = useState(false);
+  const [advanceWho, setAdvanceWho] = useState("");
   const viewLabel = viewDate === today
     ? "今日"
     : viewDate === shiftDateKey(today, -1)
@@ -167,11 +170,13 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
     setBusy(true);
     try {
       const amount = typedAmount.trim() === "" ? null : Number(typedAmount.replace(/[^0-9]/g, ""));
-      await recordExpense({ item: typedItem, amount, at: atIso() });
+      await recordExpense({ item: typedItem, amount, at: atIso(), advanceFor: advanceOn ? advanceWho || "だれか" : null });
       syncNow().catch(() => undefined);
       setMessage(`支出「${typedItem.trim()}」を記録しました`);
       setExpenseItem("");
       setExpenseAmount("");
+      setAdvanceOn(false);
+      setAdvanceWho("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "記録できませんでした");
     } finally {
@@ -535,6 +540,13 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
                 </label>
                 <button className="button primary" type="submit" disabled={busy}>記録</button>
               </div>
+              <label className="adv-toggle">
+                <input type="checkbox" checked={advanceOn} onChange={(e) => setAdvanceOn(e.currentTarget.checked)} />
+                <span>立て替え（あとで返してもらう・自分の支出に数えない）</span>
+              </label>
+              {advanceOn && (
+                <input className="adv-who-input" value={advanceWho} onChange={(e) => setAdvanceWho(e.currentTarget.value)} placeholder="だれの分？（例：景司さん・母）" maxLength={30} aria-label="だれの分" />
+              )}
               <div className="ms-chips">
                 {recentExpenseItems.map((name) => (
                   <button key={name} type="button" className="ms-chip" onClick={() => setExpenseItem(name)}>

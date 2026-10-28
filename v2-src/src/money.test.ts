@@ -88,3 +88,15 @@ describe('分類の整理', () => {
     expect(cat('三鷹')).toBe('交際');
   });
 });
+
+describe('立て替え', () => {
+  it('自分の支出・予算には数えない', async () => {
+    const day = '2026-10-28';
+    await recordExpense({ item: 'ライブのチケット（景司さんの分）', amount: 6000, at: at(day), advanceFor: '景司さん' });
+    await recordExpense({ item: 'ライブのチケット（自分の分）', amount: 6000, at: at(day) });
+    const memos = await db.memos.toArray();
+    const s = moneySummary(memos, DEFAULT_BUDGET, '2026-10-25', '2026-11-24');
+    expect(s.total).toBe(6000);
+    expect(s.records).toHaveLength(1);
+  });
+});

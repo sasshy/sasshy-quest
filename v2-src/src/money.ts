@@ -1,5 +1,5 @@
 import { budgetPeriod, expenseBucket, type BudgetSetting } from './budget';
-import { expensesOn, localDateKey, mealsOn, paidAmount, shiftDateKey } from './meals';
+import { expensesOn, localDateKey, mealsOn, paidAmount, shiftDateKey, isAdvance } from './meals';
 import { createMemo, updateMemo } from './store';
 import type { Memo } from './types';
 
@@ -76,7 +76,8 @@ export const CATEGORY_COLORS: Record<SpendCategory, string> = {
   その他: "#888780",
 };
 
-export const amountOf = (memo: Memo): number => (memo.meal ? paidAmount(memo.meal) : Number(memo.expense?.amount || 0));
+// 立て替えは自分の支出ではないので0（一覧・合計・グラフに入らない。立て替えの欄で別に見る）。
+export const amountOf = (memo: Memo): number => (memo.meal ? paidAmount(memo.meal) : isAdvance(memo) ? 0 : Number(memo.expense?.amount || 0));
 
 export interface MoneySummary {
   start: string;

@@ -227,7 +227,9 @@ export interface ExpenseInfo {
   at: string;
   category?: string | null;
   /** どちらの予算から引くか。未指定なら品名から自動（Amazon・ドラッグストアなど→買い物枠）。 */
-  bucket?: 'daily' | 'shopping' | 'outside';
+  bucket?: 'daily' | 'shopping' | 'outside' | 'advance';
+  /** 立て替え（だれの分か・返ってきた日）。自分の支出には数えない。 */
+  advance?: { who: string; repaidAt: string | null };
   [key: string]: unknown;
 }
 

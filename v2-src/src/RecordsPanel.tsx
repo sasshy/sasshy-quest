@@ -11,6 +11,7 @@ import { sessionActiveSeconds } from "./insights";
 import {
   MEAL_LABEL,
   expensesOn,
+  isAdvance,
   kcalOn,
   ledgerOn,
   localDateKey,
@@ -67,7 +68,7 @@ export function buildDayRows(memos: Memo[], sessions: FocusSession[], tasks: Tas
   return keys.map((key) => ({
     key,
     meal: spendOn(memos, key),
-    other: expensesOn(memos, key).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0),
+    other: expensesOn(memos, key).filter((m) => !isAdvance(m)).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0),
     kcal: kcalOn(memos, key),
     workMin: Math.round((work.get(key) || 0) / 60),
     done: done.get(key) || 0,

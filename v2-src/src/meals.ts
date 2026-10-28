@@ -89,7 +89,7 @@ export function expensesOn(memos: Memo[], dateKey: string): Memo[] {
 }
 
 export function expenseTotalOn(memos: Memo[], dateKey: string): number {
-  return expensesOn(memos, dateKey).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
+  return expensesOn(memos, dateKey).filter((m) => !isAdvance(m)).reduce((sum, m) => sum + Number(m.expense!.amount || 0), 0);
 }
 
 /** Everything that left the wallet that day: meals (paid amount) + other spends. Each record counted once. */
@@ -108,7 +108,10 @@ export function shiftDateKey(dateKey: string, days: number): string {
   return localDateKey(new Date(y, m - 1, d + days, 12));
 }
 
-export interface ExpenseInput { item: string; amount: number | null; at?: string }
+/** 立て替え（人の分を払っただけ）。自分の支出・予算には数えない。 */
+export const isAdvance = (memo: Memo): boolean => Boolean(memo.expense && (memo.expense.advance || memo.expense.bucket === 'advance'));
+
+export interface ExpenseInput { item: string; amount: number | null; at?: string; advanceFor?: string | null }
 
 export async function recordExpense(input: ExpenseInput): Promise<Memo> {
   const item = input.item.trim();
@@ -116,6 +119,8 @@ export async function recordExpense(input: ExpenseInput): Promise<Memo> {
   const amount = cleanNumber(input.amount);
   if (amount === null) throw new Error('金額を入力してください');
   const expense: ExpenseInfo = { item, amount, at: input.at || new Date().toISOString(), source: 'app' };
+  const who = input.advanceFor?.trim();
+  if (who) Object.assign(expense, { bucket: 'advance', advance: { who: who.slice(0, 30), repaidAt: null } });
   return createMemo({
     title: `支出：${item} ¥${amount.toLocaleString('ja-JP')}`,
     body: '',
@@ -365,7 +370,7 @@ export async function updateMeal(id: string, edit: MealEdit): Promise<Memo | nul
   return updateMemo(id, { meal, title: mealTitle(meal), body: mealBody(meal) }, '食事の記録を修正');
 }
 
-export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string; bucket?: 'daily' | 'shopping' | 'outside' }): Promise<Memo | null> {
+export async function updateExpense(id: string, edit: { item: string; amount: number | null; at: string; bucket?: 'daily' | 'shopping' | 'outside' | 'advance'; advanceFor?: string }): Promise<Memo | null> {
   const memo = await db.memos.get(id);
   if (!memo?.expense) return null;
   const item = edit.item.trim();
@@ -373,7 +378,16 @@ export async function updateExpense(id: string, edit: { item: string; amount: nu
   const amount = cleanNumber(edit.amount);
   if (amount === null) throw new Error('金額を入力してください');
   const expense: ExpenseInfo = { ...memo.expense, item, amount, at: edit.at, ...(edit.bucket ? { bucket: edit.bucket } : {}) };
+  // 立て替えにしたら「だれの分か」を残し、ほかの枠に戻したら立て替えの印を外す。
+  if (edit.bucket === 'advance') expense.advance = { who: (edit.advanceFor || memo.expense.advance?.who || '').trim().slice(0, 30), repaidAt: memo.expense.advance?.repaidAt ?? null };
+  else if (edit.bucket) delete expense.advance;
   return updateMemo(id, { expense, title: `支出：${item} ¥${amount.toLocaleString('ja-JP')}` }, '支出の記録を修正');
+}
+
+/** 立て替えが返ってきた（または取り消し）。 */
+export async function setAdvanceRepaid(memo: Memo, repaid: boolean): Promise<Memo | null> {
+  if (!memo.expense?.advance) return null;
+  return updateMemo(memo.id, { expense: { ...memo.expense, advance: { ...memo.expense.advance, repaidAt: repaid ? new Date().toISOString() : null } } }, repaid ? '立て替えが返ってきた' : '立て替えを未返却に戻す');
 }
 
 export async function removeMeal(id: string): Promise<void> {
@@ -440,7 +454,7 @@ export function expenseTimeText(expense: ExpenseInfo | undefined): string {
  */
 export function findReceiptLinks(memos: Memo[]): { mealId: string; expenseId: string }[] {
   const live = memos.filter((m) => !m.deletedAt && !m.archived);
-  const expenses = live.filter(isExpenseMemo);
+  const expenses = live.filter((m) => isExpenseMemo(m) && !isAdvance(m));
   const usedExact = new Set<string>();
   const links: { mealId: string; expenseId: string }[] = [];
   for (const m of live) {

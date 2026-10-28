@@ -10,6 +10,7 @@ import { RecordEditSheet } from "./RecordEditSheet";
 import { BudgetSheet } from "./BudgetPanel";
 import { syncNow } from "./sync";
 import { MoneyDay, MoneyWeek } from "./MoneyWeek";
+import { AdvanceCard } from "./Advances";
 import type { Memo } from "./types";
 
 /**
@@ -132,6 +133,8 @@ export function MoneyPanel() {
         <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>週</button>
         <button type="button" role="tab" aria-selected={view === "month"} className={view === "month" ? "active" : ""} onClick={() => setView("month")}>月のまとめ</button>
       </div>
+      {/* 立て替え中（自分の支出には数えない）。返ってくるまで、どの見方でも上に出す。 */}
+      <AdvanceCard memos={memos} />
       {view === "day" ? (
         <MoneyDay memos={memos} setting={setting} />
       ) : view === "week" ? (

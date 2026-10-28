@@ -33,6 +33,7 @@ export function ruleDay(memo: Memo, memos: Memo[], date: string, today = localDa
   let social = false;
   for (const m of memos) {
     if (m.deletedAt || m.archived || (!m.meal && !m.expense)) continue;
+    if (m.expense && (m.expense.advance || m.expense.bucket === 'advance')) continue;
     const at = when(m);
     if (!at || localDateKey(at) !== date) continue;
     const hour = new Date(at).getHours();

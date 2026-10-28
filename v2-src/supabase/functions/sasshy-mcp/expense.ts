@@ -7,7 +7,7 @@ const fail = (message: string): never => {
 export interface ExpenseMemoDraft {
   title: string;
   category: '支出';
-  expense: { item: string; amount: number; at: string; source: 'chatgpt'; category?: string; itemBreakdown?: { item: string; amount?: number }[] };
+  expense: { item: string; amount: number; at: string; source: 'chatgpt'; category?: string; itemBreakdown?: { item: string; amount?: number }[]; bucket?: 'advance'; advance?: { who: string; repaidAt: null } };
 }
 
 export function parseExpenses(raw: unknown, now = new Date()): ExpenseMemoDraft[] {
@@ -30,6 +30,11 @@ export function parseExpenses(raw: unknown, now = new Date()): ExpenseMemoDraft[
     }
     const expense: ExpenseMemoDraft['expense'] = { item, amount, at: at.toISOString(), source: 'chatgpt' };
     if (typeof input.category === 'string' && input.category.trim()) expense.category = input.category.trim().slice(0, 30);
+    // 立て替え（人の分を払っただけ）。自分の支出・予算には数えず、アプリの「立て替え中」に出る。
+    if (typeof input.advance_for === 'string' && input.advance_for.trim()) {
+      expense.bucket = 'advance';
+      expense.advance = { who: input.advance_for.trim().slice(0, 30), repaidAt: null };
+    }
     // 何を買ったか（レシートの品名）。アプリの一覧に「サンド・カフェラテ」のように出る。
     if (Array.isArray(input.items)) {
       const items = (input.items as unknown[]).slice(0, 30).flatMap((x) => {

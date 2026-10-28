@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.sasshy-schedule-history]
 verify_jwt = false
+
+[functions.sasshy-task-ideas]
+verify_jwt = false
