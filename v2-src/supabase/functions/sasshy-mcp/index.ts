@@ -1,4 +1,4 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { resolveWorkspace } from '../_shared/workspace-auth.ts';
 import { parseTaskRequest } from '../sasshy-add-task/validation.ts';
 import { parseTaskMutationRequest, parseTaskSearchRequest, type TaskMutationOperation } from '../sasshy-add-task/management.ts';
