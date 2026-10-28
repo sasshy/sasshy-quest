@@ -1551,3 +1551,8 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .mg-row.done { opacity: 1; }
 .mg-row.done .mg-time { color: var(--good); font-weight: 700; display: inline-flex; align-items: center; gap: 2px; }
 .mg-row.missed .mg-title strong { color: var(--muted); }
+.timer-extend { grid-template-columns: 1fr 1.5fr 1fr 1fr !important; }
+.timer-extend-input { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px; border: 1px solid #3a3a3a; border-radius: 12px; background: rgba(255,255,255,.06); padding: 0 8px; }
+.timer-extend-input input { width: 100%; min-width: 0; height: 42px; border: 0; outline: 0; background: transparent !important; color: #fff; font: inherit; font-size: 18px; font-weight: 800; text-align: right; }
+.timer-extend-input small { color: rgba(255,255,255,.6); font-size: 12px; }
+.timer-extend .timer-extend-set { background: var(--accent); border-color: var(--accent); color: #fff; }

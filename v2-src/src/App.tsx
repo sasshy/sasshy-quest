@@ -4501,9 +4501,30 @@ function TimerDock({
       )}
       {/* 延長は「今から」足す。時間切れのあとに押しても、すぐまた時間切れにならない。 */}
       <div className="timer-extend">
-        <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>−1分</button>
-        <button type="button" onClick={() => extend(1)}>+1分</button>
-        <button type="button" onClick={() => extend(5)}>+5分</button>
+        <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>−1</button>
+        {/* 想定と全然ちがうときは、分数をそのまま打ち込む。数字キーには改行がないので「決める」で確定。 */}
+        <label className="timer-extend-input">
+          <input
+            type="number"
+            min="1"
+            max="480"
+            step="1"
+            inputMode="numeric"
+            aria-label="タイマー時間（分）"
+            value={durationDraft}
+            onChange={(event) => setDurationDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") changeDuration(Number(durationDraft));
+            }}
+          />
+          <small>分</small>
+        </label>
+        {durationDraft !== String(session.plannedMin) ? (
+          <button type="button" className="timer-extend-set" onClick={() => changeDuration(Number(durationDraft))}>決める</button>
+        ) : (
+          <button type="button" onClick={() => extend(1)}>+1</button>
+        )}
+        <button type="button" onClick={() => extend(5)}>+5</button>
       </div>
       <div className={`timer-controls${task?.routine ? " routine" : ""}`}>
         <IconButton label={paused ? "再開" : "一時停止"} onClick={pauseToggle}>
@@ -4550,35 +4571,6 @@ function TimerDock({
               <Square size={16} /> 中断（ルーティンをここで止める）
             </button>
           )}
-          <p className="timer-more-note">タイマーの分数を数字で決める</p>
-          <div className="timer-duration-editor">
-            <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>
-              -1
-            </button>
-            <label>
-              <span>タイマー</span>
-              <input
-                type="number"
-                min="1"
-                max="480"
-                step="1"
-                inputMode="numeric"
-                aria-label="タイマー時間（分）"
-                value={durationDraft}
-                onChange={(event) => setDurationDraft(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") changeDuration(Number(durationDraft));
-                }}
-              />
-              <small>分</small>
-            </label>
-            <button type="button" onClick={() => changeDuration(Number(durationDraft))}>
-              変更
-            </button>
-            <button type="button" onClick={() => changeDuration(session.plannedMin + 1)}>
-              +1
-            </button>
-          </div>
           <button
             className="timer-fix-toggle"
             type="button"
