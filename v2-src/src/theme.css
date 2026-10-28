@@ -1450,3 +1450,9 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .te-list small { font-size: 11px; color: var(--muted); }
 .today-events em { font-style: normal; font-size: 12px; font-weight: 800; color: #185FA5; white-space: nowrap; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .today-events { color: #B5D4F4; } :root:not([data-theme="light"]) .te-list > span b, :root:not([data-theme="light"]) .today-events em { color: #85B7EB; } }
+.timer-skip { justify-self: center; margin-top: 4px; padding: 6px 12px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.mg-move { flex: none; min-height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.mg-moving { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; padding: 8px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); font-size: 13px; font-weight: 700; }
+.mg-moving button { border: 0; background: transparent; color: var(--accent-text); font: inherit; text-decoration: underline; cursor: pointer; }
+.mg-grid.moving .mg-day:not(.past) { outline: 1.5px dashed var(--accent); outline-offset: -3px; }
+.mg-row { grid-template-columns: 44px 1fr auto auto; }

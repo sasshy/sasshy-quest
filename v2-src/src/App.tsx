@@ -206,7 +206,7 @@ import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
 import { RoundBar, RoundBreakBanner, RoundEndPrompt, returnFromInterrupt, type StartOptions } from "./RoundPanel";
 import { nextRound, planSuggestions, usesRounds } from "./rounds";
 import { haptic, playStart } from "./feedback";
-import { getRoutines, nextRoutineTask, saveRoutines } from "./routines";
+import { fixLateRoutineDatesOnce, getRoutines, nextRoutineTask, saveRoutines } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { isDiaryMemo } from "./diary";
 import { QuickRecord } from "./QuickRecord";
@@ -4284,6 +4284,22 @@ function TimerDock({
     if (task?.routine) checkRoutineHabit(task.routine.name, workDayKey(Date.now())).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
     onClose();
   };
+  // ルーティンの今のステップを「今日はやらない」で飛ばして、次のステップへ（消さずに外すだけ）。
+  const skipStep = async () => {
+    if (!task?.routine) return;
+    stopVoice();
+    await discardRunning(task.id);
+    await updateTask(task.id, { status: "archived" }, `「${task.title}」を今日は飛ばす`);
+    syncNow().catch(() => undefined);
+    const next = await nextRoutineTask(task);
+    if (next) {
+      const minutes = usualMinutes(next, await db.sessions.toArray()).minutes;
+      await startFocusSession(next, minutes);
+      if (voice.enabled) speakVoice(`次は${next.title}、${minutes}分`, voice);
+      return;
+    }
+    onClose();
+  };
   // 「別の作業をしていて、止めるのを忘れた」時の修正。
   const stopAt = async (at: Date) => {
     setFixError("");
@@ -4551,6 +4567,11 @@ function TimerDock({
           完了
         </button>
       </div>
+      {task?.routine && (
+        <button type="button" className="timer-skip" onClick={skipStep}>
+          今日はこのステップを飛ばす（次へ）
+        </button>
+      )}
       {canListen() && (
         <div className="timer-voice">
           <button type="button" className={listening ? "on" : ""} onClick={voiceControl} disabled={listening}>
@@ -4603,6 +4624,7 @@ function App() {
     if (!memoCount) return;
     linkMealsToReceipts().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined);
   }, [memoCount]);
+  useEffect(() => { fixLateRoutineDatesOnce().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined); }, []);
   // 整備ストックから、毎日1つだけ今日に出す。
   useEffect(() => {
     dailyCarePick().then((t) => { if (t) { toast(`今日の整備：「${t.title}」`); syncNow().catch(() => undefined); } }).catch(() => undefined);

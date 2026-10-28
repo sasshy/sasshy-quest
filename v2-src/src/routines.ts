@@ -1,6 +1,7 @@
 import { db, makeId } from './db';
 import { usualMinutes } from './insights';
-import { createTask, startFocusSession } from './store';
+import { createTask, startFocusSession, updateTask } from './store';
+import { workDayKey } from './dayline';
 import type { FocusSession, Task } from './types';
 import { localDateKey } from './work-start';
 
@@ -105,10 +106,11 @@ export function routineStepsText(steps: RoutineStep[]): string {
 /** Add all steps to today (ahead of other tasks) and start the first one. */
 export async function startRoutine(routine: Routine, now = new Date()): Promise<{ tasks: Task[]; session: FocusSession | null }> {
   if (!routine.steps.length) return { tasks: [], session: null };
-  const today = localDateKey(now);
+  // 夜中4時までは前の日のルーティン（夜ルーティンを0時すぎに始めても、その夜の分）。
+  const today = workDayKey(now.toISOString());
   // 連打や二重起動で同じルーティンが何組もできないように、今日の途中のものがあれば続きから。
   const unfinished = (await db.tasks.toArray())
-    .filter((t) => t.routine?.name === routine.name && t.scheduledDate === today && !t.deletedAt && t.status !== 'done')
+    .filter((t) => t.routine?.name === routine.name && t.scheduledDate === today && !t.deletedAt && t.status !== 'done' && t.status !== 'archived')
     .sort((a, b) => a.routine!.index - b.routine!.index);
   if (unfinished.length) {
     const session = await startFocusSession(unfinished[0], usualMinutes(unfinished[0], await db.sessions.toArray()).minutes);
@@ -136,7 +138,33 @@ export async function nextRoutineTask(task: Task | undefined): Promise<Task | nu
   if (!task?.routine) return null;
   const { runId, index } = task.routine;
   const siblings = (await db.tasks.toArray())
-    .filter((t) => t.routine?.runId === runId && t.routine.index > index && !t.deletedAt && t.status !== 'done')
+    .filter((t) => t.routine?.runId === runId && t.routine.index > index && !t.deletedAt && t.status !== 'done' && t.status !== 'archived')
     .sort((a, b) => a.routine!.index - b.routine!.index);
   return siblings[0] || null;
+}
+
+/**
+ * 1回だけ：前に0時すぎに始めた夜ルーティンが「次の日」の予定になっていたのを、
+ * その夜の日付に戻す（月表示の今日に、昨夜の分が出ていた）。
+ */
+export async function fixLateRoutineDatesOnce(): Promise<number> {
+  const KEY = 'sasshy-fix-late-routine';
+  try {
+    if (localStorage.getItem(KEY)) return 0;
+    localStorage.setItem(KEY, '1');
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const t of await db.tasks.toArray()) {
+    if (!t.routine || t.deletedAt || !t.scheduledDate) continue;
+    const created = new Date(t.createdAt);
+    if (created.getHours() >= 4) continue;
+    const day = workDayKey(t.createdAt);
+    if (t.scheduledDate !== day && t.scheduledDate === localDateKey(created)) {
+      await updateTask(t.id, { scheduledDate: day }, 'ルーティンの日付を夜の日付に直す', false);
+      n += 1;
+    }
+  }
+  return n;
 }

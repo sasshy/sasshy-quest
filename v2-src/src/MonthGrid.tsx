@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Play, Plus } from "lucide-react";
 import { byFlow, isFixed } from "./MobilePlanner";
 import { localDateKey } from "./work-start";
+import { updateTask } from "./store";
+import { syncNow } from "./sync";
+import { moveGoogleEvent } from "./google-calendar";
 import type { Task, GoogleCalendarEvent } from "./types";
 
 /**
@@ -35,6 +38,30 @@ export function MonthGrid({
   const days = new Date(y, m, 0).getDate();
   const keys = Array.from({ length: days }, (_, i) => `${y}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
   const [selected, setSelected] = useState(date);
+  // 移すモード：一覧の「移す」を押してから、カレンダーの日を押すとその日に移る（時刻はそのまま）。
+  const [moving, setMoving] = useState<{ task?: Task; event?: GoogleCalendarEvent; title: string } | null>(null);
+  const moveTo = async (key: string) => {
+    const m = moving;
+    setMoving(null);
+    if (!m) return;
+    try {
+      if (m.task) {
+        await updateTask(m.task.id, { scheduledDate: key, status: m.task.status === "inbox" ? "planned" : m.task.status }, `${Number(key.slice(5, 7))}/${Number(key.slice(8))}に移動`);
+        syncNow().catch(() => undefined);
+      } else if (m.event) {
+        const s = m.event.allDay ? new Date(`${key}T00:00:00`) : new Date(m.event.start);
+        const shift = m.event.allDay ? 0 : Date.parse(`${key}T00:00:00`) - Date.parse(`${localDateKey(new Date(m.event.start))}T00:00:00`);
+        const start = m.event.allDay ? s : new Date(s.getTime() + shift);
+        const len = m.event.end ? Date.parse(m.event.end) - Date.parse(m.event.start) : 30 * 60_000;
+        const end = m.event.allDay ? new Date(new Date(`${key}T00:00:00`).getTime() + Math.max(1, Math.round(len / 86_400_000)) * 86_400_000) : new Date(start.getTime() + len);
+        await moveGoogleEvent(m.event, start, end);
+      }
+      window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: `「${m.title}」を${Number(key.slice(5, 7))}/${Number(key.slice(8))}に移しました` }));
+      setSelected(key);
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: error instanceof Error ? error.message : String(error) }));
+    }
+  };
   const live = tasks.filter((t) => !t.deletedAt && !t.log);
   const onDay = (key: string) => live.filter((t) => t.scheduledDate === key);
   const dueOn = (key: string) => live.filter((t) => t.dueDate === key && t.status !== "done");
@@ -48,7 +75,13 @@ export function MonthGrid({
       <div className="mg-head" aria-hidden="true">
         {["月", "火", "水", "木", "金", "土", "日"].map((d, i) => <span key={d} className={i === 5 ? "sat" : i === 6 ? "sun" : ""}>{d}</span>)}
       </div>
-      <div className="mg-grid">
+      {moving && (
+        <div className="mg-moving" role="status">
+          <span>「{moving.title}」を移す日を押してください</span>
+          <button type="button" onClick={() => setMoving(null)}>やめる</button>
+        </div>
+      )}
+      <div className={`mg-grid${moving ? " moving" : ""}`}>
         {Array.from({ length: lead }, (_, i) => <span key={`e${i}`} />)}
         {keys.map((key, i) => {
           const list = onDay(key);
@@ -61,7 +94,7 @@ export function MonthGrid({
               key={key}
               type="button"
               className={`mg-day${key === today ? " today" : ""}${key === selected ? " selected" : ""}${key < today ? " past" : ""}${dow === 5 ? " sat" : dow === 6 ? " sun" : ""}`}
-              onClick={() => { setSelected(key); onSelect(key); }}
+              onClick={() => { if (moving) { moveTo(key); return; } setSelected(key); onSelect(key); }}
               aria-label={`${i + 1}日 ${open.length}件${dueOn(key).length ? "・締切あり" : ""}`}
             >
               <strong>{i + 1}</strong>
@@ -86,6 +119,7 @@ export function MonthGrid({
           <div key={`g-${e.id}`} className="mg-row gcal">
             <span className="mg-time">{gTime(e)}</span>
             <span className="mg-title"><strong>{e.title}</strong><small>Googleカレンダー{e.calendarName ? `・${e.calendarName}` : ""}</small></span>
+            {!e.recurring && e.editable !== false && <button type="button" className="mg-move" onClick={() => { setMoving({ event: e, title: e.title }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>移す</button>}
           </div>
         ))}
         {selectedTasks.length === 0 && gOn(selected).length === 0 && <p>予定はありません</p>}
@@ -96,6 +130,7 @@ export function MonthGrid({
               <strong>{t.title}</strong>
               <small>{t.estimateMin}分{t.dueDate === selected ? "・締切" : ""}</small>
             </button>
+            {t.status !== "done" && <button type="button" className="mg-move" onClick={() => { setMoving({ task: t, title: t.title }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>移す</button>}
             {t.status !== "done" && <button type="button" className="mg-play" aria-label={`${t.title}を開始`} onClick={() => onStart(t)}><Play size={13} /></button>}
           </div>
         ))}
