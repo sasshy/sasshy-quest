@@ -58,10 +58,11 @@ export function TodayGlance() {
         </button>
         {budget.enabled && (
           <button type="button" className={`glance-tile money${over ? " over" : ""}`} onClick={() => setBudgetOpen(true)} aria-label="今日あと使えるお金。予算を開く">
-            <span className="glance-label">{over ? "今日の目安オーバー" : "今日あと使える"}</span>
-            <strong className="glance-num">{yen(money)}</strong>
+            {/* 超えたときは「目安いくらに対して、いくら超えたか」を見出しと数字で出す。 */}
+            <span className="glance-label">{over ? `今日の目安 ${yen(status.todayAllowance)}` : "今日あと使える"}</span>
+            <strong className="glance-num">{yen(money)}{over && <em className="glance-over">オーバー</em>}</strong>
+            <small>{over ? `今日使った ${yen(status.spentToday)}` : `今日の目安 ${yen(status.todayAllowance)}`}</small>
             <small className={shopping.left < 0 ? "over" : ""}>買い物枠 {shopping.left < 0 ? "−" : ""}{yen(shopping.left)}</small>
-            <small>給料日まで{status.daysLeft}日</small>
           </button>
         )}
         {cat && <div className="glance-cat"><Companion /></div>}
