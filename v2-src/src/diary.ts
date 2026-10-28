@@ -1,3 +1,4 @@
+import { db } from './db';
 import { createMemo, updateMemo } from './store';
 import type { Memo } from './types';
 import { companionMoment } from './companion-events';
@@ -19,11 +20,15 @@ export function diaryOn(memos: Memo[], dateKey: string): Memo | null {
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0] || null;
 }
 
-/** Newest first. */
+/** Newest first, one per day (if a day got several, the latest edit wins). */
 export function diaryEntries(memos: Memo[], sinceKey?: string): Memo[] {
-  return memos
-    .filter((m) => !m.deletedAt && !m.archived && isDiaryMemo(m) && (!sinceKey || m.diary!.date >= sinceKey))
-    .sort((a, b) => b.diary!.date.localeCompare(a.diary!.date));
+  const byDay = new Map<string, Memo>();
+  for (const m of memos) {
+    if (m.deletedAt || m.archived || !isDiaryMemo(m) || (sinceKey && m.diary!.date < sinceKey)) continue;
+    const seen = byDay.get(m.diary!.date);
+    if (!seen || Date.parse(m.updatedAt) > Date.parse(seen.updatedAt)) byDay.set(m.diary!.date, m);
+  }
+  return [...byDay.values()].sort((a, b) => b.diary!.date.localeCompare(a.diary!.date));
 }
 
 /** A different small question each day, so it never feels like the same form. */
@@ -48,8 +53,9 @@ const titleOf = (dateKey: string, text: string) => {
   return first ? `${head}：${first.slice(0, 30)}` : head;
 };
 
-export async function saveDiary(memos: Memo[], dateKey: string, changes: { text?: string; mood?: number | null }): Promise<Memo | null> {
-  const existing = diaryOn(memos, dateKey);
+export async function saveDiary(_memos: Memo[], dateKey: string, changes: { text?: string; mood?: number | null }): Promise<Memo | null> {
+  // 画面が持っている一覧は古いことがある（それで同じ日の日記が何件もできていた）ので、保存先から読み直す。
+  const existing = diaryOn(await db.memos.toArray(), dateKey);
   const text = (changes.text ?? existing?.body ?? '').trim().slice(0, 2000);
   const mood = changes.mood !== undefined ? changes.mood : existing?.diary?.mood ?? null;
   if (existing) {
@@ -59,4 +65,24 @@ export async function saveDiary(memos: Memo[], dateKey: string, changes: { text?
   const created = await createMemo({ title: titleOf(dateKey, text), body: text, category: DIARY_CATEGORY, diary: { date: dateKey, mood } });
   companionMoment('diary');
   return created;
+}
+
+/** 同じ日に日記がいくつもできていたら、本文のある一番新しいものだけ残してしまう（消さない）。 */
+export async function tidyDiaryDuplicates(): Promise<number> {
+  const all = (await db.memos.toArray()).filter((m) => !m.deletedAt && !m.archived && isDiaryMemo(m));
+  const byDay = new Map<string, Memo[]>();
+  for (const m of all) byDay.set(m.diary!.date, [...(byDay.get(m.diary!.date) || []), m]);
+  let archived = 0;
+  for (const list of byDay.values()) {
+    if (list.length < 2) continue;
+    const sorted = [...list].sort((a, b) => Number(Boolean(b.body.trim())) - Number(Boolean(a.body.trim())) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    const keep = sorted[0];
+    const mood = keep.diary!.mood ?? sorted.find((m) => m.diary!.mood !== null && m.diary!.mood !== undefined)?.diary!.mood ?? null;
+    if (mood !== keep.diary!.mood) await updateMemo(keep.id, { diary: { ...keep.diary!, mood } }, '日記の気分をまとめる');
+    for (const extra of sorted.slice(1)) {
+      await updateMemo(extra.id, { archived: true }, '同じ日の日記をひとつにまとめる');
+      archived += 1;
+    }
+  }
+  return archived;
 }

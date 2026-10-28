@@ -34,8 +34,13 @@ export function DiaryEditor({ date, compact = false }: { date: string; compact?:
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     if (!editing) setText(entry?.body || "");
-  }, [entry?.body, editing, date]);
-  useEffect(() => setEditing(false), [date]);
+  }, [entry?.body, editing]);
+  // 別の日に切り替えたら、書きかけの文字は持ち越さない。
+  useEffect(() => {
+    setEditing(false);
+    setSaved(false);
+    setText(entry?.body || "");
+  }, [date]);
   const mood = entry?.diary?.mood ?? null;
   const persist = async (changes: { text?: string; mood?: number | null }) => {
     await saveDiary(memos, date, changes);
@@ -71,7 +76,8 @@ export function DiaryEditor({ date, compact = false }: { date: string; compact?:
             await persist({ text: typed });
             setEditing(false);
             setSaved(true);
-            window.setTimeout(() => setSaved(false), 2000);
+            window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: `✓ ${Number(date.slice(5, 7))}/${Number(date.slice(8))}の日記を保存しました` }));
+            window.setTimeout(() => setSaved(false), 3000);
           }}
         >
           <textarea
@@ -90,7 +96,7 @@ export function DiaryEditor({ date, compact = false }: { date: string; compact?:
           {entry!.body}
         </button>
       )}
-      {saved && <small className="diary-saved">保存しました</small>}
+      {saved && <small className="diary-saved">✓ 保存しました</small>}
     </div>
   );
 }
@@ -161,7 +167,7 @@ export function DiaryMonth() {
       </section>
       <section className="rec-card diary-day">
         <header><h2>{sel.getMonth() + 1}/{sel.getDate()}（{sel.toLocaleDateString("ja-JP", { weekday: "short" })}）{selected === today ? "・今日" : ""}</h2></header>
-        <DiaryEditor date={selected} compact />
+        <DiaryEditor key={selected} date={selected} compact />
       </section>
       <DiaryList memos={memos} days={3650} onPick={setSelected} month={month} />
     </>

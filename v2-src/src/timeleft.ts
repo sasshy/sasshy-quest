@@ -51,6 +51,9 @@ export interface TimeLeftItem {
   used: number;
   /** under 15% left */
   low: boolean;
+  /** The period itself (ms), for drawing hour blocks. */
+  start?: number;
+  end?: number;
 }
 
 const HOUR = 3_600_000;
@@ -84,7 +87,7 @@ export function splitSpan(ms: number): { value: string; unit: string; extra: str
 function item(key: string, label: string, start: number, end: number, now: number, note: string): TimeLeftItem {
   const total = Math.max(1, end - start);
   const used = clamp01((now - start) / total);
-  return { key, label, ...splitSpan(end - now), note, used, low: 1 - used < 0.15 };
+  return { key, label, ...splitSpan(end - now), note, used, low: 1 - used < 0.15, start, end };
 }
 
 const clock = (minute: number) => `${Math.floor((minute % 1440) / 60)}:${String(minute % 60).padStart(2, '0')}`;

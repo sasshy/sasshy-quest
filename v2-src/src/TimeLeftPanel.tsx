@@ -12,6 +12,7 @@ import {
   minuteFromClock,
   setTimeLeft,
   timeLeftItems,
+  type TimeLeftItem,
   type TimeLeftKey,
   type TimeLeftSetting,
 } from "./timeleft";
@@ -35,6 +36,8 @@ export function TimeLeftStrip() {
   const [editing, setEditing] = useState(false);
   if (!setting.enabled) return null;
   const items = timeLeftItems(setting, now);
+  const day = items.find((it) => it.key === "day");
+  const rest = items.filter((it) => it.key !== "day");
   const age = ageOn(setting.birthday, now);
   const lived = daysLived(setting.birthday, now);
   return (
@@ -49,28 +52,59 @@ export function TimeLeftStrip() {
             <SlidersHorizontal size={15} />
           </button>
         </header>
-        <div className="tl-row">
-          {items.map((it) => {
-            const left = Math.round((1 - it.used) * 100);
-            return (
-              <div key={it.key} className={`tl-tile${it.low ? " low" : ""}`} title={`${it.note}（残り${left}%）`}>
-                <span className="tl-label">{it.label}</span>
-                <strong className="tl-num">
-                  {it.value}
-                  <small>{it.unit}</small>
-                  {it.extra && <em>{it.extra}</em>}
-                </strong>
-                <i className="tl-bar" aria-hidden="true">
-                  <b style={{ width: `${left}%` }} />
-                </i>
-                <small className="tl-note">{it.note}</small>
-              </div>
-            );
-          })}
-        </div>
+        {day && <DayBlocks item={day} now={now.getTime()} />}
+        {rest.length > 0 && (
+          <ul className="tl-list">
+            {rest.map((it) => {
+              const left = Math.round((1 - it.used) * 100);
+              return (
+                <li key={it.key} className={it.low ? "low" : ""} title={it.note}>
+                  <span className="tl-label">{it.label}</span>
+                  <i className="tl-bar" aria-hidden="true"><b style={{ width: `${left}%` }} /></i>
+                  <strong className="tl-num">{it.value}<small>{it.unit}</small>{it.extra && <em>{it.extra}</em>}</strong>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
       {editing && createPortal(<TimeLeftEditor setting={setting} onClose={() => setEditing(false)} />, document.body)}
     </>
+  );
+}
+
+/**
+ * 今日の残りを「起きている1時間＝1マス」で見せる。使ったマスは薄く、
+ * 今のマスは減っていき、残りのマスが何個あるかで直感的にわかる。
+ */
+function DayBlocks({ item, now }: { item: TimeLeftItem; now: number }) {
+  const HOUR = 3_600_000;
+  const start = item.start ?? now;
+  const end = item.end ?? now;
+  const count = Math.max(1, Math.round((end - start) / HOUR));
+  const leftHours = Math.max(0, (end - now) / HOUR);
+  return (
+    <div className={`tl-day${item.low ? " low" : ""}`}>
+      <div className="tl-day-head">
+        <span>{item.note}</span>
+        <strong className="tl-day-num">
+          あと<b>{item.value}</b>{item.unit}{item.extra && <em>{item.extra}</em>}
+        </strong>
+      </div>
+      <div className="tl-blocks" aria-label={`起きている時間の残り${Math.floor(leftHours)}時間`}>
+        {Array.from({ length: count }, (_, i) => {
+          const from = start + i * HOUR;
+          // 1 = まるごと残っている, 0 = もう使った
+          const remain = Math.min(1, Math.max(0, (from + HOUR - now) / HOUR));
+          return (
+            <i key={i} className={remain >= 1 ? "left" : remain <= 0 ? "used" : "now"}>
+              {remain > 0 && remain < 1 && <b style={{ width: `${Math.round(remain * 100)}%` }} />}
+            </i>
+          );
+        })}
+      </div>
+      <small className="tl-day-foot">残り{Math.ceil(leftHours)}マス（1マス＝1時間）</small>
+    </div>
   );
 }
 

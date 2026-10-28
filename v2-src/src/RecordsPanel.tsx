@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { kickRepaint } from "./repaint";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
 import { DiaryMonth, peekDiaryRequest, takeDiaryRequest } from "./DiaryPanel";
@@ -152,6 +153,8 @@ export function RecordsPanel() {
     return () => { window.removeEventListener("sasshy-open-diary", open); window.removeEventListener("sasshy-open-habits", openHabits); };
   }, []);
   const [selected, setSelected] = useState(today);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => kickRepaint(body.current), [view]);
   const rows = useMemo(() => buildDayRows(memos, sessions, tasks, range, today), [memos, sessions, tasks, range, today]);
   // 今日と比べる用（昨日・直近1週間の平均）
   const week = useMemo(() => buildDayRows(memos, sessions, tasks, 8, today), [memos, sessions, tasks, today]);
@@ -171,6 +174,7 @@ export function RecordsPanel() {
         <button type="button" role="tab" aria-selected={view === "diary"} className={view === "diary" ? "active" : ""} onClick={() => setView("diary")}>日記</button>
         <button type="button" role="tab" aria-selected={view === "habits"} className={view === "habits" ? "active" : ""} onClick={() => setView("habits")}>習慣</button>
       </div>
+      <div ref={body} key={view} className="rec-body">
       {view === "habits" ? <HabitsPanel /> : view === "meals" ? <MealsLog /> : view === "diary" ? <DiaryMonth /> : view === "money" ? <MoneyPanel /> : (<>
       <div className="rec-range" role="group" aria-label="期間">
         {([1, 7, 30] as Range[]).map((value) => (
@@ -238,6 +242,7 @@ export function RecordsPanel() {
 
       </>)}
       </>)}
+      </div>
     </div>
   );
 }

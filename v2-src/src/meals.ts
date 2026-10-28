@@ -422,3 +422,12 @@ export function expenseDetail(expense: ExpenseInfo | undefined, max = 4): string
   if (!names.length) return '';
   return names.slice(0, max).join('・') + (names.length > max ? ` ほか${names.length - max}点` : '');
 }
+
+/** 支出の時刻は、レシートなどで買った時刻が分かるときだけ出す（入力した時刻は出さない）。 */
+export function expenseTimeText(expense: ExpenseInfo | undefined): string {
+  if (!expense) return '';
+  const at = typeof expense.purchaseAt === 'string' ? expense.purchaseAt : expense.source === 'receipt' && expense.at.length > 10 ? expense.at : '';
+  if (!at) return '';
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}

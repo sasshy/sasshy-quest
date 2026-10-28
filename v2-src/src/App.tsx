@@ -185,21 +185,23 @@ import { restoreBudgetCardOnce } from "./budget";
 import { dailyTidy, inboxTasks, pickTop, shouldNudgeTriage } from "./triage";
 import { TriageSheet } from "./TriageSheet";
 import { workDayKey } from "./dayline";
+import { tidyDiaryDuplicates } from "./diary";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
 import { TodayProgress } from "./TodayProgress";
 import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel, TimeLeftStrip } from "./TimeLeftPanel";
+import { kickRepaint } from "./repaint";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
-import { checkHabitForTask, checkRoutineHabit, isHabitMemo } from "./habits";
+import { checkHabitForTask, checkRoutineHabit, isHabitMemo, tidyRoutineHabits } from "./habits";
 import { TwoMinutePrompt, starterPlannedMin } from "./TwoMinute";
 import { StaleSessionPrompt, isStale } from "./StaleSession";
 import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
 import { RoundBar, RoundBreakBanner, RoundEndPrompt, returnFromInterrupt, type StartOptions } from "./RoundPanel";
 import { nextRound, planSuggestions, usesRounds } from "./rounds";
 import { haptic, playStart } from "./feedback";
-import { nextRoutineTask } from "./routines";
+import { getRoutines, nextRoutineTask } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { isDiaryMemo } from "./diary";
 import { QuickRecord } from "./QuickRecord";
@@ -1511,6 +1513,8 @@ function TodayPage({
           <span>›</span>
         </button>
       )}
+      {/* 思いついたらすぐ入れられるように、追加は一番上に。 */}
+      <div className="today-add-top"><QuickAdd defaultDate={today} /></div>
       <section className={`now-card${activeSession ? " running" : ""}`}>
         <span className="now-label">{autoDetour ? "おかえり" : activeSession ? "いま" : "次はこれ"}</span>
         {autoDetour && activeSession?.interrupt ? (
@@ -1677,7 +1681,6 @@ function TodayPage({
             次の固定予定：{nextAnchor.title}（{flowTimeLabel(nextAnchor.startMinute)}・{formatRelativeMinutes(untilAnchor || 0)}）
           </p>
         )}
-        <QuickAdd defaultDate={today} />
         {queueTasks.length > 0 && (
           <DraggableTaskQueue
             tasks={queueTasks}
@@ -4560,7 +4563,18 @@ function App() {
     return requested && requested in PAGE_LABEL ? (requested as Page) : "today";
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  // 開いた直後に描かれないことがあるので、ページを変えるたびに描き直しをうながす。
+  const viewFrame = useRef<HTMLDivElement>(null);
+  useEffect(() => kickRepaint(viewFrame.current), [page]);
   useEffect(() => { restoreBudgetCardOnce().catch(() => undefined); }, []);
+  useEffect(() => { tidyDiaryDuplicates().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined); }, []);
+  // ルーティン丸ごとの習慣は作らない。前に自動でできたもの（夜ルーティン など）はしまう。
+  useEffect(() => {
+    getRoutines()
+      .then((list) => tidyRoutineHabits(list.map((r) => r.name)))
+      .then((n) => { if (n) syncNow().catch(() => undefined); })
+      .catch(() => undefined);
+  }, []);
   // 1日1回：30日さわらなかった日付なしのやることを「いつか」へ（消さない）。
   useEffect(() => {
     dailyTidy().then((moved) => {
@@ -4989,7 +5003,7 @@ function App() {
             </button>
           </div>
         </header>
-        <div key={page} className={`view-frame page-enter${activeSession && !timerVisible && page !== "today" ? " has-timer-reopen" : ""}`}>
+        <div key={page} ref={viewFrame} className={`view-frame page-enter${activeSession && !timerVisible && page !== "today" ? " has-timer-reopen" : ""}`}>
           {page === "today" && (
             <TodayPage
               tasks={tasks}

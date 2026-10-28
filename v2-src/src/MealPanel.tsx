@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Home, Sparkles, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import {
+  expenseTimeText,
   expenseDetail,
   DEFAULT_MEAL_REMINDER,
   MEAL_AI_PROMPT,
@@ -573,7 +574,7 @@ export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => voi
                   return (
                     <li key={m.id}>
                       <button type="button" className="ms-row" onClick={() => setEditing(m)} aria-label={`${name}の記録を直す`}>
-                        <time>{new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</time>
+                        <time>{m.meal ? new Date(at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }) : expenseTimeText(m.expense)}</time>
                         <b className={`ms-tag ${m.meal ? m.meal.kind : "expense"}`}>{m.meal ? MEAL_LABEL[m.meal.kind] : "支出"}</b>
                         <span className="ms-name">
                           {name}

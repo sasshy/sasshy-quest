@@ -46,12 +46,21 @@ export async function archiveHabit(memo: Memo): Promise<Memo | null> {
 
 export const countIn = (memo: Memo, prefix: string) => memo.habit!.days.filter((d) => d.startsWith(prefix)).length;
 
-/** A routine was finished: check its habit for that day (made the first time). */
+/**
+ * A routine was finished: check a habit only if the user made one for that
+ * routine. A routine itself is never turned into a habit automatically.
+ */
 export async function checkRoutineHabit(routineName: string, date: string): Promise<void> {
-  const all = habits(await db.memos.toArray());
-  const found = all.find((m) => m.habit!.routineName === routineName) || all.find((m) => m.habit!.name === routineName);
-  const memo = found || await createHabit(routineName, routineName);
-  await setHabitDay(memo, date, true);
+  const found = habits(await db.memos.toArray()).find((m) => m.habit!.routineName === routineName && !m.habit!.auto);
+  if (found) await setHabitDay(found, date, true);
+}
+
+/** 以前、ルーティンを終えたときに自動で作っていた「ルーティン名の習慣」をしまう（記録は残る）。 */
+export async function tidyRoutineHabits(routineNames: string[]): Promise<number> {
+  const names = new Set(routineNames);
+  const made = habits(await db.memos.toArray()).filter((m) => names.has(m.habit!.name) && m.habit!.routineName === m.habit!.name);
+  for (const m of made) await archiveHabit(m);
+  return made.length;
 }
 
 const normalize = (v: string) => v.normalize('NFKC').replace(/[\s　・、。]/g, '').toLowerCase();

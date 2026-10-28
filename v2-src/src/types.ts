@@ -157,6 +157,7 @@ export interface HabitInfo {
   routineName?: string | null;
   /** このルーティンの1ステップとして入れた習慣（そのステップを終えると✓）。 */
   stepOf?: string | null;
+  auto?: boolean;
 }
 
 export type AreaKey = 'money' | 'work' | 'family' | 'health' | 'fun' | 'people';

@@ -307,9 +307,9 @@ input, select, textarea { background: var(--paper); border-color: var(--line-str
 .task-main strong { color: var(--ink); }
 
 /* Motion: new rows slide in, pages fade up, presses shrink */
-.runway-queue-item, .task-row, .mp-task, .todo-list li, .rec-list li { animation: rowin .32s cubic-bezier(.2,.8,.2,1) both; }
+/* 入場アニメーションはやめた：iPhoneで、表示の途中で中身が描かれないままになることがあった。 */
 @keyframes rowin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.page-enter { animation: pagein .28s cubic-bezier(.2,.8,.2,1) both; }
+.page-enter { animation: none; }
 @keyframes pagein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .routine-chip, .mp-play, .todo-actions button, .budget-card, .today-fold-link, .mobile-nav button, .icon-button, .button { transition: transform .12s ease; }
 .routine-chip:active, .mp-play:active, .todo-actions button:active, .budget-card:active, .today-fold-link:active, .mobile-nav button:active, .icon-button:active, .button:active { transform: scale(.94); }
@@ -1129,3 +1129,47 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .todo-pick { border-left: 3px solid var(--accent); }
 .triage-nudge { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 10px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
 .tg-block.done.checked { border-left-style: dashed; text-align: left; font: inherit; cursor: pointer; padding: 0; }
+.today-add-top { margin-bottom: 10px; }
+
+/* 残り時間：今日は1時間1マス、ほかは横棒の一覧（横スクロールで隠れないように）。 */
+.tl-day { display: grid; gap: 8px; padding: 14px; border-radius: 16px; background: var(--hero); color: var(--hero-ink); }
+.tl-day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tl-day-head > span { font-size: 12px; color: var(--hero-sub); font-weight: 600; }
+.tl-day-num { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.tl-day-num b { font-family: var(--font-num); font-size: 30px; letter-spacing: -.03em; margin: 0 2px; }
+.tl-day-num em { font-style: normal; font-size: 13px; margin-left: 4px; }
+.tl-blocks { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; }
+.tl-blocks i { position: relative; display: block; height: 22px; border-radius: 5px; background: var(--hero-line); overflow: hidden; }
+.tl-blocks i.left { background: var(--accent); }
+.tl-blocks i.now b { position: absolute; right: 0; top: 0; bottom: 0; background: var(--accent); }
+.tl-day.low .tl-blocks i.left, .tl-day.low .tl-blocks i.now b { background: var(--warn); }
+.tl-day.low .tl-day-num b { color: var(--warn); }
+.tl-day-foot { font-size: 10px; color: var(--hero-sub); }
+.tl-list { list-style: none; margin: 0; padding: 0 2px; display: grid; gap: 6px; }
+.tl-list li { display: grid; grid-template-columns: 64px 1fr 84px; align-items: center; gap: 8px; }
+.tl-list .tl-label { font-size: 12px; }
+.tl-list .tl-bar { height: 8px; }
+.tl-list .tl-num { font-size: 16px; justify-content: flex-end; }
+.tl-list .tl-num small { font-size: 11px; }
+.tl-list .tl-num em { font-size: 10px; }
+.tl-list li.low .tl-bar b { background: var(--warn); }
+.tl-list li.low .tl-num { color: var(--warn-text); }
+
+/* 習慣：1週間の表（習慣×曜日）。縦に長いカレンダーを並べない。 */
+.hb-week { padding: 12px; border-radius: 18px; background: var(--paper); border: 1px solid var(--line); display: grid; gap: 8px; }
+.hb-matrix { display: grid; gap: 10px; }
+.hb-item { display: grid; gap: 4px; }
+.hb-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.hb-row-head span { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); display: grid; line-height: 1.2; }
+.hb-row-head span small { font-family: var(--font-num); font-weight: 600; color: var(--faint); }
+.hb-row-head span.weekend { color: var(--faint); }
+.hb-row-head span.today, .hb-row-head span.today small { color: var(--accent-text); }
+.hb-row-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; padding: 2px; cursor: pointer; }
+.hb-row-name span { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb-row-name small { font-family: var(--font-num); font-size: 12px; font-weight: 700; color: var(--accent-text); white-space: nowrap; }
+.hb-row-name.open span { color: var(--accent-text); }
+.hb-cell { height: 38px; border-radius: 10px; border: 1.5px solid var(--line-strong); background: var(--paper); color: var(--accent-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
+.hb-cell.done { background: var(--accent); border-color: var(--accent); }
+.hb-cell.today { border-color: var(--accent); }
+.hb-cell:disabled { opacity: .3; cursor: default; }
+.hb-hint { font-size: 11px; color: var(--faint); padding: 0 2px; }
