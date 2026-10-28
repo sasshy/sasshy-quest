@@ -64,6 +64,13 @@ export function AppearancePanel() {
         </div>
       )}
       <div className="ap-group ap-row">
+        <span className="ap-label">画面の色</span>
+        <select value={a.theme === "light" ? "light" : "auto"} onChange={(e) => setAppearance({ theme: e.currentTarget.value === "light" ? "light" : "auto" })}>
+          <option value="auto">iPhoneに合わせる（夜は暗め）</option>
+          <option value="light">いつも明るく</option>
+        </select>
+      </div>
+      <div className="ap-group ap-row">
         <span className="ap-label">完了したときの効果音</span>
         <button type="button" className="button secondary" onClick={() => { setAppearance({ sound: !a.sound }); if (!a.sound) playDone(true); }}>
           {a.sound ? "ON" : "OFF"}

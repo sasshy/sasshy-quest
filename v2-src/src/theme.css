@@ -42,34 +42,35 @@
 [data-accent="green"] { --accent: #24865b; --accent-soft: #e6f4ed; --accent-text: #17633f; }
 [data-accent="gold"] { --accent: #b8892a; --accent-soft: #f8f0dd; --accent-text: #7d5a12; }
 
+/* 夜（iPhoneが暗い表示のとき）。真っ黒だと見づらいので、明るめのグレーにする。 */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #ededeb;
-    --muted: #a3a3a0;
-    --faint: #6f6f6c;
-    --line: #262626;
-    --line-strong: #333333;
-    --paper: #171717;
-    --canvas: #0e0e0e;
-    --soft: #1f1f1f;
-    --field: #1f1f1f;
-    --green-soft: #13241b;
-    --blue-soft: #121c27;
-    --coral-soft: #2a1714;
-    --yellow-soft: #261d0c;
+  :root:not([data-theme="light"]) {
+    --ink: #f2f2f0;
+    --muted: #c2c2be;
+    --faint: #8e8e8a;
+    --line: #3d3d40;
+    --line-strong: #4c4c50;
+    --paper: #2c2c2f;
+    --canvas: #1f1f21;
+    --soft: #37373a;
+    --field: #37373a;
+    --green-soft: #1d3327;
+    --blue-soft: #1c2938;
+    --coral-soft: #3a221e;
+    --yellow-soft: #362a12;
     --hero: #f2f2f0;
     --hero-ink: #121212;
     --hero-sub: #6b6b68;
     --hero-line: #cfcfcb;
-    --accent-soft: #24213f;
-    --accent-text: #b6b0f5;
+    --accent-soft: #34305a;
+    --accent-text: #c4bff8;
     --warn-text: #f5c27a;
     color-scheme: dark;
   }
-  [data-accent="blue"] { --accent-soft: #14233a; --accent-text: #9ec2f5; }
-  [data-accent="orange"] { --accent-soft: #2e1d0c; --accent-text: #f7b77c; }
-  [data-accent="green"] { --accent-soft: #10261c; --accent-text: #8fd6b1; }
-  [data-accent="gold"] { --accent-soft: #2a2210; --accent-text: #e8c77c; }
+  :root:not([data-theme="light"])[data-accent="blue"] { --accent-soft: #1d3150; --accent-text: #a9caf7; }
+  :root:not([data-theme="light"])[data-accent="orange"] { --accent-soft: #3e2810; --accent-text: #f8c08b; }
+  :root:not([data-theme="light"])[data-accent="green"] { --accent-soft: #173527; --accent-text: #9adcb9; }
+  :root:not([data-theme="light"])[data-accent="gold"] { --accent-soft: #3a2f16; --accent-text: #ecd08c; }
 }
 
 html, body { font-family: var(--font-ui); color: var(--ink); background: var(--canvas); }
@@ -969,9 +970,10 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
    夜は暗い背景に合わせて、ふちだけをゆるくぼかす（耳やしっぽは消さない）。 */
 .companion.tile .companion-frame { overflow: hidden; border-radius: 24px; }
 @media (prefers-color-scheme: light) { .companion-video { mix-blend-mode: multiply; } }
+[data-theme="light"] .companion-video { mix-blend-mode: multiply; }
 @media (prefers-color-scheme: dark) {
-  .companion-video { filter: brightness(.82); }
-  .companion.tile .companion-frame { border-radius: 0; -webkit-mask-image: radial-gradient(farthest-side, #000 70%, transparent 100%); mask-image: radial-gradient(farthest-side, #000 70%, transparent 100%); }
+  :root:not([data-theme="light"]) .companion-video { filter: brightness(.9); }
+  :root:not([data-theme="light"]) .companion.tile .companion-frame { border-radius: 0; -webkit-mask-image: radial-gradient(farthest-side, #000 70%, transparent 100%); mask-image: radial-gradient(farthest-side, #000 70%, transparent 100%); }
 }
 .companion-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.25); transform-origin: 50% 60%; opacity: 0; pointer-events: none; }
 /* 切り替えはふわっとさせない：重ねて溶かしているので、途中で猫が2匹に見えてしまう。 */
@@ -1528,7 +1530,7 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .glance-num.glance-wait { opacity: .45; letter-spacing: .1em; }
 
 /* タイマー：延長・主な3つ・その他（めったに使わないものはしまう） */
-.timer-extend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 8px; }
+.timer-extend { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 4px 0 8px; }
 .timer-extend button { min-height: 44px; border: 1px solid #3a3a3a; border-radius: 12px; background: rgba(255,255,255,.06); color: #eee; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
 .timer-controls.routine .button.secondary { font-size: 14px; }
 .timer-controls .button { gap: 6px; }
@@ -1542,3 +1544,10 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .timer-more-wide { width: 100%; min-height: 42px; }
 .timer-controls.routine { grid-template-columns: 52px minmax(0, 1fr); }
 .timer-controls.routine .complete { grid-column: 1 / -1; }
+.timer-more-note { margin: 4px 0 -4px !important; color: rgba(255,255,255,.55); font-size: 12px; }
+/* 月表示の一覧：予定とやったことを分ける（灰色で薄くしない） */
+.mg-sub { margin: 10px 0 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+.mg-sub.done { color: var(--good); }
+.mg-row.done { opacity: 1; }
+.mg-row.done .mg-time { color: var(--good); font-weight: 700; display: inline-flex; align-items: center; gap: 2px; }
+.mg-row.missed .mg-title strong { color: var(--muted); }

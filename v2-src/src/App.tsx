@@ -2542,6 +2542,7 @@ function CalendarPage({
           onOpen={openScheduleMove}
           onStart={onStart}
           events={googleCalendar.enabled ? googleCalendar.events : []}
+          sessions={sessions}
         />
       ) : mobile && (mode === "three" || (mode === "day" && !dayList)) ? (
         <TimeGrid
@@ -4500,6 +4501,7 @@ function TimerDock({
       )}
       {/* 延長は「今から」足す。時間切れのあとに押しても、すぐまた時間切れにならない。 */}
       <div className="timer-extend">
+        <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>−1分</button>
         <button type="button" onClick={() => extend(1)}>+1分</button>
         <button type="button" onClick={() => extend(5)}>+5分</button>
       </div>
@@ -4548,6 +4550,7 @@ function TimerDock({
               <Square size={16} /> 中断（ルーティンをここで止める）
             </button>
           )}
+          <p className="timer-more-note">タイマーの分数を数字で決める</p>
           <div className="timer-duration-editor">
             <button type="button" onClick={() => changeDuration(session.plannedMin - 1)}>
               -1
@@ -4586,7 +4589,7 @@ function TimerDock({
             }}
           >
             <RotateCcw size={15} />
-            止め忘れた・やり直したい
+            時間を直す（止め忘れ・やり直し）
           </button>
           {fixOpen && (
             <div className="timer-fix" aria-label="タイマーの修正">
@@ -4627,24 +4630,6 @@ function TimerDock({
                   記録を取り消す
                 </button>
               </div>
-            </div>
-          )}
-          <button
-            className={`timer-voice-resume${voiceNeedsTap ? " needed" : ""}`}
-            type="button"
-            onClick={restoreVoice}
-          >
-            <Volume2 size={16} />
-            {voiceNeedsTap
-              ? "Safariから戻りました・音声を再開"
-              : "音声が聞こえない時はここを押す"}
-          </button>
-          {canListen() && (
-            <div className="timer-voice">
-              <button type="button" className={listening ? "on" : ""} onClick={voiceControl} disabled={listening}>
-                <Mic size={16} /> {listening ? "聞いています…（5秒）" : "声で操作（あと5分・止めて・終わった）"}
-              </button>
-              {heard && <small>{heard}</small>}
             </div>
           )}
           <div className="timer-undo-row">

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Play, Plus } from "lucide-react";
+import { Check, Play, Plus } from "lucide-react";
 import { byFlow, isFixed } from "./MobilePlanner";
 import { localDateKey } from "./work-start";
 import { updateTask } from "./store";
 import { syncNow } from "./sync";
+import { workDayKey } from "./dayline";
 import { moveGoogleEvent } from "./google-calendar";
-import type { Task, GoogleCalendarEvent } from "./types";
+import type { FocusSession, Task, GoogleCalendarEvent } from "./types";
 
 /**
  * スマホの月表示: each day only shows how full it is (thin bars) and
@@ -21,8 +22,11 @@ export function MonthGrid({
   onOpen,
   onStart,
   events = [],
+  sessions = [],
 }: {
   tasks: Task[];
+  /** 実際にかかった時間を出すため。 */
+  sessions?: FocusSession[];
   /** Googleカレンダーの予定（月の中は点、下の一覧には時刻つきで出す）。 */
   events?: GoogleCalendarEvent[];
   date: string;
@@ -31,7 +35,8 @@ export function MonthGrid({
   onOpen: (task: Task) => void;
   onStart: (task: Task) => void;
 }) {
-  const today = localDateKey(new Date());
+  // 朝4時までは前の日（今夜のルーティンを「やらなかった」にしない）。
+  const today = workDayKey(new Date());
   const [y, m] = date.split("-").map(Number);
   const first = new Date(y, m - 1, 1);
   const lead = (first.getDay() + 6) % 7;
@@ -65,7 +70,22 @@ export function MonthGrid({
   const live = tasks.filter((t) => !t.deletedAt && !t.log);
   const onDay = (key: string) => live.filter((t) => t.scheduledDate === key);
   const dueOn = (key: string) => live.filter((t) => t.dueDate === key && t.status !== "done");
-  const selectedTasks = onDay(selected).sort((a, b) => (a.startMinute ?? 9999) - (b.startMinute ?? 9999) || byFlow(a, b));
+  // 予定（まだのもの）と、やったこと（終わった時刻の日）を分ける。手順に分けた元・飛ばした手順（archived）は出さない。
+  const selectedTasks = onDay(selected)
+    .filter((t) => t.status !== "done" && t.status !== "archived")
+    .sort((a, b) => (a.startMinute ?? 9999) - (b.startMinute ?? 9999) || byFlow(a, b));
+  const doneDay = (t: Task) => (t.completedAt ? workDayKey(t.completedAt) : t.scheduledDate);
+  const doneTasks = live
+    .filter((t) => t.status === "done" && doneDay(t) === selected)
+    .sort((a, b) => Date.parse(a.completedAt || "") - Date.parse(b.completedAt || ""));
+  const spentMin = (t: Task) => Math.round(sessions
+    .filter((x) => x.taskId === t.id && !x.deletedAt && x.status === "completed" && x.endedAt)
+    .reduce((sum, x) => sum + Math.max(0, Date.parse(x.endedAt!) - Date.parse(x.startedAt) - (x.pausedTotalSec || 0) * 1000), 0) / 60_000);
+  const clock = (iso: string | null) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return hm(d.getHours() * 60 + d.getMinutes());
+  };
   const sel = new Date(`${selected}T12:00:00`);
   const gOn = (key: string) => events.filter((e) => (e.allDay ? e.start <= key && (e.end ? e.end > key : e.start === key) : localDateKey(new Date(e.start)) === key));
   const gTime = (e: GoogleCalendarEvent) => (e.allDay ? "終日" : hm(new Date(e.start).getHours() * 60 + new Date(e.start).getMinutes()));
@@ -122,18 +142,32 @@ export function MonthGrid({
             {!e.recurring && e.editable !== false && <button type="button" className="mg-move" onClick={() => { setMoving({ event: e, title: e.title }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>移す</button>}
           </div>
         ))}
-        {selectedTasks.length === 0 && gOn(selected).length === 0 && <p>予定はありません</p>}
+        {selectedTasks.length === 0 && doneTasks.length === 0 && gOn(selected).length === 0 && <p>予定はありません</p>}
+        {selectedTasks.length > 0 && <h4 className="mg-sub">{selected < today ? `やらなかった・まだ（${selectedTasks.length}）` : `予定（${selectedTasks.length}）`}</h4>}
         {selectedTasks.map((t) => (
-          <div key={t.id} className={`mg-row${t.status === "done" ? " done" : ""}`}>
+          <div key={t.id} className={`mg-row${selected < today ? " missed" : ""}`}>
             <span className="mg-time">{isFixed(t) && t.startMinute !== null ? hm(t.startMinute) : "—"}</span>
             <button type="button" className="mg-title" onClick={() => onOpen(t)}>
               <strong>{t.title}</strong>
-              <small>{t.estimateMin}分{t.dueDate === selected ? "・締切" : ""}</small>
+              <small>{t.estimateMin}分の予定{t.dueDate === selected ? "・締切" : ""}</small>
             </button>
-            {t.status !== "done" && <button type="button" className="mg-move" onClick={() => { setMoving({ task: t, title: t.title }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>移す</button>}
-            {t.status !== "done" && <button type="button" className="mg-play" aria-label={`${t.title}を開始`} onClick={() => onStart(t)}><Play size={13} /></button>}
+            <button type="button" className="mg-move" onClick={() => { setMoving({ task: t, title: t.title }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>移す</button>
+            <button type="button" className="mg-play" aria-label={`${t.title}を開始`} onClick={() => onStart(t)}><Play size={13} /></button>
           </div>
         ))}
+        {doneTasks.length > 0 && <h4 className="mg-sub done">やったこと（{doneTasks.length}）</h4>}
+        {doneTasks.map((t) => {
+          const spent = spentMin(t);
+          return (
+            <div key={t.id} className="mg-row done">
+              <span className="mg-time"><Check size={12} /> {clock(t.completedAt)}</span>
+              <button type="button" className="mg-title" onClick={() => onOpen(t)}>
+                <strong>{t.title}</strong>
+                <small>{spent > 0 ? `実際${spent}分` : "完了の印だけ"}{t.routine ? `・${t.routine.name}` : ""}</small>
+              </button>
+            </div>
+          );
+        })}
         {dueOn(selected).filter((t) => t.scheduledDate !== selected).map((t) => (
           <div key={`due-${t.id}`} className="mg-row due">
             <span className="mg-time">締切</span>
