@@ -1514,8 +1514,6 @@ function TodayPage({
       )}
       {/* 思いついたらすぐ入れられるように、追加は一番上に。 */}
       <div className="today-add-top"><QuickAdd defaultDate={today} /></div>
-      {/* 作業・使えるお金・ねこ・寝るまでの残りを、スクロールせずに見られる位置に。 */}
-      <TodayGlance />
       <section className={`now-card${activeSession ? " running" : ""}`}>
         <span className="now-label">{autoDetour ? "おかえり" : activeSession ? "いま" : "次はこれ"}</span>
         {autoDetour && activeSession?.interrupt ? (
@@ -1666,6 +1664,8 @@ function TodayPage({
         )}
         <RoutineBar />
       </section>
+      {/* 「次にやること」を先に、そのすぐ下に作業・使えるお金・ねこ・寝るまでの残り。 */}
+      <TodayGlance />
 
       <section className="today-list">
         <header>
