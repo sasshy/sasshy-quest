@@ -35,30 +35,46 @@ export function periodAt(today: string, startDay: number, offset: number): { sta
   return { start, end };
 }
 
-export const CATEGORIES = ['食費', '医療', 'ドラッグストア', 'ネット通販', '日用品', '交通', 'カフェ・間食', 'その他'] as const;
+export const CATEGORIES = ['食費', '交際', 'AI・サブスク', '日用品', 'ドラッグストア', 'ネット通販', '交通', '医療', 'その他'] as const;
 export type SpendCategory = (typeof CATEGORIES)[number];
 
+// 先に当てはまったものが優先。支払いに使ったカード名（Amazon Mastercard など）で
+// 判定がずれないよう、AI・サブスクを先に見る。
+const SOCIAL = /飲み会|会食|懇親会|歓迎会|送別会|宴会|接待|ランチ会|交際|お祝い|ご祝儀|プレゼント/;
 const RULES: [SpendCategory, RegExp][] = [
-  // 先に当てはまったものが優先。ネットの薬屋（アイドラッグストアー）はネット通販、病院・調剤薬局は医療。
+  ['AI・サブスク', /claude|anthropic|chatgpt|openai|サブスク|月額|netflix|spotify|youtube\s*premium|apple\s*music|icloud|google\s*one|prime会費|プライム会費|(^|[^a-z])ai([^a-z]|$)|AIサービス/i],
+  ['交際', SOCIAL],
   ['ネット通販', /アイドラッグ|idrug/i],
   ['医療', /病院|クリニック|医院|診療|歯科|調剤|処方|医療|薬局/i],
-  ['食費', /^\s*(食費|食料|飲食|酒)/],
-  ['ドラッグストア', /ドラッグ|drug|薬局|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ/i],
+  ['食費', /^\s*(食費|食料|飲食|酒)|コンビニ|セブン|ローソン|ファミマ|ファミリーマート|ミニストップ|newdays|デイリーヤマザキ|カフェ|cafe|スタバ|スターバックス|ドトール|タリーズ|コーヒー|珈琲|おやつ|お菓子|弁当|ランチ|昼食|夕食|朝食|定食|ラーメン|そば|うどん|スーパー|マクドナルド|吉野家|松屋|すき家/i],
+  ['ドラッグストア', /ドラッグ|drug|マツキヨ|マツモトキヨシ|ウエルシア|スギ薬局|ツルハ|ココカラ|サンドラッグ/i],
   ['ネット通販', /amazon|アマゾン|楽天|rakuten|yahoo|ヤフー|zozo|メルカリ|lohaco|アスクル|通販/i],
   ['日用品', /ダイソー|ニトリ|無印|ホームセンター|カインズ|コーナン|ロフト|ドンキ|ドン・?キホーテ|日用品|コストコ|ユニクロ/i],
   ['交通', /電車|バス|タクシー|suica|スイカ|pasmo|ガソリン|駐車|高速|新幹線|交通/i],
-  ['カフェ・間食', /カフェ|cafe|スタバ|スターバックス|ドトール|タリーズ|コーヒー|珈琲|コンビニ|セブン|ローソン|ファミマ|ファミリーマート|おやつ|お菓子/i],
 ];
 
-/** 使い道の分類。食事は食費、支出は分類の指定か品名から。 */
+/** 使い道の分類。食事は食費（飲み会・会食は交際）、支出は分類の指定か品名から。 */
 export function spendCategory(memo: Memo): SpendCategory {
-  if (memo.meal) return '食費';
+  if (memo.meal) return SOCIAL.test(`${memo.meal.item} ${memo.meal.place || ''}`) ? '交際' : '食費';
   const e = memo.expense;
   if (!e) return 'その他';
   const text = `${e.category || ''} ${e.item}`;
   for (const [name, re] of RULES) if (re.test(text)) return name;
   return 'その他';
 }
+
+/** 使い道ごとの色（円グラフ・明細・週の画面で共通）。 */
+export const CATEGORY_COLORS: Record<SpendCategory, string> = {
+  食費: "#7F77DD",
+  交際: "#D85A30",
+  "AI・サブスク": "#1D9E75",
+  日用品: "#639922",
+  ドラッグストア: "#EF9F27",
+  ネット通販: "#D4537E",
+  交通: "#378ADD",
+  医療: "#E24B4A",
+  その他: "#888780",
+};
 
 export const amountOf = (memo: Memo): number => (memo.meal ? paidAmount(memo.meal) : Number(memo.expense?.amount || 0));
 

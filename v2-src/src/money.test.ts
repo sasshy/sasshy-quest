@@ -72,3 +72,19 @@ describe('ルーティンのステップの習慣', () => {
     expect(await checkHabitForTask('シャワー', '2026-10-27')).toBe(false);
   });
 });
+
+describe('分類の整理', () => {
+  it('コンビニ・カフェは食費、Claudeの課金はAI・サブスク、飲み会は交際', async () => {
+    const day = '2026-10-27';
+    await recordExpense({ item: 'ローソン自由が丘二丁目店 もちどーきなこ', amount: 171, at: at(day) });
+    await recordExpense({ item: 'Anthropic Claude追加利用クレジット20米ドル購入（Amazon Mastercard）', amount: 3458, at: at(day) });
+    await recordExpense({ item: 'Claude追加利用クレジット5米ドル', amount: 866, at: at(day) });
+    await recordExpense({ item: '三鷹ベイビーチキン 飲み会', amount: 3500, at: at(day) });
+    const memos = await db.memos.toArray();
+    const cat = (name: string) => spendCategory(memos.find((m) => m.expense?.item.startsWith(name))!);
+    expect(cat('ローソン')).toBe('食費');
+    expect(cat('Anthropic')).toBe('AI・サブスク');
+    expect(cat('Claude')).toBe('AI・サブスク');
+    expect(cat('三鷹')).toBe('交際');
+  });
+});

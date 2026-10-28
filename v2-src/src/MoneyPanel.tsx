@@ -4,11 +4,12 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Download, Plus, Trash2 } from "lucide-react";
 import { db } from "./db";
 import { BUCKET_LABEL, DEFAULT_BUDGET, expenseBucket, getBudget, setBudget } from "./budget";
-import { amountOf, moneySummary, periodAt, recordIncome, removeIncome, spendCategory, type SpendCategory } from "./money";
+import { CATEGORY_COLORS, amountOf, moneySummary, periodAt, recordIncome, removeIncome, spendCategory, type SpendCategory } from "./money";
 import { expenseDetail, localDateKey } from "./meals";
 import { RecordEditSheet } from "./RecordEditSheet";
 import { BudgetSheet } from "./BudgetPanel";
 import { syncNow } from "./sync";
+import { MoneyWeek } from "./MoneyWeek";
 import type { Memo } from "./types";
 
 /**
@@ -20,16 +21,7 @@ const md = (key: string) => {
   const d = new Date(`${key}T12:00:00`);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
-const COLORS: Record<SpendCategory, string> = {
-  食費: "#7F77DD",
-  医療: "#E24B4A",
-  ドラッグストア: "#EF9F27",
-  ネット通販: "#D4537E",
-  日用品: "#1D9E75",
-  交通: "#378ADD",
-  "カフェ・間食": "#BA7517",
-  その他: "#888780",
-};
+const COLORS = CATEGORY_COLORS;
 
 function Donut({ parts, total }: { parts: { name: SpendCategory; amount: number }[]; total: number }) {
   const R = 52;
@@ -95,6 +87,8 @@ export function MoneyPanel() {
   }, [], DEFAULT_BUDGET) || DEFAULT_BUDGET;
   const today = localDateKey(Date.now());
   const [offset, setOffset] = useState(0);
+  // 最初は「日ごと」（週ごとの棒と1日ずつの明細）。円グラフや収支は「月のまとめ」。
+  const [view, setView] = useState<"week" | "month">("week");
   const [editing, setEditing] = useState<Memo | null>(null);
   const [incomeDraft, setIncomeDraft] = useState("");
   const [incomeItem, setIncomeItem] = useState("給料");
@@ -133,6 +127,13 @@ export function MoneyPanel() {
 
   return (
     <div className="mo">
+      <div className="mo-tabs" role="tablist" aria-label="お金の見方">
+        <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>日ごと</button>
+        <button type="button" role="tab" aria-selected={view === "month"} className={view === "month" ? "active" : ""} onClick={() => setView("month")}>月のまとめ</button>
+      </div>
+      {view === "week" ? (
+        <MoneyWeek memos={memos} setting={setting} />
+      ) : (<>
       <div className="dm-nav">
         <button type="button" aria-label="前の月" onClick={() => setOffset(offset - 1)}>‹</button>
         <strong>{md(start)}〜{md(end)}{current ? "（今月）" : ""}</strong>
@@ -267,6 +268,7 @@ export function MoneyPanel() {
           <Download size={15} /> この期間をCSVで書き出す
         </button>
       </section>
+      </>)}
       <button type="button" className="button secondary mo-settings" onClick={() => setBudgetOpen(true)}>
         予算と給料日の設定{setting.enabled ? "" : "（今日の画面には表示していません）"}
       </button>

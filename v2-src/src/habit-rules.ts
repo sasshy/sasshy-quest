@@ -9,7 +9,7 @@ import { spendCategory } from './money';
 export type RuleState = 'done' | 'over' | 'skip' | 'pending' | 'none';
 
 const SOCIAL = /会食|ランチ会|飲み会|歓迎会|送別会|接待|懇親会/;
-const FOOD = new Set(['食費', 'カフェ・間食']);
+const FOOD = new Set(['食費']);
 // 分類が「その他」でも、品名が食べ物なら食費として数える。
 const FOOD_WORDS = /ランチ|昼食|昼ごはん|昼飯|弁当|定食|そば|蕎麦|うどん|ラーメン|カレー|丼|パン|おにぎり|サンド|飲食|食事|ごはん|ご飯|間食|おやつ|ドリンク|飲み物/;
 
