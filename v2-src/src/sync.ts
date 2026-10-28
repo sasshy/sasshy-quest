@@ -61,7 +61,29 @@ async function responseError(response: Response): Promise<Error> {
   return new Error(`${response.status} ${detail}`.trim());
 }
 
+/** 同期の各段階の結果を端末に少しだけ残す（原因を後から調べるため。キーは残さない）。 */
+export function syncLog(stage: string, message: string): void {
+  try {
+    const list = JSON.parse(localStorage.getItem('sasshy-sync-log') || '[]') as unknown[];
+    list.unshift({ at: new Date().toISOString(), stage, message: message.slice(0, 200) });
+    localStorage.setItem('sasshy-sync-log', JSON.stringify(list.slice(0, 30)));
+  } catch { /* 残せなくても同期は続ける */ }
+}
+
 async function rpc<T>(config: SyncConfig, name: string, body: Record<string, unknown>): Promise<T> {
+  try {
+    return await rpcOnce<T>(config, name, body);
+  } catch (error) {
+    // 一瞬の通信切れ（アプリの切り替え直後など）は1回だけやり直す。
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.startsWith('通信')) throw error;
+    syncLog(`${name}:retry`, message);
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    return rpcOnce<T>(config, name, body);
+  }
+}
+
+async function rpcOnce<T>(config: SyncConfig, name: string, body: Record<string, unknown>): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15_000);
   let response: Response;
@@ -80,7 +102,11 @@ async function rpc<T>(config: SyncConfig, name: string, body: Record<string, unk
   }
   if (!response.ok) throw await responseError(response);
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  try {
+    return await response.json() as T;
+  } catch (error) {
+    throw new Error(`通信の途中で切れました（${name}）: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export async function getSyncConfig(): Promise<SyncConfig> {
@@ -184,14 +210,22 @@ async function performSync(force = false): Promise<void> {
     }
 
     const remote = await rpc<CloudRecord[]>(config, 'sasshy_v2_pull', { p_sync_key: config.syncKey });
+    let applyFailed = 0;
     for (const record of remote || []) {
-      const pending = await db.outbox.where('[entityType+entityId]').equals([record.record_type, record.id]).first();
-      const pendingSchedule = record.record_type === 'task'
-        ? await db.scheduleOutbox.where('taskId').equals(record.id).first()
-        : undefined;
-      if (pending || pendingSchedule) continue;
-      await applyRemoteRecord(record.record_type, record.payload, record.deleted, record.updated_at);
+      // 1件が読めなくても、残りは必ず反映する。
+      try {
+        const pending = await db.outbox.where('[entityType+entityId]').equals([record.record_type, record.id]).first();
+        const pendingSchedule = record.record_type === 'task'
+          ? await db.scheduleOutbox.where('taskId').equals(record.id).first()
+          : undefined;
+        if (pending || pendingSchedule) continue;
+        await applyRemoteRecord(record.record_type, record.payload, record.deleted, record.updated_at);
+      } catch (error) {
+        applyFailed += 1;
+        if (applyFailed <= 3) syncLog('apply', `${record.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+    syncLog('pull', `ok ${remote?.length || 0}件${applyFailed ? `・反映できず${applyFailed}件` : ''}`);
 
     const at = new Date().toISOString();
     const pendingCount = await db.outbox.count();
@@ -206,6 +240,7 @@ async function performSync(force = false): Promise<void> {
     announceChange();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    syncLog('sync', message);
     await saveSyncConfig({ lastError: message });
     const pendingCount = await db.outbox.count().catch(() => 0);
     setState({ phase: 'error', message: `同期失敗・未送信${pendingCount}件は端末に保持: ${message}`, at: config.lastSyncAt });
