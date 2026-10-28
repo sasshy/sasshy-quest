@@ -119,41 +119,60 @@ export function TodayGlance() {
   );
 }
 
-/** 今日の画面の習慣の1行：押せばその場で✓。自動の習慣は今日の金額を出す。 */
+/**
+ * 今日の画面の習慣：まだのものだけを並べ、終わったものは数に回して消える。
+ * 増えても縦に伸びすぎないよう、まだのものは最大4つ＋「ほか◯」。
+ */
 export function TodayHabits() {
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const [all, setAll] = useState(false);
   const list = habits(memos);
   const today = localDateKey(Date.now());
   if (!list.length) return null;
+  const rows = list.map((h) => {
+    const rule = h.habit!.rule;
+    const r = rule ? ruleDay(h, memos, today) : null;
+    const done = r ? r.state === "done" : h.habit!.days.includes(today);
+    return { h, rule, r, done, pending: r?.state === "pending", over: r?.state === "over" };
+  });
+  // 自動の習慣は今日がまだ途中（pending）なら「まだ」に並べて金額を見せる。
+  const left = rows.filter((x) => !x.done);
+  const doneCount = rows.length - left.length;
+  const shown = all ? left : left.slice(0, 4);
+  const openHabits = () => {
+    window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "records" }));
+    window.dispatchEvent(new Event("sasshy-open-habits"));
+  };
   return (
-    <section className="today-habits" aria-label="今日の習慣">
-      <span className="today-habits-label">今日の習慣<small>{list.filter((h) => (h.habit!.rule ? ["done", "pending"].includes(ruleDay(h, memos, today).state) : h.habit!.days.includes(today))).length}/{list.length}</small></span>
-      <div className="today-habits-row">
-        {list.map((h) => {
-          const rule = h.habit!.rule;
-          const r = rule ? ruleDay(h, memos, today) : null;
-          const done = r ? r.state === "done" || r.state === "pending" : h.habit!.days.includes(today);
-          const over = r?.state === "over";
-          return (
+    <section className={`today-habits${left.length === 0 ? " all-done" : ""}`} aria-label="今日の習慣">
+      <button type="button" className="today-habits-label" onClick={openHabits}>
+        <span>今日の習慣</span>
+        <small>{left.length === 0 ? "ぜんぶ✓" : `${doneCount}/${rows.length} ✓`} ›</small>
+      </button>
+      {left.length > 0 && (
+        <div className="today-habits-row">
+          {shown.map(({ h, rule, r, over }) => (
             <button
               key={h.id}
               type="button"
-              className={`th-chip${done ? " done" : ""}${over ? " over" : ""}${rule ? " auto" : ""}`}
-              aria-pressed={done}
+              className={`th-chip${over ? " over" : ""}${rule ? " auto" : ""}`}
               onClick={async () => {
                 if (rule) return;
-                if (!done) haptic("success");
-                await setHabitDay(h, today, !done);
+                haptic("success");
+                await setHabitDay(h, today, true);
                 syncNow().catch(() => undefined);
               }}
             >
-              <i aria-hidden="true">{done ? <Check size={12} strokeWidth={3} /> : over ? "×" : ""}</i>
-              {h.habit!.name}
+              <i aria-hidden="true">{over ? "×" : ""}</i>
+              <span>{h.habit!.name}</span>
               {rule && r && <small>{yenText(r.spent)}/{yenText(rule.limit)}</small>}
             </button>
-          );
-        })}
-      </div>
+          ))}
+          {left.length > 4 && (
+            <button type="button" className="th-more" onClick={() => setAll(!all)}>{all ? "たたむ" : `ほか${left.length - 4}`}</button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
