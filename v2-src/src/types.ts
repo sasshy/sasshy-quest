@@ -1,5 +1,6 @@
 export type TaskStatus = 'inbox' | 'planned' | 'active' | 'done' | 'archived';
-export type TaskHorizon = 'now' | 'someday' | 'wish' | 'waiting';
+/** care = 整備ストック（期限のない片付け・整理・発注など。毎日1つ今日に出る）。 */
+export type TaskHorizon = 'now' | 'someday' | 'wish' | 'waiting' | 'care';
 export type MorningProgress = 'unrecorded' | 'not_started' | 'partial' | 'completed';
 
 export interface WorkStartDay {

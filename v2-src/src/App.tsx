@@ -55,6 +55,7 @@ import {
   Plus,
   Redo2,
   RotateCcw,
+  AlarmClock,
   Search,
   Settings,
   SlidersHorizontal,
@@ -187,11 +188,13 @@ import { workDayKey } from "./dayline";
 import { tidyDiaryDuplicates } from "./diary";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
-import { TodayGlance } from "./Glance";
+import { TodayGlance, TodayHabits } from "./Glance";
 import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
 import { SearchSheet } from "./SearchSheet";
+import { dailyCarePick } from "./care";
+import { FirstStepSheet, PromiseSheet, shouldShowFirstStep } from "./Kickstart";
 import { linkMealsToReceipts } from "./meals";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -1125,6 +1128,7 @@ function TaskEditor({
                 <option value="someday">いつか</option>
                 <option value="wish">やりたい</option>
                 <option value="waiting">待ち</option>
+                <option value="care">整備ストック</option>
               </select>
             </label>
             <label>
@@ -1351,6 +1355,8 @@ function TodayPage({
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [runwayOpen, setRunwayOpen] = useState(false);
+  const [promiseOpen, setPromiseOpen] = useState(false);
+  const [firstStep, setFirstStep] = useState(() => shouldShowFirstStep());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(timer);
@@ -1613,6 +1619,10 @@ function TodayPage({
                 <button type="button" onClick={() => onEdit(focus)}>
                   <Pencil size={14} /> 編集
                 </button>
+                {/* 「◯時までに見せる」と人に言って、その時刻に通知する。 */}
+                <button type="button" onClick={() => setPromiseOpen(true)}>
+                  <AlarmClock size={14} /> 宣言
+                </button>
                 <button type="button" onClick={async () => {
                   await updateTask(focus.id, { scheduledDate: null, startMinute: null, isFixed: false, status: "inbox" }, "今日から外す");
                   toast(`「${focus.title}」を今日から外しました（やることに残っています）`);
@@ -1634,6 +1644,10 @@ function TodayPage({
                   <Trash2 size={14} /> {armedDelete ? "もう一度で消す" : "消す"}
                 </button>
               </div>
+            )}
+            {promiseOpen && <PromiseSheet task={focus} onClose={() => setPromiseOpen(false)} />}
+            {firstStep && !activeSession && !autoDetour && (
+              <FirstStepSheet task={focus} onStart={() => onStart(focus, { starter: true })} onClose={() => setFirstStep(false)} />
             )}
             {activeSession && activeRemaining !== null && activeRemaining < 0 && (
               <details className="now-recover">
@@ -1668,6 +1682,7 @@ function TodayPage({
       </section>
       {/* 「次にやること」を先に、そのすぐ下に作業・使えるお金・ねこ・寝るまでの残り。 */}
       <TodayGlance />
+      <TodayHabits />
 
       <section className="today-list">
         <header>
@@ -2916,6 +2931,7 @@ function InboxPage({
     try { sessionStorage.removeItem("sasshy-open-triage"); } catch { /* なくても動く */ }
   }, []);
   const groups: { key: TaskHorizon; label: string; hint: string }[] = [
+    { key: "care", label: "整備ストック", hint: "片付け・整理・発注・マニュアルなど期限のないこと。毎日1つ今日に出ます" },
     { key: "waiting", label: "待ち", hint: "返事や到着を待っている" },
     { key: "someday", label: "いつか", hint: "今週ではないけれど残しておく" },
     { key: "wish", label: "やりたい", hint: "義務ではないアイデア" },
@@ -3003,6 +3019,20 @@ function InboxPage({
               <span>{items.length}件</span>
               {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
+            {expanded && group.key === "care" && (
+              <form className="care-add" onSubmit={async (e) => {
+                e.preventDefault();
+                const input = e.currentTarget.elements.namedItem("care") as HTMLInputElement;
+                const title = input.value.trim();
+                if (!title) return;
+                await createTask({ title, horizon: "care", estimateMin: 15 });
+                input.value = "";
+                syncNow().catch(() => undefined);
+              }}>
+                <input name="care" placeholder="例：棚1段だけ片付ける・発注表を作る・梱包手順を写真で撮る" />
+                <button type="submit" className="button primary" aria-label="整備ストックに足す"><Plus size={16} /></button>
+              </form>
+            )}
             {expanded && (
               <ul className="todo-list">
                 {items.map((task) => (
@@ -3011,8 +3041,9 @@ function InboxPage({
                       <strong>{task.title}</strong>
                     </button>
                     <div className="todo-actions">
-                      <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: "now" }, "今日やる")}>今日</button>
-                      <button type="button" onClick={() => place(task, { horizon: "now", scheduledDate: null }, "日付なしへ戻す")}>戻す</button>
+                      {/* 整備は「整備」のまま今日に出す（終われば次の日にまた1つ出る）。 */}
+                      <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: group.key === "care" ? "care" : "now" }, "今日やる")}>今日</button>
+                      {group.key !== "care" && <button type="button" onClick={() => place(task, { horizon: "now", scheduledDate: null }, "日付なしへ戻す")}>戻す</button>}
                       {trash(task)}
                     </div>
                   </li>
@@ -4573,6 +4604,10 @@ function App() {
     if (!memoCount) return;
     linkMealsToReceipts().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined);
   }, [memoCount]);
+  // 整備ストックから、毎日1つだけ今日に出す。
+  useEffect(() => {
+    dailyCarePick().then((t) => { if (t) { toast(`今日の整備：「${t.title}」`); syncNow().catch(() => undefined); } }).catch(() => undefined);
+  }, []);
   useEffect(() => { tidyDiaryDuplicates().then((n) => { if (n) syncNow().catch(() => undefined); }).catch(() => undefined); }, []);
   // ルーティン丸ごとの習慣は作らない。前に自動でできたもの（夜ルーティン など）はしまう。
   useEffect(() => {

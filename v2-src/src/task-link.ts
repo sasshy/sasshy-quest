@@ -101,7 +101,7 @@ export function parseTaskLink(url: string): TaskLinkResult {
       throw new Error('所要時間が正しくありません');
     }
     const horizon = raw.horizon === undefined ? 'now' : raw.horizon;
-    if (!['now', 'someday', 'wish', 'waiting'].includes(String(horizon))) {
+    if (!['now', 'someday', 'wish', 'waiting', 'care'].includes(String(horizon))) {
       throw new Error('タスクの分類が正しくありません');
     }
 
