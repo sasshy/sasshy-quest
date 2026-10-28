@@ -15,6 +15,7 @@ import { ruleDay, yenText } from "./habit-rules";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
 import { haptic } from "./feedback";
+import type { Memo } from "./types";
 
 const yen = (value: number) => `¥${Math.abs(Math.round(value)).toLocaleString("ja-JP")}`;
 
@@ -126,6 +127,7 @@ export function TodayGlance() {
 export function TodayHabits() {
   const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
   const [all, setAll] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const list = habits(memos);
   const today = localDateKey(Date.now());
   if (!list.length) return null;
@@ -136,19 +138,31 @@ export function TodayHabits() {
     return { h, rule, r, done, pending: r?.state === "pending", over: r?.state === "over" };
   });
   // 自動の習慣は今日がまだ途中（pending）なら「まだ」に並べて金額を見せる。
-  const left = rows.filter((x) => !x.done);
-  const doneCount = rows.length - left.length;
+  // 超えてしまった日（×）はもうできることがないので、「まだ」からは外して数だけ出す。
+  const left = rows.filter((x) => !x.done && !x.over);
+  const doneRows = rows.filter((x) => x.done || x.over);
+  const doneCount = rows.filter((x) => x.done).length;
+  const overCount = rows.filter((x) => x.over).length;
   const shown = all ? left : left.slice(0, 4);
+  const toggle = async (h: Memo, on: boolean) => {
+    if (on) haptic("success");
+    await setHabitDay(h, today, on);
+    syncNow().catch(() => undefined);
+  };
   const openHabits = () => {
     window.dispatchEvent(new CustomEvent("sasshy-open-page", { detail: "records" }));
     window.dispatchEvent(new Event("sasshy-open-habits"));
   };
   return (
     <section className={`today-habits${left.length === 0 ? " all-done" : ""}`} aria-label="今日の習慣">
-      <button type="button" className="today-habits-label" onClick={openHabits}>
-        <span>今日の習慣</span>
-        <small>{left.length === 0 ? "ぜんぶ✓" : `${doneCount}/${rows.length} ✓`} ›</small>
-      </button>
+      <div className="today-habits-label">
+        <button type="button" onClick={openHabits}>今日の習慣 ›</button>
+        {/* 数を押すと、終わったものが出る（間違えて✓したら、そこで外せる）。 */}
+        <button type="button" className="th-count" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}>
+          {left.length === 0 && overCount === 0 ? "ぜんぶ✓" : `✓${doneCount}${overCount ? ` ×${overCount}` : ""} / ${rows.length}`}
+          <ChevronDown size={13} className={showDone ? "flip" : ""} />
+        </button>
+      </div>
       {left.length > 0 && (
         <div className="today-habits-row">
           {shown.map(({ h, rule, r, over }) => (
@@ -156,12 +170,7 @@ export function TodayHabits() {
               key={h.id}
               type="button"
               className={`th-chip${over ? " over" : ""}${rule ? " auto" : ""}`}
-              onClick={async () => {
-                if (rule) return;
-                haptic("success");
-                await setHabitDay(h, today, true);
-                syncNow().catch(() => undefined);
-              }}
+              onClick={() => { if (!rule) toggle(h, true); }}
             >
               <i aria-hidden="true">{over ? "×" : ""}</i>
               <span>{h.habit!.name}</span>
@@ -171,6 +180,17 @@ export function TodayHabits() {
           {left.length > 4 && (
             <button type="button" className="th-more" onClick={() => setAll(!all)}>{all ? "たたむ" : `ほか${left.length - 4}`}</button>
           )}
+        </div>
+      )}
+      {showDone && doneRows.length > 0 && (
+        <div className="today-habits-row th-done">
+          {doneRows.map(({ h, rule, r, over }) => (
+            <button key={h.id} type="button" className={`th-chip${over ? " over" : " done"}${rule ? " auto" : ""}`} onClick={() => { if (!rule) toggle(h, false); }}>
+              <i aria-hidden="true">{over ? "×" : <Check size={12} strokeWidth={3} />}</i>
+              <span>{h.habit!.name}</span>
+              {rule && r ? <small>{yenText(r.spent)}/{yenText(rule.limit)}</small> : <small>押すと外す</small>}
+            </button>
+          ))}
         </div>
       )}
     </section>

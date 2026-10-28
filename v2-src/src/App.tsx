@@ -2960,6 +2960,7 @@ function InboxPage({
                   <button type="button" onClick={() => place(task, { scheduledDate: todayKey(), horizon: "now" }, "今日やる")}>今日</button>
                   <button type="button" onClick={() => place(task, { scheduledDate: shiftDate(todayKey(), 1), horizon: "now" }, "明日やる")}>明日</button>
                   <button type="button" onClick={() => place(task, { horizon: "someday" }, "いつかへ")}>いつか</button>
+                  <button type="button" className="todo-idea" aria-label={`${task.title}を好きなやり方にする`} onClick={() => setIdeasTask(task)}><Sparkles size={14} /></button>
                   {trash(task)}
                   <button type="button" className="todo-play" aria-label={`${task.title}を開始`} onClick={() => onStart(task)}>
                     <Play size={15} />

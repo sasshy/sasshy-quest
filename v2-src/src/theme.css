@@ -1404,3 +1404,8 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .today-habits.all-done { padding: 10px 12px; }
 .th-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .th-more { min-height: 40px; border: 1px dashed var(--line-strong); border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+.today-habits-label > button { padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.th-count { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-num) !important; color: var(--accent-text) !important; }
+.th-count .flip { transform: rotate(180deg); }
+.th-done { padding-top: 6px; border-top: 1px dashed var(--line); }
