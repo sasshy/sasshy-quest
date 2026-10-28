@@ -2,13 +2,13 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Check, MoreHorizontal, Plus } from "lucide-react";
 import { db } from "./db";
-import { archiveHabit, archivedHabits, countIn, createHabit, deleteHabit, habits, renameHabit, restoreHabit, setHabitDay } from "./habits";
+import { WHEN_LABEL, setHabitWhen, archiveHabit, archivedHabits, countIn, createHabit, deleteHabit, habits, renameHabit, restoreHabit, setHabitDay } from "./habits";
 import { getRoutines, saveRoutines } from "./routines";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
 import { isRuleHabit, ruleDay, yenText } from "./habit-rules";
 import { haptic } from "./feedback";
-import type { Memo } from "./types";
+import type { HabitWhen, Memo } from "./types";
 
 /** 記録 › 習慣: tap ✓ for today, a week table of every habit, one habit's month on demand. */
 export function HabitsPanel() {
@@ -98,6 +98,10 @@ export function HabitsPanel() {
                   }}
                   onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                 />
+                <select className="hb-when" aria-label={`${h.habit!.name}をいつやるか`} value={h.habit!.when || ""} onChange={async (e) => { await setHabitWhen(h, (e.currentTarget.value || null) as HabitWhen | null); syncNow().catch(() => undefined); }}>
+                  <option value="">いつでも</option>
+                  {(Object.keys(WHEN_LABEL) as HabitWhen[]).map((w) => <option key={w} value={w}>{WHEN_LABEL[w]}</option>)}
+                </select>
                 <button type="button" onClick={async () => { await archiveHabit(h); syncNow().catch(() => undefined); }}>しまう</button>
                 {/* 確認ダイアログに頼らず、2回押しで消す。 */}
                 <button type="button" className={`danger${armed === h.id ? " armed" : ""}`} onClick={async () => {

@@ -8,6 +8,7 @@ import { syncNow } from "./sync";
 import { DEFAULT_TIME_LEFT, ageOn, daysLived, getTimeLeft } from "./timeleft";
 import { localDateKey } from "./meals";
 import { PeriodView } from "./PeriodView";
+import { LifeOverview } from "./LifeOverview";
 import {
   AREA_KEYS,
   AREA_LABEL,
@@ -193,9 +194,13 @@ export function LifeMapPanel() {
     <div className="page-content life-map">
       <div className="lm-head">
         <strong>{age}歳</strong>
-        <span>{age + 1}歳まであと{daysToBirthday}日</span>
+        <span>{age + 1}歳まであと{daysToBirthday}日・40歳まであと{Math.max(0, Math.round((new Date(new Date(`${setting.birthday}T00:00:00`).getFullYear() + 40, new Date(`${setting.birthday}T00:00:00`).getMonth(), new Date(`${setting.birthday}T00:00:00`).getDate()).getTime() - Date.now()) / 86_400_000)).toLocaleString("ja-JP")}日</span>
       </div>
-      <PeriodView birthday={setting.birthday} triedDays={triedDays} />
+      <LifeOverview birthday={setting.birthday} />
+      <details className="lm-period">
+        <summary>今年・今月・今週の残りを見る</summary>
+        <PeriodView birthday={setting.birthday} triedDays={triedDays} />
+      </details>
 
       <section className="lm-card">
         <header>

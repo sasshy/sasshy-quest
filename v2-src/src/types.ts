@@ -66,7 +66,9 @@ export interface Task {
   /** "ここまでやったら終わり" — decided when starting, shown on the timer. */
   doneWhen?: string;
   /** Set on tasks created by a routine: completing one starts the next step. */
-  routine?: { runId: string; name: string; index: number; count: number };
+  routine?: { runId: string; name: string; index: number; count: number; parentId?: string };
+  /** 細かい手順。始めるとルーティンと同じく1つずつ流れる（終えると元のタスクも完了）。 */
+  steps?: { title: string; minutes: number }[];
   /** A record of an interruption or a detour (not a planned task; hidden from today's list). */
   log?: 'interrupt' | 'detour';
   importance: 0 | 1 | 2;
@@ -137,6 +139,11 @@ export interface Memo {
   habit?: HabitInfo;
   /** 収入（給料など）。カテゴリ「収入」。 */
   income?: IncomeInfo;
+  /** 人生の地図：章・出来事・これからの目印。 */
+  life?: LifeEntry;
+  /** 人生の地図：月1回の6つの領域の点（1〜5）と、大事にしたい順。 */
+  areaScore?: { month: string; scores: Partial<Record<AreaKey, number>> };
+  values?: AreaKey[];
   sync: SyncMeta;
 }
 
@@ -163,7 +170,22 @@ export interface HabitInfo {
   rule?: HabitRule;
   /** この日より前は数えない（YYYY-MM-DD）。 */
   startDate?: string;
+  /** いつやるか。その時間帯になると、今日の画面のリストの上に出る。 */
+  when?: HabitWhen | null;
 }
+
+export interface LifeEntry {
+  kind: 'chapter' | 'event' | 'milestone';
+  title: string;
+  /** YYYY-MM */
+  from: string;
+  /** 章の終わり（YYYY-MM）。今の章は null。 */
+  to?: string | null;
+  note?: string;
+  color?: string;
+}
+
+export type HabitWhen = 'morning' | 'noon' | 'evening' | 'night';
 
 /** 決めた時間帯の食費（食事＋食べ物の支出）が上限以内なら✓。 */
 export interface HabitRule {

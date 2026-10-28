@@ -168,3 +168,33 @@ export async function fixLateRoutineDatesOnce(): Promise<number> {
   }
   return n;
 }
+
+/**
+ * 手順つきのタスクを始める：手順を1つずつのタスクにして（ルーティンと同じ流れ）、
+ * 元のタスクは手順が全部終わるまで一覧から外しておく。すでに始めていれば続きから。
+ */
+export async function expandTaskSteps(task: Task, now = new Date()): Promise<Task | null> {
+  const steps = (task.steps || []).filter((s) => s.title.trim());
+  if (!steps.length) return null;
+  const existing = (await db.tasks.toArray())
+    .filter((t) => t.routine?.parentId === task.id && !t.deletedAt && t.status !== 'done' && t.status !== 'archived')
+    .sort((a, b) => a.routine!.index - b.routine!.index);
+  if (existing.length) return existing[0];
+  const runId = makeId('steps-run');
+  const day = task.scheduledDate && task.scheduledDate >= workDayKey(now.toISOString()) ? task.scheduledDate : workDayKey(now.toISOString());
+  let first: Task | null = null;
+  for (const [index, step] of steps.entries()) {
+    const created = await createTask({
+      title: step.title.trim(),
+      notes: `手順：${task.title}`,
+      scheduledDate: day,
+      estimateMin: Math.max(1, step.minutes || 5),
+      durationMin: Math.max(1, step.minutes || 5),
+      flowOrder: (task.flowOrder ?? 0) - 100 + index / 100,
+      routine: { runId, name: task.title, index, count: steps.length, parentId: task.id },
+    });
+    if (!first) first = created;
+  }
+  await updateTask(task.id, { status: 'archived' }, `「${task.title}」を手順に分けて始める`);
+  return first;
+}

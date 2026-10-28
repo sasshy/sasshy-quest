@@ -37,6 +37,21 @@ async function fetchIdeas(task: Task, likes: string): Promise<TaskIdea[]> {
   }
 }
 
+/** タスクを、最初の一手から終わりまでの小さな手順（3〜7個・分つき）にしてもらう。 */
+export async function fetchTaskSteps(task: Task): Promise<{ title: string; minutes: number }[]> {
+  const config = await getSyncConfig();
+  if (!config.url || !config.apiKey || !config.syncKey) throw new Error("同期設定が必要です（設定 › 同期）");
+  const key = config.apiKey.trim();
+  const response = await fetch(`${config.url.trim().replace(/\/+$/, "")}/functions/v1/sasshy-task-ideas`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ syncKey: config.syncKey, title: task.title, notes: task.notes, mode: "steps" }),
+  });
+  const payload = await response.json().catch(() => ({})) as { steps?: { title: string; minutes: number }[]; error?: string };
+  if (!response.ok || !payload.steps?.length) throw new Error(payload.error || "手順を作れませんでした");
+  return payload.steps;
+}
+
 export function TaskIdeasSheet({ task, onClose }: { task: Task; onClose: () => void }) {
   const [likes, setLikes] = useState(() => {
     try { return localStorage.getItem(LIKES_KEY) || DEFAULT_LIKES; } catch { return DEFAULT_LIKES; }

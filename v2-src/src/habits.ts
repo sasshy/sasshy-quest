@@ -152,3 +152,17 @@ export async function setupLunchHabitOnce(): Promise<boolean> {
   });
   return true;
 }
+
+/** 時間帯（夜は夜中4時まで）。 */
+export const WHEN_LABEL: Record<import('./types').HabitWhen, string> = { morning: '朝', noon: '昼', evening: '夕方', night: '夜' };
+const WHEN_HOURS: Record<import('./types').HabitWhen, [number, number]> = { morning: [5, 11], noon: [11, 16], evening: [16, 21], night: [21, 28] };
+
+export function inWindow(when: import('./types').HabitWhen, at = new Date()): boolean {
+  const h = at.getHours() < 4 ? at.getHours() + 24 : at.getHours();
+  const [from, to] = WHEN_HOURS[when];
+  return h >= from && h < to;
+}
+
+export async function setHabitWhen(memo: Memo, when: import('./types').HabitWhen | null): Promise<Memo | null> {
+  return updateMemo(memo.id, { habit: { ...memo.habit!, when } }, `習慣「${memo.habit!.name}」のいつやるか`);
+}

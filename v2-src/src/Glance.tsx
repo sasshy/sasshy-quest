@@ -11,12 +11,13 @@ import { JarShelf } from "./TodayProgress";
 import { BudgetSheet, useBudget, useCountTo } from "./BudgetPanel";
 import { DEFAULT_TIME_LEFT, getTimeLeft, timeLeftItems } from "./timeleft";
 import { DayBlocks, TimeLeftEditor, useNow } from "./TimeLeftPanel";
-import { habits, setHabitDay } from "./habits";
+import { WHEN_LABEL, habits, inWindow, setHabitDay } from "./habits";
+import { createTask } from "./store";
 import { ruleDay, yenText } from "./habit-rules";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
 import { haptic } from "./feedback";
-import type { Memo } from "./types";
+import type { Memo, Task } from "./types";
 
 const yen = (value: number) => `¥${Math.abs(Math.round(value)).toLocaleString("ja-JP")}`;
 
@@ -231,5 +232,37 @@ export function TodayEvents() {
       </span>
       {next && until !== null && <em>{until <= 0 ? "今" : until < 60 ? `あと${until}分` : `あと${Math.floor(until / 60)}時間${until % 60 ? `${until % 60}分` : ""}`}</em>}
     </button>
+  );
+}
+
+/**
+ * 今の時間の習慣：「いつやるか」を決めた習慣が、その時間帯になったら今日のリストの上に出る。
+ * 「次はこれ」（仕事）には入れない。✓か「2分だけ」で始められる。
+ */
+export function NowHabits({ onStart }: { onStart: (task: Task, opts: { starter?: boolean }) => void }) {
+  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const now = useNow(60_000);
+  const today = localDateKey(now.getTime());
+  const due = habits(memos).filter((h) => h.habit!.when && !h.habit!.rule && inWindow(h.habit!.when, now) && !h.habit!.days.includes(today));
+  if (!due.length) return null;
+  return (
+    <section className="now-habits" aria-label="今の時間の習慣">
+      <span className="now-habits-label">今の時間の習慣（{WHEN_LABEL[due[0].habit!.when!]}）</span>
+      {due.map((h) => (
+        <div key={h.id} className="now-habit">
+          <strong>{h.habit!.name}</strong>
+          <button type="button" className="nh-start" onClick={async () => {
+            // 2分だけ：その場でタスクにして始める（終えると習慣にも✓が付く）。
+            const task = await createTask({ title: h.habit!.name, scheduledDate: today, estimateMin: 2, durationMin: 2 });
+            onStart(task, { starter: true });
+          }}>2分だけ</button>
+          <button type="button" className="nh-done" aria-label={`${h.habit!.name}をやった`} onClick={async () => {
+            haptic("success");
+            await setHabitDay(h, today, true);
+            syncNow().catch(() => undefined);
+          }}><Check size={16} strokeWidth={3} /></button>
+        </div>
+      ))}
+    </section>
   );
 }

@@ -1456,3 +1456,69 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .mg-moving button { border: 0; background: transparent; color: var(--accent-text); font: inherit; text-decoration: underline; cursor: pointer; }
 .mg-grid.moving .mg-day:not(.past) { outline: 1.5px dashed var(--accent); outline-offset: -3px; }
 .mg-row { grid-template-columns: 44px 1fr auto auto; }
+.steps-field textarea { font-size: 15px; } .steps-actions { display: grid; gap: 4px; justify-items: start; } .steps-actions small { color: var(--danger); font-size: 12px; }
+.hb-edit-row:not(.shelved) { grid-template-columns: minmax(0, 1fr) auto auto; }
+.hb-edit-row:not(.shelved) input { grid-column: 1 / -1; }
+.hb-when { min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; }
+/* 今の時間の習慣 */
+.now-habits { display: grid; gap: 6px; margin: 0 0 10px; padding: 10px 12px; border-radius: 16px; background: var(--accent-soft); }
+.now-habits-label { font-size: 11.5px; font-weight: 800; color: var(--accent-text); }
+.now-habit { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 6px; }
+.now-habit strong { font-size: 15px; }
+.nh-start { min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.nh-done { width: 36px; height: 36px; display: grid; place-items: center; border: 1.5px solid var(--accent); border-radius: 10px; background: var(--paper); color: var(--accent-text); cursor: pointer; }
+/* 人生の地図 */
+:root { --lo-empty: #E6E4DC; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --lo-empty: #3d3c39; } }
+:root[data-theme="dark"] { --lo-empty: #3d3c39; }
+.lo { display: grid; gap: 12px; }
+.lo-weeks { display: grid; gap: 10px; padding: 14px; border-radius: 20px; background: var(--paper); border: 1px solid var(--line); }
+.lo-weeks > header, .lo-card > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lo-weeks > header strong { display: block; font-size: 17px; }
+.lo-weeks > header small { font-size: 11px; color: var(--muted); }
+.lo-edit { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.lo-stats, .lo-mini { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lo-mini { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); }
+.lo-stats div, .lo-mini div { display: grid; gap: 1px; padding: 8px 10px; border-radius: 12px; background: var(--soft); }
+.lo-stats span, .lo-mini span { font-size: 11px; color: var(--muted); font-weight: 600; }
+.lo-stats b, .lo-mini b { font-family: var(--font-num); font-size: 16px; }
+.lo-weeks svg { display: block; cursor: pointer; }
+.lo-age { font-size: 6px; fill: var(--faint); font-family: var(--font-num); }
+.lo-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--muted); }
+.lo-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.lo-legend i.ring { border: 1.5px solid #1D9E75; background: transparent; }
+.lo-hint { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.lo-card { display: grid; gap: 10px; padding: 14px; border-radius: 20px; background: var(--paper); border: 1px solid var(--line); }
+.lo-card > header strong { font-size: 15px; }
+.lo-q { margin: 0; font-size: 13px; }
+.lo-q em { font-style: normal; color: var(--muted); }
+.lo-balance { display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; }
+.lo-hex { width: 140px; height: 130px; }
+.lo-hex-grid { fill: none; stroke: var(--line-strong); stroke-width: .8; }
+.lo-hex-past { fill: none; stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 3 3; }
+.lo-hex-now { fill: rgba(127, 119, 221, .28); stroke: #534AB7; stroke-width: 1.6; }
+.lo-hex-label { font-size: 9px; fill: var(--muted); font-weight: 700; }
+.lo-balance ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lo-balance li { display: grid; font-size: 12px; }
+.lo-balance li b { font-size: 12.5px; }
+.lo-balance li small { color: var(--muted); font-size: 11px; }
+.lo-values { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.lo-values li { display: grid; grid-template-columns: 74px 1fr 34px 28px; align-items: center; gap: 6px; font-size: 13px; }
+.lo-values i { display: block; height: 9px; border-radius: 99px; background: var(--soft); overflow: hidden; }
+.lo-values i b { display: block; height: 100%; background: #7F77DD; border-radius: inherit; }
+.lo-values small { font-family: var(--font-num); font-size: 12px; color: var(--muted); text-align: right; }
+.lo-values button { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--muted); cursor: pointer; }
+.lo-gap { margin: 0; font-size: 13px; font-weight: 700; color: #A32D2D; }
+.lo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lo-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.lo-list li b { font-family: var(--font-num); font-size: 12px; color: var(--muted); }
+.lo-list li small { grid-column: 2 / -1; color: var(--muted); font-size: 12px; }
+.lo-row-actions { display: flex; gap: 4px; }
+.lo-row-actions button { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--muted); cursor: pointer; }
+.lo-score-row { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; }
+.lo-score-row div { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.lo-score-row button { min-height: 40px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.lo-score-row button.active { background: #534AB7; border-color: #534AB7; color: #fff; }
+.lm-period { padding: 8px 4px; }
+.lm-period summary { font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.lo-now { font-size: 6px; font-weight: 800; fill: #D85A30; }

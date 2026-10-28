@@ -188,14 +188,14 @@ import { workDayKey } from "./dayline";
 import { tidyDiaryDuplicates } from "./diary";
 import { AppearancePanel } from "./AppearancePanel";
 import { Celebrate } from "./Celebrate";
-import { TodayEvents, TodayGlance, TodayHabits } from "./Glance";
+import { NowHabits, TodayEvents, TodayGlance, TodayHabits } from "./Glance";
 import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
 import { SearchSheet } from "./SearchSheet";
 import { dailyCarePick } from "./care";
 import { FirstStepSheet, shouldShowFirstStep } from "./Kickstart";
-import { TaskIdeasSheet } from "./TaskIdeas";
+import { TaskIdeasSheet, fetchTaskSteps } from "./TaskIdeas";
 import { linkMealsToReceipts } from "./meals";
 import { LifeMapPanel } from "./LifeMapPanel";
 import { isAreaMemo, isWishMemo } from "./wishes";
@@ -206,7 +206,7 @@ import { canListen, listenOnce, parseVoiceCommand } from "./voice-command";
 import { RoundBar, RoundBreakBanner, RoundEndPrompt, returnFromInterrupt, type StartOptions } from "./RoundPanel";
 import { nextRound, planSuggestions, usesRounds } from "./rounds";
 import { haptic, playStart } from "./feedback";
-import { fixLateRoutineDatesOnce, getRoutines, nextRoutineTask, saveRoutines } from "./routines";
+import { expandTaskSteps, fixLateRoutineDatesOnce, getRoutines, nextRoutineTask, parseRoutineSteps, routineStepsText, saveRoutines } from "./routines";
 import { isLedgerMemo } from "./meals";
 import { isDiaryMemo } from "./diary";
 import { QuickRecord } from "./QuickRecord";
@@ -814,6 +814,10 @@ function TaskEditor({
 }) {
   const [draft, setDraft] = useState(task);
   const [saving, setSaving] = useState(false);
+  // 手順（1行に1つ「箱を出す 5」）。始めるとルーティンと同じく1つずつ流れる。
+  const [stepsText, setStepsText] = useState(() => routineStepsText(task.steps || []));
+  const [stepsBusy, setStepsBusy] = useState(false);
+  const [stepsNote, setStepsNote] = useState("");
   const [addingActual, setAddingActual] = useState(false);
   const [actualRange, setActualRange] = useState(() =>
     defaultActualRange(task),
@@ -850,6 +854,7 @@ function TaskEditor({
         {
           title: draft.title.trim() || task.title,
           notes: draft.notes,
+          steps: parseRoutineSteps(stepsText),
           dueDate: draft.dueDate || null,
           dueTime: draft.dueDate ? draft.dueTime || null : null,
           counterparty: draft.counterparty || '',
@@ -946,6 +951,25 @@ function TaskEditor({
               }}
               rows={4}
             />
+          </label>
+          <label className="steps-field">
+            <span>手順（1行に1つ。始めると順番に流れる）</span>
+            <textarea value={stepsText} onChange={(e) => setStepsText(e.currentTarget.value)} rows={Math.max(3, stepsText.split("\n").length + 1)} placeholder={"箱を出す 5\n詰める 10\n伝票を貼る 3"} />
+            <span className="steps-actions">
+              <button type="button" className="ms-link" disabled={stepsBusy} onClick={async () => {
+                setStepsBusy(true);
+                setStepsNote("");
+                try {
+                  const steps = await fetchTaskSteps({ ...task, title: draft.title, notes: draft.notes });
+                  setStepsText(routineStepsText(steps));
+                } catch (e) {
+                  setStepsNote(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setStepsBusy(false);
+                }
+              }}>{stepsBusy ? "考えています…" : "✨ AIに手順を作ってもらう"}</button>
+              {stepsNote && <small>{stepsNote}</small>}
+            </span>
           </label>
           <details className="work-task-fields" open={Boolean(draft.voiceTranscript || draft.reminderEnabled || draft.dueDate)}>
             <summary>仕事の期限・相手・再通知</summary>
@@ -1685,6 +1709,7 @@ function TodayPage({
       </section>
       {/* 「次にやること」を先に、そのすぐ下に作業・使えるお金・ねこ・寝るまでの残り。 */}
       <TodayGlance />
+      <NowHabits onStart={onStart} />
       <TodayHabits />
 
       <section className="today-list">
@@ -4280,6 +4305,8 @@ function TimerDock({
       if (voice.enabled) speakVoice(`次は${next.title}、${minutes}分`, voice);
       return;
     }
+    // 手順を全部終えたら、元のタスクも完了。
+    if (task?.routine?.parentId) await completeTask(task.routine.parentId, true).catch(() => undefined);
     // ルーティンを最後までやったら、習慣のカレンダーに自動で✓。
     if (task?.routine) checkRoutineHabit(task.routine.name, workDayKey(Date.now())).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
     onClose();
@@ -4852,9 +4879,14 @@ function App() {
         sessionStorage.setItem(`memo-notified-${memo.id}`, "1");
       });
   }, [memos]);
-  const startTimer = async (task: Task, opts: StartOptions = {}) => {
+  const startTimer = async (task: Task, opts: StartOptions = {}): Promise<void> => {
     // 寄り道・割り込みの記録は自分で始めるものではない（自動の記録専用）。
     if (task.log && !opts.interrupt) return;
+    // 手順つきのタスクは、手順を1つずつ流す（ルーティンと同じ）。
+    if (task.steps?.length && !task.routine && !opts.interrupt) {
+      const first = await expandTaskSteps(task);
+      if (first) return startTimer(first, opts);
+    }
     haptic("start");
     companionStart();
     playStart();
