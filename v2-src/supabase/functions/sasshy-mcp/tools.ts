@@ -19,6 +19,7 @@ export const SERVER_INSTRUCTIONS = [
   '食事以外にお金を使った話（買い物・交通費・日用品など）が出たら record_expenses で記録します。食事の代金は record_meals の price に入れ、支出には重ねて入れません。',
   'レシートなどで何を買ったか分かるときは、record_expenses の item をお店の名前にし、items に品名（と値段）を入れてください。',
   '人の分を立て替えて払ったもの（あとで返してもらうお金）は、record_expenses の advance_for にだれの分か（例：景司さん、母）を入れます。自分の分と人の分が混ざるときは2件に分けます。',
+  '立て替えたお金が返ってきたら、list_advances で memo_id を確かめてから mark_advance_repaid で「返ってきた」にします。一部だけ返ってきたときは、どれが返ってきたか本人に聞いてください。',
 ].join('\n');
 
 const dateProp = { type: 'string', description: 'YYYY-MM-DD（日本時間）' };
@@ -237,5 +238,31 @@ export const TOOLS = [
       additionalProperties: false,
     },
     annotations: { title: '支出を見る', readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'list_advances',
+    title: 'SASSHYの立て替え中を見る',
+    description: 'まだ返ってきていない立て替え（人の分を払ったお金）を、だれの分か・金額つきで見ます。返ってきた分も見るときは include_repaid を true に。',
+    inputSchema: {
+      type: 'object',
+      properties: { include_repaid: { type: 'boolean', description: '返ってきた分も含める（省略で false）' } },
+      additionalProperties: false,
+    },
+    annotations: { title: '立て替えを見る', readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'mark_advance_repaid',
+    title: '立て替えを「返ってきた」にする',
+    description: '立て替えたお金が返ってきたときに使います。memo_id は list_advances から。間違えたときは repaid を false にすると「まだ」に戻ります。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        memo_ids: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string' } },
+        repaid: { type: 'boolean', description: '省略で true（返ってきた）。false で「まだ」に戻す' },
+      },
+      required: ['memo_ids'],
+      additionalProperties: false,
+    },
+    annotations: { title: '返ってきたにする', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ];

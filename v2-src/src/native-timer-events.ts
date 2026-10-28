@@ -17,7 +17,7 @@ import type { FocusSession } from './types';
  */
 export interface NativeTimerEvent {
   id: string;
-  type: 'stopped' | 'extended' | 'routine' | 'detour';
+  type: 'stopped' | 'extended' | 'routine' | 'detour' | 'finished';
   taskId: string; // the session id sent with notifyNativeAlarm
   at: string;
   seconds?: number;
@@ -64,6 +64,11 @@ export async function applyNativeTimerEvent(event: NativeTimerEvent, now = Date.
   applied.add(event.id);
   if (!session || session.deletedAt || (session.status !== 'running' && session.status !== 'paused')) return;
   const at = Math.min(now, Math.max(new Date(session.startedAt).getTime(), Date.parse(event.at) || now));
+  if (event.type === 'finished') {
+    // Siriで「終わった」：画面の「完了」と同じ流れ（ルーティンなら次へ）はアプリ側でする。
+    window.dispatchEvent(new CustomEvent('sasshy-native-finish', { detail: session.id }));
+    return;
+  }
   if (event.type === 'stopped') {
     if (session.status !== 'running') return;
     if (at >= plannedEndMs(session) - 5_000) return;

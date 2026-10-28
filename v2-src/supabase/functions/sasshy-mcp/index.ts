@@ -100,6 +100,22 @@ async function callTool(client: any, syncKey: string, name: string, args: Record
     if (error) throw error;
     return text(data);
   }
+  if (name === 'list_advances') {
+    const { data, error } = await client.rpc('sasshy_v2_action_list_advances', { p_sync_key: syncKey, p_include_repaid: args.include_repaid === true });
+    if (error) throw error;
+    return text(data);
+  }
+  if (name === 'mark_advance_repaid') {
+    const ids = Array.isArray(args.memo_ids) ? args.memo_ids.filter((x): x is string => typeof x === 'string' && /^memo-[A-Za-z0-9._:-]{1,190}$/.test(x)).slice(0, 20) : [];
+    if (!ids.length) return text('memo_ids を list_advances で確かめてください', true);
+    const repaid = args.repaid !== false;
+    const { data, error } = await client.rpc('sasshy_v2_action_set_advance_repaid', { p_sync_key: syncKey, p_memo_ids: ids, p_repaid: repaid });
+    if (error) throw error;
+    const updated = Array.isArray(data?.updated) ? data.updated : [];
+    // deno-lint-ignore no-explicit-any
+    const total = updated.reduce((sum: number, u: any) => sum + (Number(u.amount) || 0), 0);
+    return text({ ...data, message: updated.length ? `${updated.length}件（計¥${total.toLocaleString('ja-JP')}）を${repaid ? '「返ってきた」' : '「まだ」'}にしました` : '該当する立て替えが見つかりませんでした' });
+  }
   if (name === 'list_meals') {
     const input = parseMealSearchRequest({ from_date: args.from_date, to_date: args.to_date, missing_nutrition: args.missing_nutrition ?? false, limit: 50 });
     const { data, error } = await client.rpc('sasshy_v2_action_search_meals', { p_sync_key: syncKey, ...input });

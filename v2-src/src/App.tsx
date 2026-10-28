@@ -4080,6 +4080,38 @@ async function discardRunning(taskId: string): Promise<void> {
   for (const s of open) await discardFocusSession(s.id);
 }
 
+/**
+ * 完了：記録を閉じてタスクを完了にし、ルーティンなら次のステップを始める。
+ * 画面の「完了」と、Siriの「SASSHYで終わった」で同じ流れにする。次を始めたら true。
+ */
+async function completeAndContinue(session: FocusSession, task: Task | undefined, voice: VoiceConfig): Promise<boolean> {
+  await updateSession(
+    session.id,
+    {
+      status: "completed",
+      endedAt: new Date().toISOString(),
+      pausedAt: null,
+    },
+    "作業を完了",
+  );
+  if (task) await completeTask(task.id, true);
+  syncNow().catch(() => undefined);
+  announceCompletion().catch(() => undefined);
+  // ルーティンなら、完了したらそのまま次のステップを始める（夜ルーティンで効いた流れ）。
+  const next = await nextRoutineTask(task);
+  if (next) {
+    const minutes = usualMinutes(next, await db.sessions.toArray()).minutes;
+    await startFocusSession(next, minutes);
+    if (voice.enabled) speakVoice(`次は${next.title}、${minutes}分`, voice);
+    return true;
+  }
+  // 手順を全部終えたら、元のタスクも完了。
+  if (task?.routine?.parentId) await completeTask(task.routine.parentId, true).catch(() => undefined);
+  // ルーティンを最後までやったら、習慣のカレンダーに自動で✓。
+  if (task?.routine) checkRoutineHabit(task.routine.name, workDayKey(Date.now())).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
+  return false;
+}
+
 function TimerDock({
   session,
   task,
@@ -4296,30 +4328,8 @@ function TimerDock({
       onClose();
       return;
     }
-    await updateSession(
-      session.id,
-      {
-        status: "completed",
-        endedAt: new Date().toISOString(),
-        pausedAt: null,
-      },
-      "作業を完了",
-    );
-    if (task) await completeTask(task.id, true);
-    syncNow().catch(() => undefined);
-    announceCompletion().catch(() => undefined);
-    // ルーティンなら、完了したらそのまま次のステップを始める（夜ルーティンで効いた流れ）。
-    const next = await nextRoutineTask(task);
-    if (next) {
-      const minutes = usualMinutes(next, await db.sessions.toArray()).minutes;
-      await startFocusSession(next, minutes);
-      if (voice.enabled) speakVoice(`次は${next.title}、${minutes}分`, voice);
-      return;
-    }
-    // 手順を全部終えたら、元のタスクも完了。
-    if (task?.routine?.parentId) await completeTask(task.routine.parentId, true).catch(() => undefined);
-    // ルーティンを最後までやったら、習慣のカレンダーに自動で✓。
-    if (task?.routine) checkRoutineHabit(task.routine.name, workDayKey(Date.now())).then(() => syncNow().catch(() => undefined)).catch(() => undefined);
+    const next = await completeAndContinue(session, task, voice);
+    if (next) return;
     onClose();
   };
   // ルーティンの今のステップを「今日はやらない」で飛ばして、次のステップへ（消さずに外すだけ）。
@@ -4835,6 +4845,23 @@ function App() {
     const open = () => setTimerVisible(true);
     window.addEventListener("sasshy-open-timer", open);
     return () => window.removeEventListener("sasshy-open-timer", open);
+  }, []);
+  // Siriで「SASSHYで終わった」：画面の「完了」と同じ（ルーティンなら次のステップへ）。
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  useEffect(() => {
+    const done = async (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      const live = id ? await db.sessions.get(id) : undefined;
+      if (!live || live.deletedAt || (live.status !== "running" && live.status !== "paused")) return;
+      const task = await db.tasks.get(live.taskId);
+      const config = voiceRef.current;
+      const next = await completeAndContinue(live, task, config ? { ...config } : ({ enabled: false } as VoiceConfig));
+      toast(`「${live.taskTitle}」を完了にしました`);
+      if (next) setTimerVisible(true);
+    };
+    window.addEventListener("sasshy-native-finish", done);
+    return () => window.removeEventListener("sasshy-native-finish", done);
   }, []);
   useEffect(() => subscribeSync(setSyncState), []);
   useEffect(() => {
