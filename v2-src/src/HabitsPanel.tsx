@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Check, MoreHorizontal, Plus } from "lucide-react";
 import { db } from "./db";
-import { archiveHabit, countIn, createHabit, habits, renameHabit, setHabitDay } from "./habits";
+import { archiveHabit, countIn, createHabit, deleteHabit, habits, renameHabit, setHabitDay } from "./habits";
 import { getRoutines, saveRoutines } from "./routines";
 import { localDateKey } from "./meals";
 import { syncNow } from "./sync";
@@ -19,6 +19,8 @@ export function HabitsPanel() {
   const routines = useLiveQuery(async () => { await db.settings.get("routines"); return getRoutines(); }, [], []) || [];
   const [stepOf, setStepOf] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [armed, setArmed] = useState<string | null>(null);
   // 週の表（0 = 今週, -1 = 先週…）と、名前を押して開いた習慣。
   const [week, setWeek] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
@@ -47,11 +49,43 @@ export function HabitsPanel() {
   return (
     <div className="habits">
       <section className="hb-today">
-        <header>
+        <header className="hb-head">
           <h2>今日の習慣</h2>
-          <small>押すと✓。続かなくても大丈夫、数えるのは「今月◯回」だけ</small>
+          {list.length > 0 && (
+            <button type="button" className={`hb-edit-toggle${editMode ? " on" : ""}`} onClick={() => { setEditMode(!editMode); setArmed(null); }}>
+              {editMode ? "完了" : "編集"}
+            </button>
+          )}
+          <small>{editMode && list.length > 0 ? "名前を直す・しまう（記録は残る）・消す" : "押すと✓。続かなくても大丈夫、数えるのは「今月◯回」だけ"}</small>
         </header>
         {list.length === 0 && <p className="hb-empty">まだ習慣がありません。下から足してください。</p>}
+        {editMode && (
+          <div className="hb-edit-list">
+            {list.map((h) => (
+              <div key={h.id} className="hb-edit-row">
+                <input
+                  defaultValue={h.habit!.name}
+                  aria-label={`${h.habit!.name}の名前`}
+                  maxLength={40}
+                  onBlur={async (e) => {
+                    const name = e.currentTarget.value.trim();
+                    if (name && name !== h.habit!.name) { await renameHabit(h, name); syncNow().catch(() => undefined); }
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                />
+                <button type="button" onClick={async () => { await archiveHabit(h); syncNow().catch(() => undefined); }}>しまう</button>
+                {/* 確認ダイアログに頼らず、2回押しで消す。 */}
+                <button type="button" className={`danger${armed === h.id ? " armed" : ""}`} onClick={async () => {
+                  if (armed !== h.id) { setArmed(h.id); window.setTimeout(() => setArmed((v) => (v === h.id ? null : v)), 3000); return; }
+                  setArmed(null);
+                  await deleteHabit(h);
+                  syncNow().catch(() => undefined);
+                }}>{armed === h.id ? "もう一度" : "消す"}</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!editMode && (
         <div className="hb-checks">
           {list.map((h) => {
             const done = h.habit!.days.includes(today);
@@ -64,6 +98,7 @@ export function HabitsPanel() {
             );
           })}
         </div>
+        )}
         <form className="wish-add" onSubmit={async (e) => {
           e.preventDefault();
           const typed = String(new FormData(e.currentTarget).get("habit") || "").trim();
@@ -150,8 +185,8 @@ export function HabitsPanel() {
           </header>
           {menu === openHabit.id && (
             <div className="hb-menu">
-              <button type="button" onClick={async () => { const name = window.prompt("新しい名前", openHabit.habit!.name); if (name) { await renameHabit(openHabit, name); syncNow().catch(() => undefined); } setMenu(null); }}>名前を変える</button>
-              <button type="button" className="danger" onClick={async () => { if (window.confirm(`「${openHabit.habit!.name}」をしまいますか？（記録は残ります）`)) { await archiveHabit(openHabit); syncNow().catch(() => undefined); setOpen(null); } setMenu(null); }}>しまう</button>
+              <button type="button" onClick={() => { setEditMode(true); setMenu(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>名前を変える・消す</button>
+              <button type="button" className="danger" onClick={async () => { await archiveHabit(openHabit); syncNow().catch(() => undefined); setOpen(null); setMenu(null); }}>しまう</button>
             </div>
           )}
           <div className="dm-nav hb-nav">

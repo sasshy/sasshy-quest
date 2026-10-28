@@ -44,6 +44,11 @@ export async function archiveHabit(memo: Memo): Promise<Memo | null> {
   return updateMemo(memo.id, { archived: true }, `習慣「${memo.habit!.name}」をしまう`);
 }
 
+/** 消す（同期で他の端末からも消える）。記録ごと要らないとき用。 */
+export async function deleteHabit(memo: Memo): Promise<Memo | null> {
+  return updateMemo(memo.id, { deletedAt: new Date().toISOString() }, `習慣「${memo.habit!.name}」を消す`);
+}
+
 export const countIn = (memo: Memo, prefix: string) => memo.habit!.days.filter((d) => d.startsWith(prefix)).length;
 
 /**
