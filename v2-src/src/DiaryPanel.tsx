@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Annoyed, Frown, Laugh, Meh, NotebookPen, Smile, type LucideIcon } from "lucide-react";
 import { db } from "./db";
 import { MOOD_LABEL, diaryEntries, diaryOn, diaryPrompt, saveDiary } from "./diary";
@@ -27,7 +28,7 @@ export function openDiaryList(): void {
 
 /** Mood + one line for any day. Writing nothing is fine. */
 export function DiaryEditor({ date, compact = false }: { date: string; compact?: boolean }) {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const entry = diaryOn(memos, date);
   const [text, setText] = useState("");
   const [editing, setEditing] = useState(false);
@@ -118,7 +119,7 @@ export function DiaryCard() {
 
 /** 記録 › 日記: a month of moods; tap a day to read or write it. */
 export function DiaryMonth() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const today = localDateKey(Date.now());
   const [month, setMonth] = useState(() => today.slice(0, 7));
   const [selected, setSelected] = useState(today);

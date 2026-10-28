@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { CalendarDays, Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { emptyGoogleCalendar, getGoogleCalendarConfig } from "./google-calendar";
 import { DEFAULT_APPEARANCE, getAppearance } from "./appearance";
@@ -36,8 +37,8 @@ export function TodayGlance() {
     await db.settings.get("timeLeft");
     return getTimeLeft();
   }, [], DEFAULT_TIME_LEFT) || DEFAULT_TIME_LEFT;
-  const { setting: budget, status, shopping } = useBudget();
-  const money = useCountTo(status.todayLeft);
+  const { ready: moneyReady, setting: budget, status, shopping } = useBudget();
+  const money = useCountTo(status.todayLeft, moneyReady);
   const now = useNow();
   const [shelf, setShelf] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
@@ -64,7 +65,14 @@ export function TodayGlance() {
           <small>完了{p.doneToday}件</small>
           <small>目標{minutesText(goal)}</small>
         </button>
-        {budget.enabled && (
+        {budget.enabled && !moneyReady && (
+          <div className="glance-tile money" aria-label="今日あと使えるお金を読み込み中">
+            <span className="glance-label">今日あと使える</span>
+            <strong className="glance-num glance-wait">…</strong>
+            <small>読み込み中</small>
+          </div>
+        )}
+        {budget.enabled && moneyReady && (
           <button type="button" className={`glance-tile money${over ? " over" : ""}`} onClick={() => setBudgetOpen(true)} aria-label="今日あと使えるお金。予算を開く">
             {/* 超えたときは「目安いくらに対して、いくら超えたか」を見出しと数字で出す。 */}
             <span className="glance-label">{over ? `今日の目安 ${yen(status.todayAllowance)}` : "今日あと使える"}</span>
@@ -127,7 +135,7 @@ export function TodayGlance() {
  * 増えても縦に伸びすぎないよう、まだのものは最大4つ＋「ほか◯」。
  */
 export function TodayHabits() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const [all, setAll] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const list = habits(memos);
@@ -240,7 +248,7 @@ export function TodayEvents() {
  * 「次はこれ」（仕事）には入れない。✓か「2分だけ」で始められる。
  */
 export function NowHabits({ onStart }: { onStart: (task: Task, opts: { starter?: boolean }) => void }) {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const now = useNow(60_000);
   const today = localDateKey(now.getTime());
   const due = habits(memos).filter((h) => h.habit!.when && !h.habit!.rule && inWindow(h.habit!.when, now) && !h.habit!.days.includes(today));

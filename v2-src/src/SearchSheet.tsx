@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Search, X } from "lucide-react";
 import { db } from "./db";
 import { searchAll, type Hit, type HitKind } from "./search";
@@ -22,7 +23,7 @@ const md = (key: string) => `${Number(key.slice(5, 7))}/${Number(key.slice(8, 10
 
 export function SearchSheet({ onClose, onEditTask }: { onClose: () => void; onEditTask: (task: Task) => void }) {
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<HitKind | "all">("all");
   const [record, setRecord] = useState<Memo | null>(null);

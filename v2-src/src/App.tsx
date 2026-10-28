@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -4706,7 +4707,7 @@ function App() {
   // Unsent edits must be visible at a glance (they piled up unnoticed before).
   const pendingCount = useLiveQuery(() => db.outbox.count(), [], 0) || 0;
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
   const history =
     useLiveQuery(

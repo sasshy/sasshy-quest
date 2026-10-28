@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { db } from "./db";
 import { syncNow } from "./sync";
@@ -38,7 +39,7 @@ const shiftMonth = (month: string, n: number) => {
 const KIND_LABEL: Record<LifeEntry["kind"], string> = { chapter: "章（期間）", event: "出来事", milestone: "これからの目印" };
 
 export function LifeOverview({ birthday }: { birthday: string }) {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
   const [yearOpen, setYearOpen] = useState<number | null>(null);

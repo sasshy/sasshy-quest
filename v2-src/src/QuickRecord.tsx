@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Check, ListChecks, NotebookPen, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import { MealSheet } from "./MealPanel";
@@ -16,7 +17,7 @@ type Sheet = "meal" | "expense" | "habit" | "diary" | null;
 
 /** Today: one row of four — 食事・支出・習慣・日記 — with what is already recorded today. */
 export function QuickRecord() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const [sheet, setSheet] = useState<Sheet>(null);
   const today = localDateKey(Date.now());
   const meals = mealsOn(memos, today).length;
@@ -68,7 +69,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function HabitSheet({ onClose }: { onClose: () => void }) {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const today = localDateKey(Date.now());
   const list = habits(memos);
   return (

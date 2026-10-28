@@ -1522,3 +1522,7 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .lm-period { padding: 8px 4px; }
 .lm-period summary { font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .lo-now { font-size: 6px; font-weight: 800; fill: #D85A30; }
+
+/* 記録の読み込み中：数字の代わりに出す（空のまま ¥0 を出さない） */
+.money-loading { padding: 24px 16px; text-align: center; color: var(--muted, #888); font-size: 14px; }
+.glance-num.glance-wait { opacity: .45; letter-spacing: .1em; }

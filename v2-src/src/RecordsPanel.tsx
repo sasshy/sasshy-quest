@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { kickRepaint } from "./repaint";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { db } from "./db";
 import { DiaryMonth, peekDiaryRequest, takeDiaryRequest } from "./DiaryPanel";
 import { RecordEditSheet } from "./RecordEditSheet";
@@ -138,7 +139,7 @@ function BarChart({
 }
 
 export function RecordsPanel() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   // 夜中4時までは前の日（夜にやった分はその夜の記録）。

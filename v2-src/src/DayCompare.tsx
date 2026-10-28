@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { X } from "lucide-react";
 import { db } from "./db";
 import { completeTask, createTask, recordPastSession } from "./store";
@@ -113,7 +114,7 @@ async function fillGap(date: string, gap: Block, label: string, log: "interrupt"
 export function DayCompare({ date }: { date: string }) {
   const tasks = useLiveQuery(() => db.tasks.toArray(), [], []) || [];
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], []) || [];
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const [filling, setFilling] = useState<Block | null>(null);
   const now = Date.now();
 

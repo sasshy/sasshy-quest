@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { budgetPeriod, expenseBucket, BUCKET_LABEL, type BudgetSetting } from "./budget";
+import { budgetPeriod, budgetStatus, expenseBucket, BUCKET_LABEL, type BudgetSetting } from "./budget";
 import { CATEGORY_COLORS as COLORS, amountOf, spendCategory, type SpendCategory } from "./money";
 import { expenseDetail, expensesOn, localDateKey, mealsOn, shiftDateKey } from "./meals";
 import { RecordEditSheet } from "./RecordEditSheet";
@@ -115,7 +115,7 @@ export function MoneyWeek({ memos, setting }: { memos: Memo[]; setting: BudgetSe
             );
           })}
         </div>
-        <p className="mw-note">点線＝1日の目安 {yen(target)}（毎日のお金で数える分）。超えた日はオレンジ</p>
+        <p className="mw-note">点線＝1日平均の目安 {yen(target)}（毎日のお金で数える分）。超えた日はオレンジ</p>
         {past.length > 0 && (
           <p className="mw-verdict">
             {/* 週の評価は一行だけ。責めずに、気づきを1つ。 */}
@@ -173,16 +173,21 @@ export function MoneyWeek({ memos, setting }: { memos: Memo[]; setting: BudgetSe
  */
 export function MoneyDay({ memos, setting }: { memos: Memo[]; setting: BudgetSetting }) {
   const today = localDateKey(Date.now());
-  const [date, setDate] = useState(today);
+  // 選んでいないときは「今日」。開いたまま日付が変わっても、古い日に取り残されない。
+  const [picked, setPicked] = useState<string | null>(null);
+  const date = picked && picked < today ? picked : today;
   const [editing, setEditing] = useState<Memo | null>(null);
   const touch = useRef<number | null>(null);
   const d = dayOf(memos, date);
   const period = budgetPeriod(today, setting.startDay);
-  const target = Math.round(setting.amount / Math.max(1, period.days));
+  // 今日は、今日の画面と同じ「今日の目安」（残りを残りの日数で割ったもの）。過ぎた日は1日平均。
+  const isToday = date === today;
+  const target = isToday ? budgetStatus(memos, setting, today).todayAllowance : Math.round(setting.amount / Math.max(1, period.days));
+  const targetLabel = isToday ? "今日の目安" : "1日平均の目安";
   const go = (n: number) => {
     const next = shiftDateKey(date, n);
     if (next > today) return;
-    setDate(next);
+    setPicked(next >= today ? null : next);
   };
   const maxCat = Math.max(1, ...d.cats.map((c) => c.amount));
   return (
@@ -205,7 +210,7 @@ export function MoneyDay({ memos, setting }: { memos: Memo[]; setting: BudgetSet
         <div className="md-total">
           <span>この日に使ったお金</span>
           <strong className={d.daily > target ? "over" : ""}>{yen(d.total)}</strong>
-          <small>毎日のお金で数える分 {yen(d.daily)}（目安 {yen(target)}{d.daily > target ? `・${yen(d.daily - target)}オーバー` : ""}）</small>
+          <small>毎日のお金で数える分 {yen(d.daily)}（{targetLabel} {yen(target)}{d.daily > target ? `・${yen(d.daily - target)}オーバー` : ""}）</small>
         </div>
         {d.cats.length > 0 && (
           <ul className="md-cats">

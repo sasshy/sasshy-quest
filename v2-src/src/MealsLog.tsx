@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Download } from "lucide-react";
 import { db } from "./db";
 import { MEAL_LABEL, PAYMENT_LABEL, isMealMemo, localDateKey, mealsOn, paidAmount } from "./meals";
@@ -64,7 +65,7 @@ async function exportCsv(memos: Memo[]): Promise<string> {
 }
 
 export function MealsLog() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const today = localDateKey(Date.now());
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);

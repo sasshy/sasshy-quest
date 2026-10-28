@@ -11,6 +11,8 @@ import { BudgetSheet } from "./BudgetPanel";
 import { syncNow } from "./sync";
 import { MoneyDay, MoneyWeek } from "./MoneyWeek";
 import { AdvanceCard } from "./Advances";
+import { useBudgetSetting, useMemos } from "./live";
+import type { BudgetSetting } from "./budget";
 import type { Memo } from "./types";
 
 /**
@@ -81,11 +83,14 @@ async function shareCsv(text: string, name: string): Promise<string> {
 }
 
 export function MoneyPanel() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
-  const setting = useLiveQuery(async () => {
-    await db.settings.get("budget");
-    return getBudget();
-  }, [], DEFAULT_BUDGET) || DEFAULT_BUDGET;
+  const memos = useMemos();
+  const setting = useBudgetSetting();
+  // 読み込み終わるまで数字を出さない（空のまま出すと ¥0 に見える）。
+  if (!memos || !setting) return <p className="money-loading">記録を読み込み中…</p>;
+  return <MoneyPanelBody memos={memos} setting={setting} />;
+}
+
+function MoneyPanelBody({ memos, setting }: { memos: Memo[]; setting: BudgetSetting }) {
   const today = localDateKey(Date.now());
   const [offset, setOffset] = useState(0);
   // 最初は「日ごと」（週ごとの棒と1日ずつの明細）。円グラフや収支は「月のまとめ」。

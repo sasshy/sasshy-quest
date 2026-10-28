@@ -16,6 +16,7 @@ import {
 import { localDateKey } from "./meals";
 import { isIncomeMemo } from "./money";
 import { syncNow } from "./sync";
+import { useBudgetSetting, useMemos } from "./live";
 
 const yen = (value: number) => `${value < 0 ? "−" : ""}¥${Math.abs(Math.round(value)).toLocaleString("ja-JP")}`;
 const md = (key: string) => {
@@ -24,44 +25,55 @@ const md = (key: string) => {
 };
 
 export function useBudget() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
-  const setting = useLiveQuery(async () => {
-    await db.settings.get("budget");
-    return getBudget();
-  }, [], DEFAULT_BUDGET) || DEFAULT_BUDGET;
+  const loadedMemos = useMemos();
+  const loadedSetting = useBudgetSetting();
+  // 読み込み前に空のまま計算すると「使った ¥0」が出る。ready が false の間は数字を出さない。
+  const ready = Boolean(loadedMemos && loadedSetting);
+  const memos = loadedMemos || [];
+  const setting = loadedSetting || DEFAULT_BUDGET;
   const today = localDateKey(Date.now());
-  return { memos, setting, status: budgetStatus(memos, setting, today), shopping: shoppingStatus(memos, setting, today) };
+  return { ready, memos, setting, status: budgetStatus(memos, setting, today), shopping: shoppingStatus(memos, setting, today) };
 }
 
 /** Counts to the new value (e.g. after recording a spend), so the change is felt. */
-export function useCountTo(target: number): number {
+export function useCountTo(target: number, ready = true): number {
   const [value, setValue] = useState(target);
-  const from = useRef(target);
+  // いま画面に出ている値。途中で目標が変わっても、そこから続けて動かす。
+  const shownRef = useRef(target);
+  const wasReady = useRef(ready);
   useEffect(() => {
-    const start = from.current;
+    // 読み込み前と、読み込めた最初の1回は動かさずにそのまま出す（¥0 から数え直して見えないように）。
+    if (!ready || !wasReady.current) {
+      wasReady.current = ready;
+      shownRef.current = target;
+      setValue(target);
+      return;
+    }
+    const start = shownRef.current;
     if (start === target) return;
     const began = performance.now();
     let frame = 0;
     const step = (now: number) => {
       const t = Math.min(1, (now - began) / 700);
       const eased = 1 - (1 - t) ** 3;
-      setValue(Math.round(start + (target - start) * eased));
+      const next = Math.round(start + (target - start) * eased);
+      shownRef.current = next;
+      setValue(next);
       if (t < 1) frame = requestAnimationFrame(step);
-      else from.current = target;
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [target]);
+  }, [target, ready]);
   return value;
 }
 
 /** Today: how much is left to spend today (the reason to open before buying). */
 export function BudgetCard() {
-  const { setting, status, shopping } = useBudget();
+  const { ready, setting, status, shopping } = useBudget();
   const [open, setOpen] = useState(false);
   // フックは必ず毎回同じ順で呼ぶ（表示OFFで先に return すると画面ごと落ちる）。
-  const shown = useCountTo(status.todayLeft);
-  if (!setting.enabled) return null;
+  const shown = useCountTo(status.todayLeft, ready);
+  if (!ready || !setting.enabled) return null;
   const over = status.todayLeft < 0;
   return (
     <>

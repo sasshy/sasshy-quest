@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Check, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
 import { db } from "./db";
 import { createTask } from "./store";
@@ -172,7 +173,7 @@ function AreaSheet({ areaKey, memos, onClose }: { areaKey: AreaKey; memos: Memo[
 
 /** 地図: life in weeks, the (up to 3) pinned wishes, the full wish list, and 6 life areas. */
 export function LifeMapPanel() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const setting = useLiveQuery(async () => { await db.settings.get("timeLeft"); return getTimeLeft(); }, [], DEFAULT_TIME_LEFT) || DEFAULT_TIME_LEFT;
   const now = new Date();
   const age = ageOn(setting.birthday, now) ?? 0;

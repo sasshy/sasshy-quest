@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Bell, BellOff, ChevronLeft, ChevronRight, ClipboardCopy, ClipboardPaste, Home, Sparkles, Utensils, Wallet, X } from "lucide-react";
 import { db } from "./db";
 import {
@@ -76,7 +77,7 @@ async function copyText(text: string): Promise<boolean> {
 
 /** Today strip: what was eaten today and a one-tap entry to record. */
 export function MealQuickBar() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const [open, setOpen] = useState(false);
   const today = localDateKey(Date.now());
   const meals = mealsOn(memos, today);
@@ -127,7 +128,7 @@ export function MealQuickBar() {
 }
 
 export function MealSheet({ onClose, initialTab = "meal" }: { onClose: () => void; initialTab?: "meal" | "expense" }) {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const reminder = useLiveQuery(() => getMealReminder(), [], DEFAULT_MEAL_REMINDER) || DEFAULT_MEAL_REMINDER;
   const [kind, setKind] = useState<MealKind>(() => suggestKind());
   const [when, setWhen] = useState(""); // datetime-local value; empty = now

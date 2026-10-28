@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useMemos } from "./live";
 import { Check, MoreHorizontal, Plus } from "lucide-react";
 import { db } from "./db";
 import { WHEN_LABEL, setHabitWhen, archiveHabit, archivedHabits, countIn, createHabit, deleteHabit, habits, renameHabit, restoreHabit, setHabitDay } from "./habits";
@@ -12,7 +13,7 @@ import type { HabitWhen, Memo } from "./types";
 
 /** 記録 › 習慣: tap ✓ for today, a week table of every habit, one habit's month on demand. */
 export function HabitsPanel() {
-  const memos = useLiveQuery(() => db.memos.toArray(), [], []) || [];
+  const memos = useMemos() || [];
   const list = habits(memos);
   const shelved = archivedHabits(memos);
   const today = localDateKey(Date.now());
