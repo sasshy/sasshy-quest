@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { Play, ZoomIn, ZoomOut } from "lucide-react";
 import { byFlow, dayTasksFor, isFixed, planDay } from "./MobilePlanner";
 import { shiftDateKey } from "./meals";
-import { completeTaskFromActual, createManualFocusSession, updateSession, updateTask } from "./store";
+import { completeTask, completeTaskFromActual, createManualFocusSession, discardFocusSession, recordPastSession, updateSession, updateTask } from "./store";
 import { syncNow } from "./sync";
 import { haptic } from "./feedback";
 import { localDateKey } from "./work-start";
@@ -25,7 +26,7 @@ const FROM = 6 * 60;
 // 夜中3時まで見せる（0時過ぎの夜ルーティンや完了も、その夜の列に出る）。
 const TO = 27 * 60;
 // 1分あたりの高さ（px）。細かいタスクが見えるよう、拡大縮小できる。
-const ZOOMS = [1, 1.6, 2.4, 3.4];
+const ZOOMS = [1, 1.6, 2.4, 3.4, 5, 7];
 const loadZoom = () => {
   try { const v = Number(localStorage.getItem("sasshy-grid-zoom")); return ZOOMS.includes(v) ? v : 1.6; } catch { return 1.6; }
 };
@@ -81,6 +82,7 @@ export function TimeGrid({
     return () => window.clearInterval(t);
   }, []);
   const [PX, setPX] = useState(loadZoom);
+  const [fixing, setFixing] = useState<{ task: Task; session?: FocusSession; date: string; start: number; len: number } | null>(null);
   const zoom = (dir: 1 | -1) => {
     const i = Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(PX) + dir));
     const el = scrollRef.current;
@@ -155,7 +157,7 @@ export function TimeGrid({
   const hourPx = Array.from({ length: (TO - FROM) / 60 }, (_, i) => {
     const h0 = FROM + i * 60;
     let need = 60 * PX;
-    for (const c of columns) for (const p of c.placed) {
+    for (const c of columns) for (const p of [...c.placed, ...c.actual]) {
       if (p.end <= h0 || p.start >= h0 + 60) continue;
       const d = Math.max(1, p.end - p.start);
       if (d < 60) need = Math.max(need, (MIN_BLOCK * 60) / d);
@@ -549,7 +551,7 @@ export function TimeGrid({
                     style={{ top: top(start), height: Math.max(22, top(endMin) - top(start) - 2) }}
                     onPointerDown={(e) => begin(e, p, "move")}
                   >
-                    <button type="button" className="tg-title" onClick={() => { if (!dragRef.current?.active) onOpen(p.task); }}>
+                    <button type="button" className="tg-title" onClick={() => { if (!dragRef.current?.active) setFixing({ task: p.task, session: p.session, date: c.date, start: p.start, len: Math.max(1, Math.round((Date.parse(p.session!.endedAt!) - Date.parse(p.session!.startedAt)) / 60_000)) }); }}>
                       <strong>✓ {p.task.title}</strong>
                       <small>{hm(start)}〜{hm(live ? endMin : minuteOf(p.session!.endedAt!))}</small>
                     </button>
@@ -563,7 +565,7 @@ export function TimeGrid({
                   type="button"
                   className={`tg-block done checked${top(k.end) - top(k.start) < 34 ? " short" : ""}${c.placed.some((pl) => pl.start < k.end && pl.end > k.start) ? " beside" : ""}`}
                   style={{ top: top(k.start), height: Math.max(22, top(k.end) - top(k.start) - 2) }}
-                  onClick={() => onOpen(k.task)}
+                  onClick={() => setFixing({ task: k.task, date: c.date, start: Math.max(FROM, k.end - Math.max(5, k.task.estimateMin || 15)), len: Math.max(5, k.task.estimateMin || 15) })}
                 >
                   <span className="tg-title"><strong>✓ {k.task.title}</strong><small>{hm(minuteFrom(c.date, k.task.completedAt!))} 完了</small></span>
                 </button>
@@ -632,11 +634,70 @@ export function TimeGrid({
           ))}
         </div>
       </div>
-      <p className="tg-hint">長押しで移動・下の端で長さ・上の棚から置ける（過ぎた時間に置くと「やった」）</p>
+      {drag?.active && drag.kind === "resize" && <div className="tg-resize-badge" role="status">{hm(drag.start)}〜{hm(drag.end)}・{drag.end - drag.start}分</div>}
+      <p className="tg-hint">長押しで移動・下の端で長さ・✓を押すと時間を直せる・上の棚から置ける</p>
+      {fixing && <DoneFixSheet fix={fixing} onClose={() => setFixing(null)} onOpenTask={onOpen} />}
     </div>
   );
 }
 
 export function threeDays(date: string): string[] {
   return [date, shiftDateKey(date, 1), shiftDateKey(date, 2)];
+}
+
+/**
+ * やった記録の時間を直す：小さいブロックを指でつかまなくても、押して「何時から何分」を選ぶだけ。
+ * すぐ完了を押したもの（時間の記録なし）にも、ここで時間をつけられる。
+ */
+const FIX_MINUTES = [5, 10, 15, 20, 30, 45, 60, 90];
+function DoneFixSheet({ fix, onClose, onOpenTask }: { fix: { task: Task; session?: FocusSession; date: string; start: number; len: number }; onClose: () => void; onOpenTask: (task: Task) => void }) {
+  const [start, setStart] = useState(fix.start);
+  const [len, setLen] = useState(fix.len);
+  const [armed, setArmed] = useState(false);
+  const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const save = async () => {
+    const startedAt = dateAt(fix.date, start);
+    const endedAt = new Date(Date.parse(startedAt) + len * 60_000).toISOString();
+    if (Date.parse(endedAt) > Date.now() + 60_000) { toast("今より後には終われません。開始か分数を直してください"); return; }
+    if (fix.session) {
+      await updateSession(fix.session.id, { startedAt, endedAt, pausedTotalSec: 0, pausedAt: null }, `実績を${hm(start)}から${len}分に直す`);
+    } else {
+      await recordPastSession(fix.task, startedAt, endedAt, `「${fix.task.title}」を${hm(start)}から${len}分やった`);
+    }
+    if (fix.task.status === "done") await updateTask(fix.task.id, { completedAt: endedAt }, "完了時刻を実績に合わせる", false);
+    syncNow().catch(() => undefined);
+    toast(`${hm(start)}〜${hm(start + len)}（${len}分）にしました`);
+    onClose();
+  };
+  const undo = async () => {
+    if (!armed) { setArmed(true); window.setTimeout(() => setArmed(false), 3000); return; }
+    if (fix.session) await discardFocusSession(fix.session.id);
+    if (fix.task.status === "done") await completeTask(fix.task.id, false);
+    syncNow().catch(() => undefined);
+    toast(`「${fix.task.title}」を、やっていないことに戻しました（履歴から戻せます）`);
+    onClose();
+  };
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="done-fix" role="dialog" aria-modal="true" aria-label="やった時間を直す">
+        <header><strong>✓ {fix.task.title}</strong><small>{fix.session ? "やった時間を直す" : "完了だけ押した記録に時間をつける"}</small></header>
+        <label className="df-row"><span>何時から</span>
+          <input type="time" value={clock(start)} onChange={(e) => { const [h, m] = e.currentTarget.value.split(":").map(Number); if (Number.isFinite(h) && Number.isFinite(m)) setStart((h < 4 ? h + 24 : h) * 60 + m); }} />
+        </label>
+        <div className="df-row"><span>何分やった</span>
+          <div className="df-chips">
+            {FIX_MINUTES.map((m) => <button key={m} type="button" className={len === m ? "on" : ""} onClick={() => setLen(m)}>{m}</button>)}
+            <label className="df-own"><input type="number" inputMode="numeric" min="1" max="600" value={len} onChange={(e) => { const v = Math.round(Number(e.currentTarget.value)); if (v > 0 && v <= 600) setLen(v); }} />分</label>
+          </div>
+        </div>
+        <p className="df-preview">{hm(start)}〜{hm(start + len)}（{len}分）</p>
+        <button type="button" className="df-save" onClick={save}>この時間にする</button>
+        <div className="df-sub">
+          <button type="button" className={armed ? "danger armed" : "danger"} onClick={undo}>{armed ? "もう一度で戻す" : "やってなかった（完了を取り消す）"}</button>
+          <button type="button" onClick={() => { onClose(); onOpenTask(fix.task); }}>タスクを開く</button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
 }

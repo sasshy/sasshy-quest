@@ -72,6 +72,35 @@
   :root:not([data-theme="light"])[data-accent="green"] { --accent-soft: #173527; --accent-text: #9adcb9; }
   :root:not([data-theme="light"])[data-accent="gold"] { --accent-soft: #3a2f16; --accent-text: #ecd08c; }
 }
+/* いつも暗く（上のバーのボタン・設定で選んだとき） */
+  :root[data-theme="dark"] {
+    --ink: #f2f2f0;
+    --muted: #c2c2be;
+    --faint: #8e8e8a;
+    --line: #3d3d40;
+    --line-strong: #4c4c50;
+    --paper: #2c2c2f;
+    --canvas: #1f1f21;
+    --soft: #37373a;
+    --field: #37373a;
+    --green-soft: #1d3327;
+    --blue-soft: #1c2938;
+    --coral-soft: #3a221e;
+    --yellow-soft: #362a12;
+    --hero: #f2f2f0;
+    --hero-ink: #121212;
+    --hero-sub: #6b6b68;
+    --hero-line: #cfcfcb;
+    --accent-soft: #34305a;
+    --accent-text: #c4bff8;
+    --warn-text: #f5c27a;
+    color-scheme: dark;
+  }
+  :root[data-theme="dark"][data-accent="blue"] { --accent-soft: #1d3150; --accent-text: #a9caf7; }
+  :root[data-theme="dark"][data-accent="orange"] { --accent-soft: #3e2810; --accent-text: #f8c08b; }
+  :root[data-theme="dark"][data-accent="green"] { --accent-soft: #173527; --accent-text: #9adcb9; }
+  :root[data-theme="dark"][data-accent="gold"] { --accent-soft: #3a2f16; --accent-text: #ecd08c; }
+
 
 html, body { font-family: var(--font-ui); color: var(--ink); background: var(--canvas); }
 button, input, select, textarea { font-family: inherit; color: inherit; }
@@ -971,6 +1000,7 @@ details.ms-more > .meal-when-where { padding: 0 14px 14px; }
 .companion.tile .companion-frame { overflow: hidden; border-radius: 24px; }
 @media (prefers-color-scheme: light) { .companion-video { mix-blend-mode: multiply; } }
 [data-theme="light"] .companion-video { mix-blend-mode: multiply; }
+[data-theme="dark"] .companion-video { filter: brightness(.9); mix-blend-mode: normal; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .companion-video { filter: brightness(.9); }
   :root:not([data-theme="light"]) .companion.tile .companion-frame { border-radius: 0; -webkit-mask-image: radial-gradient(farthest-side, #000 70%, transparent 100%); mask-image: radial-gradient(farthest-side, #000 70%, transparent 100%); }
@@ -1556,3 +1586,32 @@ body.sasshy-dragging, body.sasshy-dragging * { -webkit-user-select: none; user-s
 .timer-extend-input input { width: 100%; min-width: 0; height: 42px; border: 0; outline: 0; background: transparent !important; color: #fff; font: inherit; font-size: 18px; font-weight: 800; text-align: right; }
 .timer-extend-input small { color: rgba(255,255,255,.6); font-size: 12px; }
 .timer-extend .timer-extend-set { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 週表示のGoogleの予定（月表示・今日と同じ青） */
+.wk-bar i.gcal { background: #378ADD; opacity: .85; }
+.wk-list li.gcal { color: #185FA5; }
+.wk-list li.gcal b { color: #378ADD; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wk-list li.gcal { color: #B5D4F4; } :root:not([data-theme="light"]) .wk-list li.gcal b { color: #85B7EB; } }
+.wk-list li.gcal { background: var(--blue-soft); }
+
+:root[data-theme="dark"] .today-events { color: #B5D4F4; } :root[data-theme="dark"] .te-list > span b, :root[data-theme="dark"] .today-events em { color: #85B7EB; }
+:root[data-theme="dark"] .wk-list li.gcal { color: #B5D4F4; } :root[data-theme="dark"] .wk-list li.gcal b { color: #85B7EB; }
+/* やった時間を直す（カレンダーの✓を押したとき） */
+.done-fix { width: min(400px, 100%); display: grid; gap: 12px; padding: 18px 16px 14px; border-radius: 22px; background: var(--paper); color: var(--ink); }
+.done-fix header { display: grid; gap: 2px; }
+.done-fix header strong { font-size: 17px; }
+.done-fix header small { font-size: 12px; color: var(--muted); }
+.df-row { display: grid; gap: 6px; }
+.df-row > span { font-size: 12px; font-weight: 800; color: var(--muted); }
+.df-row input[type="time"] { min-height: 46px; font-size: 20px; font-weight: 700; border-radius: 12px; border: 1px solid var(--line-strong); padding: 0 10px; background: var(--field); color: var(--ink); }
+.df-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.df-chips button { min-height: 42px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.df-chips button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.df-own { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.df-own input { width: 90px; min-height: 40px; border-radius: 10px; border: 1px solid var(--line-strong); padding: 0 8px; font-size: 16px; background: var(--field); color: var(--ink); }
+.df-preview { margin: 0; text-align: center; font-size: 18px; font-weight: 800; }
+.df-save { min-height: 52px; border: 0; border-radius: 14px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 16px; font-weight: 800; cursor: pointer; }
+.df-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.df-sub button { min-height: 42px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.df-sub button.danger { color: var(--danger); }
+.df-sub button.danger.armed { background: var(--danger); color: #fff; border-color: var(--danger); }
+.tg-resize-badge { position: fixed; z-index: 90; top: calc(var(--topbar, 56px) + 12px); left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: 15px; font-weight: 800; pointer-events: none; }

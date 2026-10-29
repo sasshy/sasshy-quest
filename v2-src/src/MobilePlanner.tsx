@@ -5,7 +5,7 @@ import { shiftDateKey } from "./meals";
 import { setTasksFlowOrder } from "./store";
 import { syncNow } from "./sync";
 import { haptic } from "./feedback";
-import type { Task } from "./types";
+import type { GoogleCalendarEvent, Task } from "./types";
 import { localDateKey } from "./work-start";
 
 /**
@@ -80,8 +80,11 @@ export function MobilePlanner({
   onMove,
   onCreateAt,
   onStart,
+  events = [],
 }: {
   tasks: Task[];
+  /** Googleカレンダーの予定（週表示の帯と一覧に、青で出す）。 */
+  events?: GoogleCalendarEvent[];
   mode: "day" | "week";
   date: string;
   onDate: (date: string) => void;
@@ -137,6 +140,16 @@ export function MobilePlanner({
             const placed = plan.rows.filter((r): r is Extract<typeof r, { kind: "task" }> => r.kind === "task");
             const d = new Date(`${key}T12:00:00`);
             const dow = d.getDay();
+            const minOf = (iso: string) => { const x = new Date(iso); return x.getHours() * 60 + x.getMinutes(); };
+            const gTimed = events
+              .filter((e) => !e.allDay && localDateKey(new Date(e.start)) === key)
+              .map((e) => ({ e, start: minOf(e.start), end: e.end ? Math.max(minOf(e.start) + 15, minOf(e.end)) : minOf(e.start) + 30 }));
+            const gAll = events.filter((e) => e.allDay && e.start <= key && (e.end ? e.end > key : e.start === key));
+            // 予定とGoogleの予定を時刻順にまぜて一覧にする。
+            const rows = [
+              ...placed.map((r) => ({ key: r.task.id, start: r.entry.startMinute, title: r.task.title, kind: isFixed(r.task) ? "fixed" : "" })),
+              ...gTimed.map((g) => ({ key: `g-${g.e.id}`, start: g.start, title: g.e.title, kind: "gcal" })),
+            ].sort((a, b) => a.start - b.start);
             return (
               <button key={key} type="button" className={`wk-day${key === today ? " today" : ""}${key < today ? " past" : ""}`} onClick={() => onShowDay(key)}>
                 <div className="wk-head">
@@ -148,12 +161,16 @@ export function MobilePlanner({
                   {placed.map((r) => (
                     <i key={r.task.id} className={isFixed(r.task) ? "fixed" : ""} style={{ left: pct(r.entry.startMinute), width: `calc(${pct(r.entry.endMinute)} - ${pct(r.entry.startMinute)})` }} />
                   ))}
+                  {gTimed.map((g) => (
+                    <i key={`g-${g.e.id}`} className="gcal" style={{ left: pct(g.start), width: `calc(${pct(g.end)} - ${pct(g.start)})` }} />
+                  ))}
                 </div>
-                {placed.length > 0 && (
+                {(rows.length > 0 || gAll.length > 0) && (
                   <ul className="wk-list">
-                    {placed.map((r) => (
-                      <li key={r.task.id} className={isFixed(r.task) ? "fixed" : ""}>
-                        <b>{hm(r.entry.startMinute)}</b>{r.task.title}
+                    {gAll.map((e) => <li key={`ga-${e.id}`} className="gcal"><b>終日</b>{e.title}</li>)}
+                    {rows.map((r) => (
+                      <li key={r.key} className={r.kind}>
+                        <b>{hm(r.start)}</b>{r.title}
                       </li>
                     ))}
                   </ul>

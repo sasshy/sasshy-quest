@@ -195,6 +195,7 @@ import { CompanionPopup, companionStart } from "./Companion";
 import { AgeLabel } from "./TimeLeftPanel";
 import { kickRepaint } from "./repaint";
 import { SearchSheet } from "./SearchSheet";
+import { ThemeToggle } from "./AppearancePanel";
 import { dailyCarePick } from "./care";
 import { FirstStepSheet, shouldShowFirstStep } from "./Kickstart";
 import { TaskIdeasSheet, fetchTaskSteps } from "./TaskIdeas";
@@ -2560,6 +2561,7 @@ function CalendarPage({
       ) : mobile && (mode === "day" || mode === "week" || mode === "list") ? (
         <MobilePlanner
           tasks={tasks}
+          events={googleCalendar.enabled ? googleCalendar.events : []}
           mode={mode === "week" ? "week" : "day"}
           date={activeDate}
           onDate={(next) => {
@@ -5112,6 +5114,7 @@ function App() {
             <button type="button" className="topbar-more" aria-label="さがす" onClick={() => setSearchOpen(true)}>
               <Search size={19} />
             </button>
+            <ThemeToggle />
             <button type="button" className="topbar-more" aria-label="設定を開く" onClick={() => { setMenuOpen(false); setPage("settings"); }}>
               <Settings size={19} />
             </button>

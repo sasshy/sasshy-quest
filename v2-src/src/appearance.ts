@@ -10,7 +10,7 @@ import type { AppSetting } from './types';
  */
 export type FontChoice = 1 | 2 | 3;
 export type Accent = 'purple' | 'blue' | 'orange' | 'green' | 'gold';
-export interface Appearance { id: 'appearance'; font: FontChoice; sound: boolean; accent: Accent; dailyGoalMin: number; companion?: boolean; theme?: 'auto' | 'light' }
+export interface Appearance { id: 'appearance'; font: FontChoice; sound: boolean; accent: Accent; dailyGoalMin: number; companion?: boolean; theme?: 'auto' | 'light' | 'dark' }
 export const DEFAULT_APPEARANCE: Appearance = { id: 'appearance', font: 3, sound: true, accent: 'purple', dailyGoalMin: 60 };
 
 /** Level needed to use each accent. */
@@ -35,7 +35,7 @@ function apply(a: Appearance): void {
   root.dataset.font = String(a.font);
   root.dataset.accent = a.accent;
   // いつも明るく：iPhoneが夜に暗い表示になっても、アプリは明るいまま。
-  if (a.theme === 'light') root.dataset.theme = 'light';
+  if (a.theme === 'light' || a.theme === 'dark') root.dataset.theme = a.theme;
   else delete root.dataset.theme;
 }
 

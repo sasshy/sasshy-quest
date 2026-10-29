@@ -10,6 +10,34 @@ import {
   type FontChoice,
 } from "./appearance";
 import { playDone } from "./feedback";
+import { Moon, Sun, SunMoon } from "lucide-react";
+
+const THEME_NEXT = { auto: "light", light: "dark", dark: "auto" } as const;
+const THEME_LABEL = { auto: "iPhoneに合わせる", light: "いつも明るく", dark: "いつも暗く" } as const;
+
+/** 上のバー：押すたびに 自動 → 明るく → 暗く。朝なのに暗い、などをすぐ直せる。 */
+export function ThemeToggle() {
+  const a = useLiveQuery(async () => {
+    await db.settings.get("appearance");
+    return getAppearance();
+  }, [], DEFAULT_APPEARANCE) || DEFAULT_APPEARANCE;
+  const now = a.theme === "light" || a.theme === "dark" ? a.theme : "auto";
+  const Icon = now === "light" ? Sun : now === "dark" ? Moon : SunMoon;
+  return (
+    <button
+      type="button"
+      className="topbar-more"
+      aria-label={`画面の色：${THEME_LABEL[now]}（押すと切り替え）`}
+      onClick={() => {
+        const next = THEME_NEXT[now];
+        setAppearance({ theme: next });
+        window.dispatchEvent(new CustomEvent("sasshy-toast", { detail: `画面の色：${THEME_LABEL[next]}` }));
+      }}
+    >
+      <Icon size={19} />
+    </button>
+  );
+}
 
 const nativeBridge = () =>
   (window as unknown as { webkit?: { messageHandlers?: { sasshyAlarm?: { postMessage: (m: unknown) => void } } } })
@@ -65,9 +93,10 @@ export function AppearancePanel() {
       )}
       <div className="ap-group ap-row">
         <span className="ap-label">画面の色</span>
-        <select value={a.theme === "light" ? "light" : "auto"} onChange={(e) => setAppearance({ theme: e.currentTarget.value === "light" ? "light" : "auto" })}>
-          <option value="auto">iPhoneに合わせる（夜は暗め）</option>
+        <select value={a.theme === "light" || a.theme === "dark" ? a.theme : "auto"} onChange={(e) => { const v = e.currentTarget.value; setAppearance({ theme: v === "light" || v === "dark" ? v : "auto" }); }}>
+          <option value="auto">iPhoneに合わせる</option>
           <option value="light">いつも明るく</option>
+          <option value="dark">いつも暗く</option>
         </select>
       </div>
       <div className="ap-group ap-row">
