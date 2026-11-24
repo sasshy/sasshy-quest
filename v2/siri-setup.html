@@ -1,0 +1,27 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Siriから仕事を追加 | SASSHY</title>
+<style>body{font:16px/1.8 system-ui,sans-serif;max-width:720px;padding:24px;margin:auto;color:#193343;background:#f5f8fa}h1{font-size:26px}h2{font-size:20px;margin-top:32px}code,pre{background:#e6edf2;padding:8px;border-radius:6px;overflow-wrap:anywhere;white-space:pre-wrap}li{margin:14px 0}a{color:#08628a}input,button{font:inherit;box-sizing:border-box;max-width:100%}input{width:100%;padding:10px}button{padding:10px;margin:8px 0}small{display:block}</style>
+<a href="./?open=settings">← SASSHYの設定</a><h1>Siriから仕事タスクを追加</h1>
+<p>「Siri、サッシーに仕事を追加」→ 依頼を話す → AIが整理 → SASSHYに保存 → 登録内容を読み上げます。</p>
+<p>例：「田中さんから電話。取引先Aに月曜15時までに部品の見積を送る。送料も確認」</p>
+<h2>最初の設定</h2><p>SupabaseのEdge Functions → Secretsに <code>OPENAI_API_KEY</code> を設定します。既存のタスク受付キー <code>SASSHY_TASK_INGEST_TOKEN</code> をショートカットで使います。秘密のキーをチャットや共有リンクに貼らないでください。</p>
+<p>音声の文字起こしはiPhone、文章整理はOpenAI APIで行います。API利用料はChatGPT Plusとは別です。音声ファイルは送らず、今回の文字起こしだけを送信します。</p>
+<h2>ショートカットを作る</h2><p>名前は「サッシーに仕事を追加」。次の順にアクションを追加します。</p>
+<ol>
+<li><strong>テキストを音声入力</strong>：言語は日本語。</li>
+<li><strong>UUIDを生成</strong>：1回の依頼につき1つ生成。</li>
+<li><strong>辞書</strong>：<code>idempotency_key</code> にUUID、<code>transcript</code> に音声入力の結果を入れます。</li>
+<li>辞書を<strong>テキスト</strong>に変換し、<strong>ファイルを保存</strong>で「Shortcuts/SASSHY-last-request.json」に上書き保存します。送信が途切れたときの再送用です。</li>
+<li><strong>URLの内容を取得</strong>：下記URL、方法はPOST。ヘッダに <code>Authorization</code> = <code>Bearer （タスク受付キー）</code>、<code>Content-Type</code> = <code>application/json</code>。本文はJSONで、辞書と同じ2項目を指定します。</li>
+<li>返り値の辞書から <code>ok</code> を取得。<strong>もし</strong> trueなら <code>message</code> を<strong>テキストを読み上げる</strong>。それ以外は <code>error</code> を表示・読み上げます。エラーを「登録できた」と読み上げない設定にしてください。</li>
+</ol>
+<label>送信先<input readonly value="https://zoxahzhxqbgswzyduiuq.supabase.co/functions/v1/sasshy-add-task/voice"></label>
+<pre>{
+  "idempotency_key": "（UUIDを生成の結果）",
+  "transcript": "（テキストを音声入力の結果）"
+}</pre>
+<p>通信失敗・結果不明なら、保存したJSONを読み込み、同じ2項目を再送してください。新しいUUIDを作ると別の依頼になります。登録済みの受付番号なら、AIを再実行せず登録済みの内容を返します。</p>
+<h2>未対応の再通知</h2><p>音声で追加した仕事は再通知ON。平日9〜18時（日本時間）、1時間おきです。期限時刻から、時刻なしは期限日の17時から、期限なしは登録1時間後から通知します。夜間・週末は次の平日9時以降になります（祝日は判定しません）。</p>
+<p>SASSHYのタスクを開き「仕事の期限・相手・再通知」で期限・相手・依頼元を修正できます。1時間／1日延期、通知停止もできます。作業開始・完了・ゴミ箱移動で停止し、再開した場合は状態に応じて通知が戻ります。変更は同期後に通知サーバーへ反映されます。</p>
+<p>iPhoneではホーム画面に追加したSASSHYの「設定」で通知を有効にし、テスト通知を確認してください。iPhoneの集中モードや通信状態により届く時刻が遅れる場合があります。</p>
+<h2>最初に試すこと</h2><p>「テスト先に明日15時までに見積を送る」と話して、読み上げとSASSHYの受信箱の内容を確認。同じ保存済みJSONを再送して1件のままか確認。テストタスクの再通知をOFFにして保存・同期してください。</p>
+</html>
